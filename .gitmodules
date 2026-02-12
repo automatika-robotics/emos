@@ -1,0 +1,12 @@
+[submodule "stack/emos-cli"]
+	path = stack/emos-cli
+	url = https://github.com/automatika-robotics/emos-cli.git
+[submodule "stack/embodied-agents"]
+	path = stack/embodied-agents
+	url = https://github.com/automatika-robotics/embodied-agents.git
+[submodule "stack/kompass"]
+	path = stack/kompass
+	url = https://github.com/automatika-robotics/kompass.git
+[submodule "stack/sugarcoat"]
+	path = stack/sugarcoat
+	url = https://github.com/automatika-robotics/sugarcoat.git

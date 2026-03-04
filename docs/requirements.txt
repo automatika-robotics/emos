@@ -1,0 +1,8 @@
+sphinx
+shibuya
+sphinx-autodoc2
+sphinx-copybutton
+sphinx-design
+sphinx-sitemap
+myst-parser
+linkify-it-py

@@ -6,8 +6,8 @@ Most VLA policies are "open-loop" regarding task completion -- they run for a fi
 
 In this tutorial, we will build a **Closed-Loop Agent** while using an open-loop policy. Even if the model correctly outputs its termination condition (i.e. an absorbing state policy), our design can act as a safety valve. We will combine:
 
-- **The Player (VLA):** Attempts to pick up an object.
-- **The Referee (VLM):** Watches the camera stream and judges if the task is complete.
+- {material-regular}`smart_toy;1.2em;sd-text-primary` **The Player (VLA):** Attempts to pick up an object.
+- {material-regular}`visibility;1.2em;sd-text-primary` **The Referee (VLM):** Watches the camera stream and judges if the task is complete.
 
 We will use the **Event System** to trigger a stop command on the VLA the moment the VLM confirms success.
 

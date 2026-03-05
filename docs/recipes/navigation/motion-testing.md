@@ -160,10 +160,10 @@ You can plot these columns to compare the `cmd_vx` (Reference) vs the derivative
 
 You can customize the testing behavior via `MotionServerConfig`:
 
-- **`test_period`** *(float, default=10.0)* -- Duration of each individual test step in seconds.
-- **`run_step_test`** *(bool, default=False)* -- Runs linear step inputs (forward/backward straight lines).
-- **`run_circle_test`** *(bool, default=True)* -- Runs combined linear and angular velocity commands.
-- **`tests_folder`** *(str)* -- Absolute path where CSV files will be saved.
+- {material-regular}`timer;1.2em;sd-text-primary` **`test_period`** *(float, default=10.0)* -- Duration of each individual test step in seconds.
+- {material-regular}`straighten;1.2em;sd-text-primary` **`run_step_test`** *(bool, default=False)* -- Runs linear step inputs (forward/backward straight lines).
+- {material-regular}`loop;1.2em;sd-text-primary` **`run_circle_test`** *(bool, default=True)* -- Runs combined linear and angular velocity commands.
+- {material-regular}`folder;1.2em;sd-text-primary` **`tests_folder`** *(str)* -- Absolute path where CSV files will be saved.
 
 ```{tip}
 The **MotionServer** generates commands, but usually sends them to the **DriveManager** first for safety checks. For accurate recording, the MotionServer should listen to the **output** of the DriveManager (`cmd_vel`) as its input. This ensures you record exactly what was sent to the motors, including any safety overrides.

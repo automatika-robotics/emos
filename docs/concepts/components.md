@@ -42,12 +42,30 @@ Component Architecture
 
 A Component isn't just a `while(True)` loop. You can configure *how* its main functionality executes using the `run_type` property.
 
-| Run Type | Description | Best For... |
-| --- | --- | --- |
-| **Timed** | Executes the main step in a fixed-frequency loop (e.g., 10Hz). | Controllers, Planners, Drivers |
-| **Event** | Dormant until triggered by a specific Topic or Event. | Image Processors, Detectors |
-| **Server** | Dormant until a ROS2 Service Request is received. | Calibration Nodes, Compute Servers |
-| **ActionServer** | Dormant until a ROS2 Action Goal is received. | Long-running tasks (Navigation, Arms) |
+```{list-table}
+:widths: 15 50 35
+:header-rows: 1
+
+* - Run Type
+  - Description
+  - Best For...
+
+* - **Timed**
+  - Executes the main step in a fixed-frequency loop (e.g., 10Hz).
+  - Controllers, Planners, Drivers
+
+* - **Event**
+  - Dormant until triggered by a specific Topic or Event.
+  - Image Processors, Detectors
+
+* - **Server**
+  - Dormant until a ROS2 Service Request is received.
+  - Calibration Nodes, Compute Servers
+
+* - **ActionServer**
+  - Dormant until a ROS2 Action Goal is received.
+  - Long-running tasks (Navigation, Arms)
+```
 
 **Configuration Example:**
 
@@ -104,17 +122,17 @@ A robust robot doesn't just crash when an error occurs; it degrades gracefully.
 
 Instead of printing a log message and dying, a Component reports its **Health Status**. This status is both:
 
-- Internal: Used immediately by the component to trigger local recovery strategies.
+- {material-regular}`settings;1.2em;sd-text-primary` **Internal:** Used immediately by the component to trigger local recovery strategies.
 
-- External: Broadcasted to alert other parts of the system.
+- {material-regular}`cell_tower;1.2em;sd-text-primary` **External:** Broadcasted to alert other parts of the system.
 
 ### Fallbacks (Self-Healing)
 
 You can define **reflexes** that trigger automatically when health degrades.
 
-* *Is the driver dead?*  **Restart** the node.
-* *Is the planner stuck?*  **Reconfigure** the tolerance parameters.
-* *Is the sensor noisy?*  **Switch** to a different algorithm.
+* {material-regular}`restart_alt;1.2em;sd-text-danger` *Is the driver dead?*  **Restart** the node.
+* {material-regular}`tune;1.2em;sd-text-warning` *Is the planner stuck?*  **Reconfigure** the tolerance parameters.
+* {material-regular}`swap_horiz;1.2em;sd-text-primary` *Is the sensor noisy?*  **Switch** to a different algorithm.
 
 > **Learn More:** [Status & Fallbacks Guide](./status-and-fallbacks.md).
 

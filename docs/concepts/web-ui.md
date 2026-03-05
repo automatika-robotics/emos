@@ -1,8 +1,10 @@
 # Dynamic Web UI
 
-The **Dynamic Web UI** brings an entirely new level of **system visibility**, **control**, and **ease of use** to EMOS recipes. Built with [**FastHTML**](https://www.fastht.ml/) and [**MonsterUI**](https://monsterui.answer.ai/), it **automatically generates a responsive, extensible web interface** for any EMOS recipe, eliminating the need for manual front-end work.
+The **Dynamic Web UI** brings an entirely new level of **system visibility**, **control**, and **ease of use** to EMOS recipes. Built with [**FastHTML**](https://www.fastht.ml/) and [**MonsterUI**](https://monsterui.answer.ai/), it **automatically generates a responsive, extensible web interface** for any EMOS recipe -- eliminating the need for manual front-end work.
 
 With zero configuration, your ROS 2 system instantly becomes a **fully monitorable and configurable web application**, complete with real-time data streaming and visual feedback.
+
+---
 
 ## Key Capabilities
 
@@ -10,7 +12,7 @@ The Dynamic Web UI acts as a **universal dashboard** for your EMOS recipes. Once
 
 You can view, control, and debug every part of your ROS 2 application directly from the browser -- no manual HTML, JavaScript, or dashboard setup required.
 
-- **Automatic Settings UI** --
+- {material-regular}`tune;1.2em;sd-text-primary` **Automatic Settings UI** --
   Dynamically generates interfaces for configuring the parameters and settings of all `Components` used in your recipe.
 
   <p align="center">
@@ -19,7 +21,7 @@ You can view, control, and debug every part of your ROS 2 application directly f
   </picture>
   </p>
 
-- **Auto I/O Visualization** --
+- {material-regular}`dashboard;1.2em;sd-text-primary` **Auto I/O Visualization** --
   Automatically builds front-end controls and data visualizations for all defined UI `Inputs` and `Outputs`.
 
   <p align="center">
@@ -28,7 +30,7 @@ You can view, control, and debug every part of your ROS 2 application directly f
   </picture>
   </p>
 
-- **WebSocket-Based Streaming** --
+- {material-regular}`cable;1.2em;sd-text-primary` **WebSocket-Based Streaming** --
   Provides bidirectional, low-latency communication for **text**, **image**, **map** and **audio** data streams.
 
   <p align="center">
@@ -37,7 +39,7 @@ You can view, control, and debug every part of your ROS 2 application directly f
   </picture>
   </p>
 
-- **Responsive Layouts** --
+- {material-regular}`devices;1.2em;sd-text-primary` **Responsive Layouts** --
   Uses grid-based, adaptive layouts for clear visualization of system elements, optimized for both desktop and mobile.
 
   <p align="center">
@@ -46,8 +48,10 @@ You can view, control, and debug every part of your ROS 2 application directly f
   </picture>
   </p>
 
-- **Extensible Design** --
+- {material-regular}`build;1.2em;sd-text-primary` **Extensible Design** --
   Developers can extend the UI to support **custom message types**, **interactive widgets**, or **bespoke visualizations**.
+
+---
 
 ## Automatic UI Generation in Action
 
@@ -94,8 +98,8 @@ launcher = Launcher()
 
 Enable the Dynamic Web UI by calling the `enable_ui` method on your `Launcher` instance. In this example:
 
-- The `text_query` topic is set as a UI input, allowing the user to send text messages (publish to ROS 2 topic) directly from the browser.
-- The `text_answer` and `detections_topic` are UI outputs, meaning the UI automatically subscribes to these topics and displays messages in real time.
+- {material-regular}`upload;1.2em;sd-text-success` The `text_query` topic is set as a UI **input**, allowing the user to send text messages (publish to ROS 2 topic) directly from the browser.
+- {material-regular}`download;1.2em;sd-text-primary` The `text_answer` and `detections_topic` are UI **outputs**, meaning the UI automatically subscribes to these topics and displays messages in real time.
 
 ```python
 launcher.enable_ui(

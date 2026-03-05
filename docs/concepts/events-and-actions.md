@@ -188,11 +188,11 @@ Actions are not just static function calls; they are **dynamic, context-aware ro
 
 They can represent:
 
-- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">Component Behaviors - </span> Routines defined within your components. *e.g., Stopping the robot, executing a motion pattern, or saying a sentence.*
+- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`smart_toy;1.2em;sd-text-primary` Component Behaviors — </span> Routines defined within your components. *e.g., Stopping the robot, executing a motion pattern, or saying a sentence.*
 
-- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">System Behaviors - </span> Lifecycle management, configuration and plumbing. *e.g., Reconfiguring a node, restarting a driver, or re-routing input streams.*
+- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`settings;1.2em;sd-text-primary` System Behaviors — </span> Lifecycle management, configuration and plumbing. *e.g., Reconfiguring a node, restarting a driver, or re-routing input streams.*
 
-- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">User Custom Behaviors - </span> Arbitrary Python functions. *e.g., Calling an external REST API, logging to a file, or sending a slack notification.*
+- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`extension;1.2em;sd-text-primary` User Custom Behaviors — </span> Arbitrary Python functions. *e.g., Calling an external REST API, logging to a file, or sending a slack notification.*
 
 
 ### Trigger Mechanisms

@@ -2,14 +2,14 @@
 
 Kompass, the EMOS navigation engine, provides a comprehensive suite of algorithms for both **global path planning** and **local motion control**.
 
-- **[Planning Algorithms](#planning-algorithms-ompl)** -- Over 25 sampling-based planners from OMPL (RRT*, PRM, KPIECE, etc.) for global path planning with collision checking.
-- **[Control Algorithms](#control-algorithms)** -- Battle-tested controllers ranging from classic geometric path-followers to GPU-accelerated local planners and visual servoing.
+- {material-regular}`route;1.2em;sd-text-primary` **[Planning Algorithms](#planning-algorithms-ompl)** -- Over 25 sampling-based planners from OMPL (RRT*, PRM, KPIECE, etc.) for global path planning with collision checking.
+- {material-regular}`gamepad;1.2em;sd-text-primary` **[Control Algorithms](#control-algorithms)** -- Battle-tested controllers ranging from classic geometric path-followers to GPU-accelerated local planners and visual servoing.
 
 Every algorithm is natively compatible with the three primary motion models. The internal logic automatically adapts to the specific constraints of your platform:
 
-- **ACKERMANN**: Car-like platforms with steering constraints.
-- **DIFFERENTIAL_DRIVE**: Two-wheeled or skid-steer robots.
-- **OMNI**: Holonomic systems capable of lateral movement.
+- {material-regular}`directions_car;1.2em;sd-text-primary` **ACKERMANN**: Car-like platforms with steering constraints.
+- {material-regular}`swap_horiz;1.2em;sd-text-primary` **DIFFERENTIAL_DRIVE**: Two-wheeled or skid-steer robots.
+- {material-regular}`open_with;1.2em;sd-text-primary` **OMNI**: Holonomic systems capable of lateral movement.
 
 Each algorithm is fully parameterized. Developers can tune behaviors such as lookahead gains, safety margins, and obstacle sensitivity directly through the Python API or YAML configuration.
 

@@ -11,42 +11,91 @@ It serves two primary purposes:
 
 ## Key Capabilities
 
-- **Motion Calibration** — Execute step inputs or circular paths automatically to measure the robot's real-world response vs. the theoretical model.
-- **Data Recording** — Record exact control inputs and odometry outputs synchronized in time. Essential for tuning controller gains or debugging tracking errors.
-- **Closed-Loop Validation** — Can act as both the source of commands (during tests) and the sink for recording, allowing you to validate the entire control pipeline.
-- **Event-Triggered** — Start recording or launch a calibration sequence automatically based on external events (e.g., "Terrain Changed" or "Slip Detected").
+- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`tune;1.5em;sd-text-primary` Motion Calibration</span> — Execute step inputs or circular paths automatically to measure the robot's real-world response vs. the theoretical model.
 
-## Run Types
+- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`fiber_manual_record;1.5em;sd-text-primary` Data Recording</span> — Record exact control inputs and odometry outputs synchronized in time. Essential for tuning controller gains or debugging tracking errors.
 
-| Mode | Description |
-| :--- | :--- |
-| **Timed** | Automatically launches configured motion tests periodically after the component starts. |
-| **Event** | Waits for a `True` signal on the `run_tests` input topic to launch the calibration sequence. |
-| **Action Server** | On-demand recording. Offers a `MotionRecording` ROS2 Action to start/stop recording for a set duration. |
+- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`loop;1.5em;sd-text-primary` Closed-Loop Validation</span> — Can act as both the source of commands (during tests) and the sink for recording, allowing you to validate the entire control pipeline.
 
-## Interface
+- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`flash_on;1.5em;sd-text-primary` Event-Triggered</span> — Start recording or launch a calibration sequence automatically based on external events (e.g., "Terrain Changed" or "Slip Detected").
 
-### Inputs
+```{note}
+The available motion tests include Step tests and Circle test and can be configured by adjusting the MotionServerConfig.
+```
 
-| Key Name | Allowed Types | Default |
-| :--- | :--- | :--- |
-| **run_tests** | `Bool` | `/run_tests` |
-| **command** | `Twist`, `TwistStamped` | `/cmd_vel` |
-| **location** | `Odometry`, `PoseStamped`, `Pose` | `/odom` |
+## Available Run Types
 
-### Outputs
+```{list-table}
+:widths: 10 80
 
-| Key Name | Allowed Types | Default |
-| :--- | :--- | :--- |
-| **robot_command** | `Twist`, `TwistStamped` | `/cmd_vel` |
+* - **Timed**
+  - Launches automated tests periodically after the component starts.
 
-:::{note}
-The **command** topic appears in both Inputs and Outputs but serves different roles:
-- **Output (`robot_command`):** Used when the Motion Server is *generating* commands (running tests).
-- **Input (`command`):** Used when the Motion Server is *listening* (recording).
+* - **Event**
+  - Launches automated testing when a trigger is received on the `run_tests` input topic.
 
-You can wire these differently to test specific components. For example, connect the Motion Server output to the Drive Manager's input, and the Drive Manager's output back to the Motion Server input to record exactly how the Drive Manager modifies your commands.
-:::
+* - **ActionServer**
+  - Offers a `MotionRecording` ROS2 Action to start/stop recording for a set duration.
+```
+
+```{tip}
+Launch the MotionServer as a **Timed** component to launch the basic motion tests automatically, or as an **Event** component to launch the tests when a trigger is received.
+```
+
+```{tip}
+Launch the MotionServer as an **ActionServer** component and send a request to record your robot's motion at any time during the navigation.
+```
+
+## Inputs
+
+```{list-table}
+:widths: 10 40 10 40
+:header-rows: 1
+
+* - Key Name
+  - Allowed Types
+  - Number
+  - Default
+
+* - run_tests
+  - `std_msgs.msg.Bool`
+  - 1
+  - `Topic(name="/run_tests", msg_type="Bool")`
+
+* - command
+  - [`geometry_msgs.msg.Twist`](http://docs.ros.org/en/noetic/api/geometry_msgs/html/msg/Twist.html)
+  - 1
+  - `Topic(name="/cmd_vel", msg_type="Twist")`
+
+* - location
+  - [`nav_msgs.msg.Odometry`](https://docs.ros.org/en/noetic/api/nav_msgs/html/msg/Odometry.html), [`geometry_msgs.msg.PoseStamped`](http://docs.ros.org/en/jade/api/geometry_msgs/html/msg/PoseStamped.html), [`geometry_msgs.msg.Pose`](http://docs.ros.org/en/jade/api/geometry_msgs/html/msg/Pose.html)
+  - 1
+  - `Topic(name="/odom", msg_type="Odometry")`
+```
+
+## Outputs
+
+```{list-table}
+:widths: 10 40 10 40
+:header-rows: 1
+
+* - Key Name
+  - Allowed Types
+  - Number
+  - Default
+
+* - robot_command
+  - [`geometry_msgs.msg.Twist`](http://docs.ros.org/en/noetic/api/geometry_msgs/html/msg/Twist.html)
+  - 1
+  - `Topic(name="/cmd_vel", msg_type="Twist")`
+```
+
+```{note}
+Topic for *Control Command* is both in MotionServer inputs and outputs:
+- The output is used when running automated testing (i.e. sending the commands directly from the MotionServer).
+- The input is used to purely record motion and control from external sources (example: recording output from Controller).
+- Different command topics can be configured for the input and the output. For example: to test the DriveManager, the control command from MotionServer output can be sent to the DriveManager, then the DriveManager output can be configured as the MotionServer input for recording.
+```
 
 ## Usage Example
 

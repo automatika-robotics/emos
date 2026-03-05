@@ -1,154 +1,79 @@
 # Supported Types
 
-EMOS components automatically create subscribers and callbacks for all inputs, and publishers for all outputs. This page provides a comprehensive reference of all natively supported ROS 2 message types across the EMOS stack.
+EMOS components automatically create subscribers and publishers for all inputs and outputs. This page provides a comprehensive reference of all natively supported ROS 2 message types across the full EMOS stack -- the orchestration layer (Sugarcoat), intelligence layer (EmbodiedAgents), and navigation layer (Kompass).
 
-```{tip}
-Access all callbacks in a `BaseComponent` via `self.callbacks: Dict[str, GenericCallback]` and get the topic incoming message using the `get_output` method in the `GenericCallback` class.
-```
+When defining a [Topic](../concepts/topics.md), you pass the message type as a string (e.g., `Topic(name="/image", msg_type="Image")`). The framework handles all serialization, callback creation, and type conversion automatically.
 
-```{tip}
-Access all publishers in a `BaseComponent` via `self.publishers_dict: Dict[str, Publisher]` and publish a new message to the topic using the `publish` method in the `Publisher` class.
-```
+## Standard Messages
 
-Many supported message types come with pre-defined callback and publisher classes that convert ROS 2 messages to and from Python types. Below is the complete list of supported messages, the types returned by their callback `get_output` method, and the types accepted by their publisher `publish` method.
+| Message | ROS 2 Package | Description |
+|:---|:---|:---|
+| **String** | std_msgs | Standard text message |
+| **Bool** | std_msgs | Boolean value |
+| **Float32** | std_msgs | Single-precision float |
+| **Float32MultiArray** | std_msgs | Array of single-precision floats |
+| **Float64** | std_msgs | Double-precision float |
+| **Float64MultiArray** | std_msgs | Array of double-precision floats |
 
-## Supported ROS 2 Messages
+## Geometry Messages
 
-```{list-table}
-:widths: 15 20 20 20
-:header-rows: 1
-* - Message
-  - ROS 2 Package
-  - Callback Return Type
-  - Publisher Converts From
+| Message | ROS 2 Package | Description |
+|:---|:---|:---|
+| **Point** | geometry_msgs | 3D point (x, y, z) |
+| **PointStamped** | geometry_msgs | Timestamped 3D point |
+| **Pose** | geometry_msgs | Position + orientation |
+| **PoseStamped** | geometry_msgs | Timestamped pose |
+| **Twist** | geometry_msgs | Linear + angular velocity |
+| **TwistStamped** | geometry_msgs | Timestamped velocity |
 
-* - **String**
-  - std_msgs
-  - `str`
-  - `str`
+## Sensor Messages
 
-* - **Bool**
-  - std_msgs
-  - `bool`
-  - `bool`
+| Message | ROS 2 Package | Description |
+|:---|:---|:---|
+| **Image** | sensor_msgs | Raw image data |
+| **CompressedImage** | sensor_msgs | Compressed image (JPEG, PNG) |
+| **Audio** | sensor_msgs | Audio stream data |
+| **LaserScan** | sensor_msgs | 2D lidar scan |
+| **PointCloud2** | sensor_msgs | 3D point cloud |
+| **CameraInfo** | sensor_msgs | Camera calibration and metadata |
+| **JointState** | sensor_msgs | Instantaneous joint position, velocity, and effort |
 
-* - **Float32**
-  - std_msgs
-  - `float`
-  - `float`
+## Navigation Messages
 
-* - **Float32MultiArray**
-  - std_msgs
-  - `numpy.ndarray[float]`
-  - `numpy.ndarray[float]`
+| Message | ROS 2 Package | Description |
+|:---|:---|:---|
+| **Odometry** | nav_msgs | Robot position and velocity |
+| **Path** | nav_msgs | Array of poses for navigation |
+| **MapMetaData** | nav_msgs | Map resolution, size, origin |
+| **OccupancyGrid** | nav_msgs | 2D grid map with occupancy probabilities |
 
-* - **Float64**
-  - std_msgs
-  - `float`
-  - `float`
+## Intelligence Messages
 
-* - **Float64MultiArray**
-  - std_msgs
-  - `numpy.ndarray[float]`
-  - `numpy.ndarray[float]`
+These types are defined by EmbodiedAgents for AI component communication.
 
-* - **Point**
-  - geometry_msgs
-  - `numpy.ndarray`
-  - `numpy.ndarray`
+| Message | ROS 2 Package | Description |
+|:---|:---|:---|
+| **StreamingString** | automatika_embodied_agents | String chunk for streaming applications (e.g., LLM tokens) |
+| **Video** | automatika_embodied_agents | A sequence of image frames |
+| **Detections** | automatika_embodied_agents | 2D bounding boxes with labels and confidence scores |
+| **DetectionsMultiSource** | automatika_embodied_agents | Detections from multiple input sources |
+| **PointsOfInterest** | automatika_embodied_agents | Specific 2D coordinates of interest within an image |
+| **Trackings** | automatika_embodied_agents | Object tracking data including IDs, labels, and trajectories |
+| **TrackingsMultiSource** | automatika_embodied_agents | Object tracking data from multiple sources |
 
-* - **PointStamped**
-  - geometry_msgs
-  - `numpy.ndarray`
-  - `numpy.ndarray`
+## Navigation-Specific Messages
 
-* - **Pose**
-  - geometry_msgs
-  - `numpy.ndarray`
-  - `numpy.ndarray`
+These types are defined by Kompass for navigation component communication.
 
-* - **PoseStamped**
-  - geometry_msgs
-  - `numpy.ndarray`
-  - `numpy.ndarray`
+| Message | ROS 2 Package | Description |
+|:---|:---|:---|
+| **TwistArray** | kompass_interfaces | Array of velocity commands for trajectory candidates |
 
-* - **Twist**
-  - geometry_msgs
-  - `geometry_msgs.msg.Twist`
-  - `geometry_msgs.msg.Twist`
+## Hardware Interface Messages
 
-* - **TwistStamped**
-  - geometry_msgs
-  - \-\-
-  - \-\-
-
-* - **TwistArray**
-  - kompass_interfaces
-  - \-\-
-  - \-\-
-
-* - **Image**
-  - sensor_msgs
-  - `numpy.ndarray`
-  - `sensor_msgs.msg.Image | numpy.ndarray`
-
-* - **CompressedImage**
-  - sensor_msgs
-  - `numpy.ndarray`
-  - `sensor_msgs.msg.CompressedImage | numpy.ndarray`
-
-* - **Audio**
-  - sensor_msgs
-  - `bytes`
-  - `str | bytes`
-
-* - **LaserScan**
-  - sensor_msgs
-  - `sensor_msgs.msg.LaserScan`
-  - `sensor_msgs.msg.LaserScan`
-
-* - **PointCloud2**
-  - sensor_msgs
-  - \-\-
-  - \-\-
-
-* - **Odometry**
-  - nav_msgs
-  - `numpy.ndarray`
-  - `nav_msgs.msg.Odometry`
-
-* - **Path**
-  - nav_msgs
-  - `nav_msgs.msg.Path`
-  - `nav_msgs.msg.Path`
-
-* - **MapMetaData**
-  - nav_msgs
-  - `Dict`
-  - `nav_msgs.msg.MapMetaData`
-
-* - **OccupancyGrid**
-  - nav_msgs
-  - `nav_msgs.msg.OccupancyGrid | np.ndarray | Dict`
-  - `numpy.ndarray`
-
-* - **ComponentStatus**
-  - ros_sugar_interfaces
-  - `ros_sugar_interfaces.msg.ComponentStatus`
-  - `ros_sugar_interfaces.msg.ComponentStatus`
-
-* - **Detections**
-  - automatika_agents_interfaces
-  - \-\-
-  - \-\-
-
-* - **Trackings**
-  - automatika_agents_interfaces
-  - \-\-
-  - \-\-
-
-```
-
-```{note}
-Types marked with `--` for callback/publisher columns are supported for subscription and publishing but use direct ROS 2 message types without automatic conversion. Refer to the API documentation for details on specific type handling.
-```
+| Message | ROS 2 Package | Description |
+|:---|:---|:---|
+| **RGBD** | realsense2_camera_msgs | Synchronized RGB and Depth image pair |
+| **JointTrajectoryPoint** | trajectory_msgs | Position, velocity, and acceleration for joints at a specific time |
+| **JointTrajectory** | trajectory_msgs | A sequence of waypoints for joint control |
+| **JointJog** | control_msgs | Immediate displacement or velocity commands for joints |

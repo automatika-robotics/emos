@@ -6,58 +6,40 @@ EMOS transforms robots into **Physical AI Agents**. It provides a hardware-agnos
 
 Write a Recipe once, deploy it on any robot -- from wheeled AMRs to humanoids -- without rewriting code.
 
-::::{tab-set}
+---
 
-:::{tab-item} Build Agents
+## What You Can Build
 
-Wire together vision, language, navigation, and manipulation components using a simple Python API. EMOS handles the ROS2 lifecycle, inter-process communication, and hardware abstraction.
+::::{grid} 1 2 2 2
+:gutter: 3
 
-```python
-vlm = VLM(inputs=[image, text], outputs=[response], model_client=client)
-launcher = Launcher()
-launcher.add_pkg(components=[vlm])
-launcher.bringup()
-```
+:::{grid-item-card} {material-regular}`psychology;1.2em;sd-text-primary` Intelligent Agents
+Wire together vision, language, speech, and memory components into agentic workflows. Route queries by intent, answer questions about the environment, or build a semantic map -- all from a single Python script.
 
-[Get started](getting-started/quickstart)
+[See cognition recipes](recipes/foundation/index) {material-regular}`arrow_forward;0.9em`
 :::
 
-:::{tab-item} Navigate Autonomously
+:::{grid-item-card} {material-regular}`route;1.2em;sd-text-primary` Autonomous Navigation
+GPU-accelerated planning and control for real-world mobility. Point-to-point navigation, path recording, and vision-based target following -- across differential drive, Ackermann, and omnidirectional platforms.
 
-GPU-accelerated planning and control for real-world mobility. Swap between DWA, Pure Pursuit, and vision-based tracking algorithms -- or bring your own.
-
-```python
-controller = ComponentConfig.controller_node(robot)
-controller.algorithms = {"DWA": DWAConfig()}
-```
-
-[Explore navigation](navigation/overview)
+[See navigation recipes](recipes/navigation/index) {material-regular}`arrow_forward;0.9em`
 :::
 
-:::{tab-item} Adapt at Runtime
+:::{grid-item-card} {material-regular}`sync_alt;1.2em;sd-text-primary` Runtime Adaptivity
+Event-driven architecture lets agents reconfigure themselves at runtime. Hot-swap ML models on network failure, switch navigation algorithms when stuck, trigger recovery maneuvers from sensor events, or compose complex behaviors with logic gates.
 
-Event-driven architecture lets agents reconfigure themselves. Hot-swap models, trigger fallbacks on failure, or switch behaviors based on sensor events -- all without restarting.
-
-```python
-llm.on_algorithm_fail(action=switch_to_backup, max_retries=3)
-```
-
-[Learn about events](concepts/events-and-actions)
+[See adaptivity recipes](recipes/events-and-resilience/index) {material-regular}`arrow_forward;0.9em`
 :::
 
-:::{tab-item} Deploy Anywhere
+:::{grid-item-card} {material-regular}`precision_manufacturing;1.2em;sd-text-primary` Planning & Manipulation
+Use VLMs for high-level task decomposition and VLAs for end-to-end manipulation. Closed-loop control where a VLM referee stops actions on visual task completion.
 
-The `emos` CLI packages and runs Recipes inside a managed Docker container. Pull official recipes or write your own -- one command to launch.
-
-```bash
-emos pull vision_follower
-emos run vision_follower
-```
-
-[CLI guide](getting-started/cli)
+[See manipulation recipes](recipes/planning-and-manipulation/index) {material-regular}`arrow_forward;0.9em`
 :::
 
 ::::
+
+---
 
 ## What's Inside
 
@@ -73,6 +55,13 @@ EMOS is built on three open-source components:
 
 ::::{grid} 1 2 3 3
 :gutter: 3
+
+:::{grid-item-card} {material-regular}`lightbulb;1.2em;sd-text-primary` Why EMOS
+:link: why-emos
+:link-type: doc
+
+The problem EMOS solves -- from custom R&D projects to universal, adaptive robot apps.
+:::
 
 :::{grid-item-card} {material-regular}`rocket_launch;1.2em;sd-text-primary` Getting Started
 :link: getting-started/installation
@@ -95,18 +84,11 @@ Build intelligent robot behaviors with step-by-step guides.
 Understand the architecture, components, events, and fallbacks.
 :::
 
-:::{grid-item-card} {material-regular}`psychology;1.2em;sd-text-primary` Intelligence Layer
-:link: intelligence/overview
+:::{grid-item-card} {material-regular}`terminal;1.2em;sd-text-primary` CLI & Deployment
+:link: getting-started/cli
 :link-type: doc
 
-EmbodiedAgents -- agentic graphs of ML models with semantic memory and adaptive reconfiguration.
-:::
-
-:::{grid-item-card} {material-regular}`route;1.2em;sd-text-primary` Navigation Layer
-:link: navigation/overview
-:link-type: doc
-
-Kompass -- GPU-accelerated planning and control for real-world mobility.
+Package and run Recipes with the `emos` CLI.
 :::
 
 :::{grid-item-card} {material-regular}`smart_toy;1.2em;sd-text-primary` AI-Assisted Coding

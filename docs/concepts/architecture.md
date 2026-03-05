@@ -8,9 +8,9 @@ EMOS (The Embodied Operating System) is the software layer that transforms quadr
 
 At its core, EMOS decouples the robot's **Body** from its **Mind**, creating a standard interface for intelligence.
 
-- **The Body** encompasses the physical hardware: motors, sensors, actuators, and the low-level drivers that control them. EMOS abstracts over the specifics of any particular robot platform, whether it is a wheeled AMR, a quadruped, or a humanoid.
+- {material-regular}`precision_manufacturing;1.2em;sd-text-primary` **The Body** encompasses the physical hardware: motors, sensors, actuators, and the low-level drivers that control them. EMOS abstracts over the specifics of any particular robot platform, whether it is a wheeled AMR, a quadruped, or a humanoid.
 
-- **The Mind** is the software intelligence that perceives the world, reasons about it, and decides how to act. EMOS provides the cognitive and navigational primitives that turn raw sensor data into purposeful behavior.
+- {material-regular}`psychology;1.2em;sd-text-primary` **The Mind** is the software intelligence that perceives the world, reasons about it, and decides how to act. EMOS provides the cognitive and navigational primitives that turn raw sensor data into purposeful behavior.
 
 This separation means that the same application logic --- a "Recipe" --- can be written once and deployed across entirely different robot bodies without rewriting code. EMOS handles the translation between intent and hardware.
 
@@ -22,27 +22,27 @@ EMOS is built on three open-source, publicly developed core components that work
 
 [EmbodiedAgents](https://github.com/automatika-robotics/embodied-agents) is the orchestration framework for building agentic graphs of ML models. It provides:
 
-- **Multi-modal perception** using vision-language models, object detectors, and speech processing.
-- **Hierarchical spatio-temporal memory** for contextual reasoning about the robot's environment over time.
-- **Semantic routing** that directs user commands to the correct capability (navigation, vision, conversation) based on intent.
-- **Adaptive reconfiguration** that allows the robot to switch between cloud APIs and local models at runtime based on connectivity and latency requirements.
+- {material-regular}`visibility;1.2em;sd-text-primary` **Multi-modal perception** using vision-language models, object detectors, and speech processing.
+- {material-regular}`memory;1.2em;sd-text-primary` **Hierarchical spatio-temporal memory** for contextual reasoning about the robot's environment over time.
+- {material-regular}`alt_route;1.2em;sd-text-primary` **Semantic routing** that directs user commands to the correct capability (navigation, vision, conversation) based on intent.
+- {material-regular}`sync;1.2em;sd-text-primary` **Adaptive reconfiguration** that allows the robot to switch between cloud APIs and local models at runtime based on connectivity and latency requirements.
 
 ### Navigation Layer: Kompass
 
 [Kompass](https://github.com/automatika-robotics/kompass) is the event-driven navigation stack responsible for real-world mobility. It provides:
 
-- **GPGPU-accelerated planning** that moves heavy geometric computation to the GPU, achieving up to 3,106x speedups over CPU-based approaches and freeing the CPU for application logic.
-- **Hardware-agnostic control** that works across wheeled, legged, and tracked platforms.
-- **Event-driven architecture** where planners and controllers react to environmental changes (obstacles, terrain shifts, emergency stops) rather than running in fixed polling loops.
+- {material-regular}`speed;1.2em;sd-text-primary` **GPGPU-accelerated planning** that moves heavy geometric computation to the GPU, achieving up to 3,106x speedups over CPU-based approaches and freeing the CPU for application logic.
+- {material-regular}`settings;1.2em;sd-text-primary` **Hardware-agnostic control** that works across wheeled, legged, and tracked platforms.
+- {material-regular}`bolt;1.2em;sd-text-primary` **Event-driven architecture** where planners and controllers react to environmental changes (obstacles, terrain shifts, emergency stops) rather than running in fixed polling loops.
 
 ### Architecture Layer: Sugarcoat
 
 [Sugarcoat](https://github.com/automatika-robotics/sugarcoat) is the meta-framework that provides the foundational system design primitives on which both EmbodiedAgents and Kompass are built. It provides:
 
-- **Lifecycle-managed Components** that replace standard ROS2 nodes with self-healing, health-aware execution units.
-- **An Event-Driven system** that enables dynamic behavior switching based on real-time environmental context.
-- **A Launcher and Monitor** that orchestrate multi-process or multi-threaded deployments with automatic lifecycle management.
-- **A beautifully imperative Python API** for specifying system configurations as "Recipes" rather than XML launch files.
+- {material-regular}`autorenew;1.2em;sd-text-primary` **Lifecycle-managed Components** that replace standard ROS2 nodes with self-healing, health-aware execution units.
+- {material-regular}`flash_on;1.2em;sd-text-primary` **An Event-Driven system** that enables dynamic behavior switching based on real-time environmental context.
+- {material-regular}`rocket_launch;1.2em;sd-text-primary` **A Launcher and Monitor** that orchestrate multi-process or multi-threaded deployments with automatic lifecycle management.
+- {material-regular}`code;1.2em;sd-text-primary` **A beautifully imperative Python API** for specifying system configurations as "Recipes" rather than XML launch files.
 
 ## How the Layers Work Together
 

@@ -30,11 +30,11 @@ Please ensure you have [ROS 2 installed](https://docs.ros.org/) before proceedin
 
 EMOS is agnostic to model serving platforms. You need at least one of the following available on your network:
 
-- **[Ollama](https://ollama.com)** -- Recommended for local inference.
-- **[RoboML](https://github.com/automatika-robotics/robo-ml)** -- Automatika's own model serving layer.
-- **OpenAI API-compatible servers** -- e.g. [llama.cpp](https://github.com/ggml-org/llama.cpp), [vLLM](https://github.com/vllm-project/vllm), [SGLang](https://github.com/sgl-project/sglang).
-- **[LeRobot](https://github.com/huggingface/lerobot)** -- For Vision-Language-Action (VLA) models.
-- **Cloud endpoints** -- HuggingFace Inference Endpoints, OpenAI, etc.
+- {material-regular}`download;1.2em;sd-text-primary` **[Ollama](https://ollama.com)** -- Recommended for local inference.
+- {material-regular}`smart_toy;1.2em;sd-text-primary` **[RoboML](https://github.com/automatika-robotics/robo-ml)** -- Automatika's own model serving layer.
+- {material-regular}`api;1.2em;sd-text-primary` **OpenAI API-compatible servers** -- e.g. [llama.cpp](https://github.com/ggml-org/llama.cpp), [vLLM](https://github.com/vllm-project/vllm), [SGLang](https://github.com/sgl-project/sglang).
+- {material-regular}`precision_manufacturing;1.2em;sd-text-primary` **[LeRobot](https://github.com/huggingface/lerobot)** -- For Vision-Language-Action (VLA) models.
+- {material-regular}`cloud;1.2em;sd-text-primary` **Cloud endpoints** -- HuggingFace Inference Endpoints, OpenAI, etc.
 
 ```{tip}
 For larger models, run the serving platform on a GPU-equipped machine on your local network rather than directly on the robot.

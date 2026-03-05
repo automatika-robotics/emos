@@ -127,6 +127,7 @@ html_theme_options = {
 LLMS_TXT_SELECTION = [
     # Overview & Setup
     "overview.md",
+    "why-emos.md",
     "getting-started/installation.md",
     "getting-started/quickstart.md",
     "getting-started/cli.md",

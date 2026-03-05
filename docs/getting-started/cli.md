@@ -68,9 +68,9 @@ The manifest tells EMOS what hardware your recipe needs:
 }
 ```
 
-- **sensors**: List of sensor drivers to launch (e.g. `"camera"`, `"lidar"`). EMOS looks for a matching `bringup_<sensor>.py` launch file.
-- **autonomous_mode**: Set to `true` if the recipe commands the robot to move.
-- **web_client**: Set to `true` to start the auto-generated web UI.
+- {material-regular}`sensors;1.2em;sd-text-primary` **sensors**: List of sensor drivers to launch (e.g. `"camera"`, `"lidar"`). EMOS looks for a matching `bringup_<sensor>.py` launch file.
+- {material-regular}`gamepad;1.2em;sd-text-primary` **autonomous_mode**: Set to `true` if the recipe commands the robot to move.
+- {material-regular}`web;1.2em;sd-text-primary` **web_client**: Set to `true` to start the auto-generated web UI.
 
 ### recipe.py
 

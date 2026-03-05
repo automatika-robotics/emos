@@ -156,9 +156,9 @@ The **Monitor** is a specialized, non-lifecycle ROS2 node that acts as the centr
 
 **Responsibilities:**
 
-1. **Custom Actions Execution:** Handles executing custom Actions defined in the recipe.
-2. **Health Tracking:** Subscribes to the `/status` topic of every component.
-3. **Orchestration:** Holds clients for every component's Lifecycle and Parameter services, allowing it to restart, reconfigure, or stop nodes on demand.
+1. {material-regular}`play_arrow;1.2em;sd-text-primary` **Custom Actions Execution:** Handles executing custom Actions defined in the recipe.
+2. {material-regular}`monitor_heart;1.2em;sd-text-primary` **Health Tracking:** Subscribes to the `/status` topic of every component.
+3. {material-regular}`hub;1.2em;sd-text-primary` **Orchestration:** Holds clients for every component's Lifecycle and Parameter services, allowing it to restart, reconfigure, or stop nodes on demand.
 
 **Architecture:**
 

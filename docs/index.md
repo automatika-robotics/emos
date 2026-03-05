@@ -12,6 +12,7 @@ sd_hide_title: true
 :caption: Overview
 
 overview
+why-emos
 ```
 
 ```{toctree}
@@ -85,6 +86,8 @@ concepts/topics
 concepts/events-and-actions
 concepts/status-and-fallbacks
 concepts/launcher
+concepts/robot-plugins
+concepts/web-ui
 ```
 
 ```{toctree}
@@ -119,7 +122,6 @@ advanced/extending
 advanced/types
 advanced/algorithms
 advanced/benchmarks
-advanced/web-ui
 ```
 
 ```{toctree}

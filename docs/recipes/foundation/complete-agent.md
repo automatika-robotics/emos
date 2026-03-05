@@ -276,12 +276,12 @@ Note how we use the same model for _general_q_and_a_ and _go_to_x_ components. S
 
 In this single Recipe, we have assembled a fully capable embodied agent with the following capabilities:
 
-- **A conversational interface** using speech-to-text and text-to-speech models that uses the robot's microphone and playback speaker. (See: [Conversational Agent](conversational-agent.md))
-- **Contextual visual question answering** based on the robot's camera, using a multimodal LLM enriched with object detection output. (See: [Prompt Engineering](prompt-engineering.md))
-- **General knowledge Q&A** using a text-only LLM for non-visual queries.
-- **A spatio-temporal semantic map** that acts as the robot's long-term memory, continuously updated with object detections and room-type introspection. (See: [Semantic Map](semantic-map.md))
-- **RAG-powered Go-to-X navigation** that retrieves coordinates from the semantic map and publishes goal points to the navigation stack. (See: [GoTo Navigation](goto-navigation.md))
-- **Intent-based semantic routing** through a single input interface that directs queries to the correct component based on content. (See: [Semantic Routing](semantic-routing.md))
+- {material-regular}`record_voice_over;1.2em;sd-text-primary` **A conversational interface** using speech-to-text and text-to-speech models that uses the robot's microphone and playback speaker. (See: [Conversational Agent](conversational-agent.md))
+- {material-regular}`visibility;1.2em;sd-text-primary` **Contextual visual question answering** based on the robot's camera, using a multimodal LLM enriched with object detection output. (See: [Prompt Engineering](prompt-engineering.md))
+- {material-regular}`chat;1.2em;sd-text-primary` **General knowledge Q&A** using a text-only LLM for non-visual queries.
+- {material-regular}`map;1.2em;sd-text-primary` **A spatio-temporal semantic map** that acts as the robot's long-term memory, continuously updated with object detections and room-type introspection. (See: [Semantic Map](semantic-map.md))
+- {material-regular}`route;1.2em;sd-text-primary` **RAG-powered Go-to-X navigation** that retrieves coordinates from the semantic map and publishes goal points to the navigation stack. (See: [GoTo Navigation](goto-navigation.md))
+- {material-regular}`alt_route;1.2em;sd-text-primary` **Intent-based semantic routing** through a single input interface that directs queries to the correct component based on content. (See: [Semantic Routing](semantic-routing.md))
 
 This is the EMOS developer experience: a sophisticated, multi-capability embodied agent defined entirely in a single Python script. Every component -- perception, reasoning, memory, navigation, and speech -- is wired together through Topics and launched with one call to `bringup()`. The same Recipe runs on any robot that EMOS supports, from wheeled AMRs to quadrupeds, without modification.
 

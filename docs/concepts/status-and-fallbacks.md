@@ -11,9 +11,9 @@ EMOS components are **Self-Aware** and **Self-Healing** by design. The Health St
 The **Health Status** is the heartbeat of an EMOS component. Unlike standard ROS2 nodes, EMOS components differentiate between a math error (Algorithm Failure), a hardware crash (Component Failure), or a missing input (System Failure).
 
 These reports are broadcast back to the system to trigger:
-* **Alerts:** Notify the operator of specific issues.
-* **Reflexes:** Trigger [Events](events-and-actions.md) to handle the situation.
-* **Self-Healing:** Execute automatic [Fallbacks](#fallback-strategies) to recover the node.
+* {material-regular}`notifications;1.2em;sd-text-warning` **Alerts:** Notify the operator of specific issues.
+* {material-regular}`flash_on;1.2em;sd-text-primary` **Reflexes:** Trigger [Events](events-and-actions.md) to handle the situation.
+* {material-regular}`healing;1.2em;sd-text-success` **Self-Healing:** Execute automatic [Fallbacks](#fallback-strategies) to recover the node.
 
 
 ### Status Hierarchy
@@ -132,9 +132,9 @@ def _execution_step(self):
 Fallbacks are the **Self-Healing Mechanism** of an EMOS component. They define the specific set of [Actions](events-and-actions.md#actions) to execute automatically when a failure is detected in the component's Health Status.
 
 Instead of crashing or freezing when an error occurs, a Component can be configured to attempt intelligent recovery strategies:
-* *Algorithm stuck?* $\rightarrow$ **Switch** to a simpler backup.
-* *Driver disconnected?* $\rightarrow$ **Re-initialize** the hardware.
-* *Sensor timeout?* $\rightarrow$ **Restart** the node.
+* {material-regular}`swap_horiz;1.2em;sd-text-warning` *Algorithm stuck?* $\rightarrow$ **Switch** to a simpler backup.
+* {material-regular}`restart_alt;1.2em;sd-text-danger` *Driver disconnected?* $\rightarrow$ **Re-initialize** the hardware.
+* {material-regular}`autorenew;1.2em;sd-text-primary` *Sensor timeout?* $\rightarrow$ **Restart** the node.
 
 ```{figure} /_static/images/diagrams/fallbacks_dark.png
 :class: dark-only

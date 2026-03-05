@@ -8,39 +8,80 @@ This page covers the mapping components in EMOS: the **Local Mapper** for real-t
 
 While the global map provides a static long-term view, the Local Mapper builds a dynamic, short-term map of the robot's immediate surroundings based on real-time sensor data. It captures moving obstacles (people, other robots) and temporary changes, serving as the primary input for the [Controller](control.md) to enable fast reactive navigation.
 
-At its core, the Local Mapper uses the Bresenham line drawing algorithm in C++ to efficiently update an occupancy grid from incoming LaserScan data. The implementation supports both CPU and GPU execution:
+At its core, the Local Mapper uses the Bresenham line drawing algorithm in C++ to efficiently update an occupancy grid from incoming LaserScan data. This approach ensures fast and accurate raycasting to determine free and occupied cells in the local grid.
 
-- **SYCL GPU Acceleration** — Vendor-agnostic GPU acceleration compatible with Nvidia, AMD, Intel, and any other GPGPU-capable devices.
-- **Multi-Threaded CPU** — Falls back to a highly optimized multi-threaded CPU implementation if no GPU is available.
+To maximize performance and adaptability, the implementation **supports both CPU and GPU execution**:
 
-### Interface
+- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`memory;1.5em;sd-text-primary` SYCL GPU Acceleration</span> — Vendor-agnostic GPU acceleration compatible with Nvidia, AMD, Intel, and any other GPGPU-capable devices.
 
-**Inputs:**
+- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`developer_board;1.5em;sd-text-primary` Multi-Threaded CPU</span> — Falls back to a highly optimized multi-threaded CPU implementation if no GPU is available.
 
-| Key Name | Allowed Types | Default |
-| :--- | :--- | :--- |
-| **sensor_data** | `LaserScan`, `Float64`, `PointCloud2` | `/scan` |
-| **location** | `Odometry`, `PoseStamped`, `Pose` | `/odom` |
 
-**Outputs:**
+### Available Run Types
 
-| Key Name | Allowed Types | Default |
-| :--- | :--- | :--- |
-| **local_map** | `OccupancyGrid` | `/local_map/occupancy_layer` |
+```{list-table}
+:widths: 10 80
+
+* - **Timed**
+  - Produces a local map periodically if all inputs are available.
+```
+
+### Inputs
+
+```{list-table}
+:widths: 10 40 10 40
+:header-rows: 1
+
+* - Key Name
+  - Allowed Types
+  - Number
+  - Default
+
+* - sensor_data
+  - [`sensor_msgs.msg.LaserScan`](https://docs.ros.org/en/noetic/api/sensor_msgs/html/msg/LaserScan.html)
+  - 1
+  - `Topic(name="/scan", msg_type="LaserScan")`
+
+* - location
+  - [`nav_msgs.msg.Odometry`](https://docs.ros.org/en/noetic/api/nav_msgs/html/msg/Odometry.html), [`geometry_msgs.msg.PoseStamped`](http://docs.ros.org/en/jade/api/geometry_msgs/html/msg/PoseStamped.html), [`geometry_msgs.msg.Pose`](http://docs.ros.org/en/jade/api/geometry_msgs/html/msg/Pose.html)
+  - 1
+  - `Topic(name="/odom", msg_type="Odometry")`
+```
+
+### Outputs
+
+```{list-table}
+:widths: 10 40 10 40
+:header-rows: 1
+
+* - Key Name
+  - Allowed Types
+  - Number
+  - Default
+
+* - local_map
+  - `nav_msgs.msg.OccupancyGrid`
+  - 1
+  - `Topic(name="/local_map/occupancy_layer", msg_type="OccupancyGrid")`
+```
+
+```{note}
+Current implementation supports LaserScan sensor data to create an Occupancy Grid local map. PointCloud and semantic information will be supported in an upcoming release.
+```
 
 ### Usage Example
 
 ```python
-from kompass_core.mapping import LocalMapperConfig, MapperConfig
-from kompass.components import LocalMapper
+from kompass_core.mapping import LocalMapperConfig
+from kompass.components import LocalMapper, MapperConfig
 
-# Define Map Dimensions: 5m x 5m rolling window with 20cm resolution
+# Select map parameters: 5m x 5m rolling window with 20cm resolution
 map_params = MapperConfig(width=5.0, height=5.0, resolution=0.2)
 
-# Configure Component
+# Setup custom component configuration
 my_config = LocalMapperConfig(loop_rate=10.0, map_params=map_params)
 
-# Instantiate
+# Init a mapper
 my_mapper = LocalMapper(component_name="mapper", config=my_config)
 ```
 
@@ -54,24 +95,45 @@ Unlike standard ROS2 map servers, the EMOS Map Server supports **native 3D Point
 
 ### Key Features
 
-- **Multi-Format Support** — Reads standard 2D map files (`.yaml` + image) or 3D point cloud files (`.pcd`).
-- **Map Persistence** — Supports saving current 2D or 3D map data to disk via services.
-- **Auto Frame Handling** — Configurable reference frames ensuring the map aligns with your robot's TF tree.
-- **Frequency Control** — Control how often map data is read and converted.
+- {material-regular}`swap_horiz;1.2em;sd-text-primary` **Map Data Conversion** — Reads map files in either 2D (YAML) or 3D (PCD) format and converts the data into usable global map formats (OccupancyGrid).
 
-### Interface
+- {material-regular}`public;1.2em;sd-text-primary` **Global Map Serving** — Once map data is loaded and processed, the MapServer publishes the global map as an `OccupancyGrid` message, continuously available for path planning, localization, and obstacle detection.
 
-**Outputs:**
+- {material-regular}`view_in_ar;1.2em;sd-text-primary` **Point Cloud to Grid Conversion** — If the map data is provided as a PCD file, the MapServer generates an occupancy grid from the point cloud using the provided grid resolution and ground limits.
 
-| Key Name | Allowed Types | Default |
-| :--- | :--- | :--- |
-| **map** | `OccupancyGrid` | `/map` |
-| **sensor_data** | `PointCloud2` (optional) | `/row_point_cloud` |
+- {material-regular}`frame_inspect;1.2em;sd-text-primary` **Custom Frame Handling** — Configurable reference frames ensuring the map aligns with your robot's TF tree.
+
+- {material-regular}`save;1.2em;sd-text-primary` **Map Saving** — Supports saving both 2D and 3D maps to files via `Save2dMapToFile` and `Save3dMapToFile` services.
+
+- {material-regular}`update;1.2em;sd-text-primary` **Map Update Frequency Control** — Control how often map data is read and converted via the `map_file_read_rate` parameter.
+
+### Outputs
+
+```{list-table}
+:widths: 10 40 10 40
+:header-rows: 1
+
+* - Key Name
+  - Allowed Types
+  - Number
+  - Default
+
+* - global_map
+  - [`nav_msgs.msg.OccupancyGrid`](http://docs.ros.org/en/noetic/api/nav_msgs/html/msg/OccupancyGrid.html)
+  - 1
+  - `Topic(name="/map", msg_type="OccupancyGrid")`
+
+* - spatial_sensor
+  - [`sensor_msgs.msg.PointCloud2`](http://docs.ros.org/en/noetic/api/sensor_msgs/html/msg/PointCloud2.html)
+  - 1, optional
+  - `Topic(name="/row_point_cloud", msg_type="PointCloud2")`
+```
 
 ### Usage Example
 
 ```python
 from kompass.components import MapServer, MapServerConfig
+from kompass.ros import Topic
 
 my_config = MapServerConfig(
     map_file_path="/path/to/environment.pcd",

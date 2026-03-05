@@ -1,6 +1,9 @@
 # Navigation Algorithms
 
-Kompass, the EMOS navigation engine, provides a suite of battle-tested control algorithms. These range from classic geometric path-followers to modern, GPU-accelerated planners that handle dynamic obstacle avoidance or vision-based target following in real time.
+Kompass, the EMOS navigation engine, provides a comprehensive suite of algorithms for both **global path planning** and **local motion control**.
+
+- **[Planning Algorithms](#planning-algorithms-ompl)** -- Over 25 sampling-based planners from OMPL (RRT*, PRM, KPIECE, etc.) for global path planning with collision checking.
+- **[Control Algorithms](#control-algorithms)** -- Battle-tested controllers ranging from classic geometric path-followers to GPU-accelerated local planners and visual servoing.
 
 Every algorithm is natively compatible with the three primary motion models. The internal logic automatically adapts to the specific constraints of your platform:
 
@@ -10,7 +13,10 @@ Every algorithm is natively compatible with the three primary motion models. The
 
 Each algorithm is fully parameterized. Developers can tune behaviors such as lookahead gains, safety margins, and obstacle sensitivity directly through the Python API or YAML configuration.
 
-## Available Algorithms
+---
+
+(control-algorithms)=
+## Control Algorithms
 
 | Algorithm | Type | Key Feature | Sensors Required |
 | :--- | :--- | :--- | :--- |
@@ -930,3 +936,324 @@ You can tune the behavior of the robot by adjusting the weights ($w_i$) in your 
 :::{tip}
 Setting a weight to `0.0` completely disables that specific cost calculation kernel, saving computational resources.
 :::
+
+---
+
+(planning-algorithms-ompl)=
+## Planning Algorithms (OMPL)
+
+EMOS integrates the **[Open Motion Planning Library (OMPL)](https://ompl.kavrakilab.org/)** for global path planning. OMPL is a generic C++ library for state-of-the-art sampling-based motion planning algorithms.
+
+EMOS provides Python bindings (via Pybind11) for OMPL through its navigation core package. The bindings enable setting and solving a planning problem using:
+
+- **SE2StateSpace** -- Convenient for 2D motion planning, providing an SE2 state consisting of position and rotation in the plane: `SE(2): (x, y, yaw)`
+- **Geometric planners** -- All planners listed below
+- **Built-in StateValidityChecker** -- Implements collision checking using [FCL](https://github.com/flexible-collision-library/fcl) to ensure collision-free paths
+
+### Configuring OMPL
+
+```yaml
+ompl:
+    log_level: 'WARN'
+    planning_timeout: 10.0          # (secs) Fail if solving takes longer
+    simplification_timeout: 0.01    # (secs) Abort path simplification if too slow
+    goal_tolerance: 0.01            # (meters) Distance to consider goal reached
+    optimization_objective: 'PathLengthOptimizationObjective'
+    planner_id: 'ompl.geometric.KPIECE1'
+```
+
+### Available OMPL Planners
+
+The following 29 geometric planners are supported:
+
+- [ABITstar](#abitstar)
+- [AITstar](#aitstar)
+- [BFMT](#bfmt)
+- [BITstar](#bitstar)
+- [BKPIECE1](#bkpiece1)
+- [BiEST](#biest)
+- [EST](#est)
+- [FMT](#fmt)
+- [InformedRRTstar](#informedrrtstar)
+- [KPIECE1](#kpiece1)
+- [LBKPIECE1](#lbkpiece1)
+- [LBTRRT](#lbtrrt)
+- [LazyLBTRRT](#lazylbtrrt)
+- [LazyPRM](#lazyprm)
+- [LazyPRMstar](#lazyprmstar)
+- [LazyRRT](#lazyrrt)
+- [PDST](#pdst)
+- [PRM](#prm)
+- [PRMstar](#prmstar)
+- [ProjEST](#projest)
+- [RRT](#rrt)
+- [RRTConnect](#rrtconnect)
+- [RRTXstatic](#rrtxstatic)
+- [RRTsharp](#rrtsharp)
+- [RRTstar](#rrtstar)
+- [SBL](#sbl)
+- [SST](#sst)
+- [STRIDE](#stride)
+- [TRRT](#trrt)
+
+### Planner Benchmark Results
+
+A planning problem was simulated using the Turtlebot3 Gazebo Waffle map. Each planner was tested over 20 repetitions with a 2-second solution search timeout. The table shows average results.
+
+| Method | Solved | Solution Time (s) | Solution Length (m) | Simplification Time (s) |
+|:---|:---|:---|:---|:---|
+| ABITstar | True | 1.071 | 2.948 | 0.0075 |
+| BFMT | True | 0.113 | 3.487 | 0.0066 |
+| BITstar | True | 1.073 | 2.962 | 0.0061 |
+| BKPIECE1 | True | 0.070 | 4.469 | 0.0178 |
+| BiEST | True | 0.062 | 4.418 | 0.0108 |
+| EST | True | 0.064 | 4.059 | 0.0107 |
+| FMT | True | 0.133 | 3.628 | 0.0063 |
+| InformedRRTstar | True | 1.068 | 2.962 | 0.0046 |
+| KPIECE1 | True | 0.068 | 5.439 | 0.0148 |
+| LBKPIECE1 | True | 0.075 | 5.174 | 0.0200 |
+| LBTRRT | True | 1.070 | 3.221 | 0.0050 |
+| LazyLBTRRT | True | 1.067 | 3.305 | 0.0053 |
+| LazyPRM | False | 1.081 | -- | -- |
+| LazyPRMstar | True | 1.070 | 3.030 | 0.0063 |
+| LazyRRT | True | 0.098 | 4.520 | 0.0160 |
+| PDST | True | 0.068 | 3.836 | 0.0090 |
+| PRM | True | 1.067 | 3.306 | 0.0068 |
+| PRMstar | True | 1.074 | 3.720 | 0.0085 |
+| ProjEST | True | 0.068 | 4.190 | 0.0082 |
+| RRT | True | 0.091 | 4.860 | 0.0190 |
+| RRTConnect | True | 0.075 | 4.780 | 0.0140 |
+| RRTXstatic | True | 1.071 | 3.030 | 0.0041 |
+| RRTsharp | True | 1.068 | 3.010 | 0.0052 |
+| RRTstar | True | 1.067 | 2.960 | 0.0042 |
+| SBL | True | 0.080 | 4.039 | 0.0121 |
+| SST | True | 1.068 | 2.630 | 0.0012 |
+| STRIDE | True | 0.068 | 4.120 | 0.0098 |
+| TRRT | True | 0.080 | 4.110 | 0.0109 |
+
+### Planner Default Parameters
+
+#### ABITstar
+
+- delay_rewiring_to_first_solution: False
+- drop_unconnected_samples_on_prune: False
+- find_approximate_solutions: False
+- inflation_scaling_parameter: 10.0
+- initial_inflation_factor: 1000000.0
+- prune_threshold_as_fractional_cost_change: 0.05
+- rewire_factor: 1.1
+- samples_per_batch: 100
+- stop_on_each_solution_improvement: False
+- truncation_scaling_parameter: 5.0
+- use_graph_pruning: True
+- use_just_in_time_sampling: False
+- use_k_nearest: True
+- use_strict_queue_ordering: True
+
+#### AITstar
+
+- find_approximate_solutions: True
+- rewire_factor: 1.0
+- samples_per_batch: 100
+- use_graph_pruning: True
+- use_k_nearest: True
+
+#### BFMT
+
+- balanced: False
+- cache_cc: True
+- extended_fmt: True
+- heuristics: True
+- nearest_k: True
+- num_samples: 1000
+- optimality: True
+- radius_multiplier: 1.0
+
+#### BITstar
+
+- delay_rewiring_to_first_solution: False
+- drop_unconnected_samples_on_prune: False
+- find_approximate_solutions: False
+- prune_threshold_as_fractional_cost_change: 0.05
+- rewire_factor: 1.1
+- samples_per_batch: 100
+- stop_on_each_solution_improvement: False
+- use_graph_pruning: True
+- use_just_in_time_sampling: False
+- use_k_nearest: True
+- use_strict_queue_ordering: True
+
+#### BKPIECE1
+
+- border_fraction: 0.9
+- range: 0.0
+
+#### BiEST
+
+- range: 0.0
+
+#### EST
+
+- goal_bias: 0.5
+- range: 0.0
+
+#### FMT
+
+- cache_cc: True
+- extended_fmt: True
+- heuristics: False
+- num_samples: 1000
+- radius_multiplier: 1.1
+- use_k_nearest: True
+
+#### InformedRRTstar
+
+- delay_collision_checking: True
+- goal_bias: 0.05
+- number_sampling_attempts: 100
+- ordered_sampling: False
+- ordering_batch_size: 1
+- prune_threshold: 0.05
+- range: 0.0
+- rewire_factor: 1.1
+- use_k_nearest: True
+
+#### KPIECE1
+
+- border_fraction: 0.9
+- goal_bias: 0.05
+- range: 0.0
+
+#### LBKPIECE1
+
+- border_fraction: 0.9
+- range: 0.0
+
+#### LBTRRT
+
+- epsilon: 0.4
+- goal_bias: 0.05
+- range: 0.0
+
+#### LazyLBTRRT
+
+- epsilon: 0.4
+- goal_bias: 0.05
+- range: 0.0
+
+#### LazyPRM
+
+- max_nearest_neighbors: 8
+- range: 0.0
+
+#### LazyPRMstar
+
+No configurable parameters.
+
+#### LazyRRT
+
+- goal_bias: 0.05
+- range: 0.0
+
+#### PDST
+
+- goal_bias: 0.05
+
+#### PRM
+
+- max_nearest_neighbors: 8
+
+#### PRMstar
+
+No configurable parameters.
+
+#### ProjEST
+
+- goal_bias: 0.05
+- range: 0.0
+
+#### RRT
+
+- goal_bias: 0.05
+- intermediate_states: False
+- range: 0.0
+
+#### RRTConnect
+
+- intermediate_states: False
+- range: 0.0
+
+#### RRTXstatic
+
+- epsilon: 0.0
+- goal_bias: 0.05
+- informed_sampling: False
+- number_sampling_attempts: 100
+- range: 0.0
+- rejection_variant: 0
+- rejection_variant_alpha: 1.0
+- rewire_factor: 1.1
+- sample_rejection: False
+- update_children: True
+- use_k_nearest: True
+
+#### RRTsharp
+
+- goal_bias: 0.05
+- informed_sampling: False
+- number_sampling_attempts: 100
+- range: 0.0
+- rejection_variant: 0
+- rejection_variant_alpha: 1.0
+- rewire_factor: 1.1
+- sample_rejection: False
+- update_children: True
+- use_k_nearest: True
+
+#### RRTstar
+
+- delay_collision_checking: True
+- focus_search: False
+- goal_bias: 0.05
+- informed_sampling: True
+- new_state_rejection: False
+- number_sampling_attempts: 100
+- ordered_sampling: False
+- ordering_batch_size: 1
+- prune_threshold: 0.05
+- pruned_measure: False
+- range: 0.0
+- rewire_factor: 1.1
+- sample_rejection: False
+- tree_pruning: False
+- use_admissible_heuristic: True
+- use_k_nearest: True
+
+#### SBL
+
+- range: 0.0
+
+#### SST
+
+- goal_bias: 0.05
+- pruning_radius: 3.0
+- range: 5.0
+- selection_radius: 5.0
+
+#### STRIDE
+
+- degree: 16
+- estimated_dimension: 3.0
+- goal_bias: 0.05
+- max_degree: 18
+- max_pts_per_leaf: 6
+- min_degree: 12
+- min_valid_path_fraction: 0.2
+- range: 0.0
+- use_projected_distance: False
+
+#### TRRT
+
+- goal_bias: 0.05
+- range: 0.0
+- temp_change_factor: 0.1

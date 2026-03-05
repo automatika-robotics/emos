@@ -69,7 +69,7 @@ planner.inputs(goal_point=Topic(name="/clicked_point", msg_type="PoseStamped"))
 
 ## OMPL Algorithms
 
-EMOS integrates over 25 OMPL geometric planners. See the [Algorithms Reference](../advanced/algorithms.md) for a complete list with benchmarks and per-planner configuration parameters.
+EMOS integrates over 25 OMPL geometric planners. See the [Planning Algorithms (OMPL)](../advanced/algorithms.md#planning-algorithms-ompl) section of the Algorithms Reference for a complete list with benchmarks and per-planner configuration parameters.
 
 ## Collision Checking (FCL)
 

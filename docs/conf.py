@@ -1,7 +1,5 @@
 # Configuration file for the Sphinx documentation builder.
 import os
-import sys
-import shutil
 from datetime import date
 from pathlib import Path
 

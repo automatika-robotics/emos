@@ -1,184 +1,174 @@
-# README.md
-
 <div align="center">
+
 <h1>EMOS</h1>
 <h3>The Embodied Operating System</h3>
 
-<p>
-<strong>The unified orchestration layer for Physical AI.</strong>
-</p>
+<p><strong>The unified orchestration layer for Physical AI.</strong></p>
 
 <p>
-<a href="#the-platform">The Platform</a> •
-<a href="#architecture">Architecture</a> •
-<a href="#features">Features</a> •
-<a href="#developer-experience">Developer Experience</a>
+<a href="https://emos.automatikarobotics.com/">Documentation</a> &middot;
+<a href="https://emos.automatikarobotics.com/getting-started/installation.html">Installation</a> &middot;
+<a href="https://emos.automatikarobotics.com/getting-started/quickstart.html">Quick Start</a> &middot;
+<a href="https://emos.automatikarobotics.com/recipes/overview.html">Recipes</a> &middot;
+<a href="https://discord.gg/B9ZU6qjzND">Discord</a>
 </p>
+
 </div>
 
 ---
 
-<div align="center">
-<picture>
-<source media="(prefers-color-scheme: dark)" srcset="/_static/diagrams/robot_stack_dark.png">
-<source media="(prefers-color-scheme: light)" srcset="/_static/diagrams/robot_stack_light.png">
-<img alt="EMOS in the robot software stack" src="/_static/diagrams/robot_stack_light.png" width="80%">
-</picture>
-</div>
+EMOS is the software layer that transforms quadrupeds, humanoids, and mobile robots into **Physical AI Agents**. It decouples the robot's body from its mind, providing a hardware-agnostic runtime that lets robots see, think, move, and adapt -- orchestrated entirely from pure Python scripts called **Recipes**.
 
-**EMOS** is the software layer that transforms quadrupeds, humanoids, and mobile robots into **Physical AI Agents**.
-
-Just as Android standardized the smartphone hardware market, EMOS provides a bundled, hardware-agnostic runtime that allows robots to **see**, **think**, **move**, and **adapt** in the real world. It transitions robotics from "custom R&D projects" to a world of standardized, deployable assets.
-
-## The Platform
-
-EMOS decouples the robot's "Body" from its "Mind", creating a standard interface for intelligence:
-
-* **The Runtime:** A bundled stack combining **Kompass** (GPGPU-accelerated navigation) with **EmbodiedAgents** (cognitive reasoning). It turns a pile of motors and sensors into an intelligent agent out-of-the-box.
-* **The Ecosystem:** A development framework that allows engineers to write **"Recipes"** (Apps) once using a simple Python API, and deploy them across any robot, from wheeled AMRs to humanoids, without rewriting code.
-
-## What is a Physical AI Agent?
-
-A Physical AI Agent is distinct from a disembodied digital agent (like a coding assistant). It combines intelligence with real-time physical adaptivity. EMOS provides the primitives to:
-
-1. **See & Understand:** Interpret the world with multi-modal ML models.
-2. **Think & Remember:** Use spatio-temporal semantic memory and contextual reasoning.
-3. **Move & Manipulate:** Execute GPU-powered navigation and VLA-based manipulation.
-4. **Adapt in Real Time:** Reconfigure logic at runtime based on environmental events.
-
-## <a id="architecture"></a>Architecture
-
-EMOS is built on open-source, publicly developed core components that work in tandem.
-
-<div align="center">
-<picture>
-<source media="(prefers-color-scheme: dark)" srcset="/_static/diagrams/emos_diagram_dark.png">
-<source media="(prefers-color-scheme: light)" srcset="/_static/diagrams/emos_diagram_light.png">
-<img alt="The Embodied Operating System Architecture" src="/_static/diagrams/emos_diagram_light.png" width="60%">
-</picture>
-</div>
-
-| Component | Layer | Function |
-| --- | --- | --- |
-| **[EmbodiedAgents](https://github.com/automatika-robotics/embodied-agents)** | **The Intelligence Layer** | The orchestration framework for building agentic graphs of ML models, hierarchical spatio-temporal memory, and adaptive reconfiguration. |
-| **[Kompass](https://github.com/automatika-robotics/kompass)** | **The Navigation Layer** | The event-driven navigation stack responsible for GPU-powered planning and control for real-world mobility on any hardware. |
-| **[Sugarcoat](https://github.com/automatika-robotics/sugarcoat)** | **The Architecture Layer** | The meta-framework providing event-driven system design primitives and a beautifully imperative system specification API. |
-
-## <a id="features"></a>Key Capabilities
-
-EMOS unlocks the full potential of robotic hardware by shifting the paradigm from "Scripts" to "Apps".
-
-### 1. From Custom Code to Universal "Recipes"
-
-EMOS replaces brittle, task-specific ROS projects with **Recipes**: reusable, hardware-agnostic application packages.
-
-* **Write Once, Run Anywhere:** A "Security Patrol" recipe written for a wheeled robot runs identically on a quadruped. EMOS handles the kinematics and action commands.
-* **Multi-Tasking:** The same robot can run multiple recipes, switching between them as needed.
-
-### 2. Real-World Event-Driven Autonomy
-
-Robots must adapt to chaos. EMOS enables dynamic behavior switching based on context.
-
-* **Imperative Fallback Logic:** Developers can treat failure as a control flow state. If a navigation controller gets stuck, or a cloud model disconnects, the Recipe can trigger specific recovery functions (like switching to a local LLM) rather than crashing.
-
-### 3. Auto-Generated Interaction UIs
-
-In EMOS, the automation logic *is* the interface.
-
-* **Schema-Driven Dashboards:** EMOS automatically renders a fully functional web-based UI directly from your Recipe definition.
-* **Composable Widgets:** Real-time telemetry, video feeds, and configuration controls are generated as standard web components, ready to be embedded in fleet management portals.
-
-### 4. Hybrid Compute & GPU Acceleration
-
-* **Hybrid AI Inference:** Seamlessly switch between edge NPUs for low-latency perception and Cloud APIs for high-level reasoning.
-* **GPU Navigation:** The industry's only navigation engine that moves heavy geometric planning to the GPU (up to **3,106x speedups**), freeing the CPU for application logic.
-
----
-
-## <a id="developer-experience"></a>Developer Experience
-
-EMOS is designed to commoditize robotics software. Whether you are an **End-User** scripting a quick task, an **Integrator** building complex enterprise workflows, or an **OEM** enabling your hardware, EMOS provides the right abstraction.
-
-### Recipe Examples
-
-Recipes are not just scripts; they are complete agentic workflows. Below are real-world examples of EMOS in action.
-
-#### 1. The General Purpose Assistant
-
-*A robot that intelligently routes verbal commands to the correct capability.*
-
-This recipe uses a **Semantic Router** to analyze user intent. "Go to the kitchen" routes to Kompass (Navigation), while "What tool is this?" routes to a VLM (Vision).
+Write a Recipe once. Deploy it on any robot. No code changes.
 
 ```python
-# Define routing logic based on semantic meaning, not just keywords
-llm_route = Route(samples=["What is the torque for M6?", "Convert inches to mm"])
-mllm_route = Route(samples=["What tool is this?", "Is the safety light on?"])
-goto_route = Route(samples=["Go to the CNC machine", "Move to storage"])
+from agents.clients.ollama import OllamaClient
+from agents.components import VLM
+from agents.models import OllamaModel
+from agents.ros import Topic, Launcher
 
-# The Semantic Router directs traffic based on intent
-router = SemanticRouter(
-    inputs=[query_topic],
-    routes=[llm_route, goto_route, mllm_route], # Routes to Chat, Nav, or Vision
-    default_route=llm_route,
-    config=router_config
+text_in  = Topic(name="text0", msg_type="String")
+image_in = Topic(name="image_raw", msg_type="Image")
+text_out = Topic(name="text1", msg_type="String")
+
+model  = OllamaModel(name="qwen_vl", checkpoint="qwen2.5vl:latest")
+client = OllamaClient(model)
+
+vlm = VLM(
+    inputs=[text_in, image_in],
+    outputs=[text_out],
+    model_client=client,
+    trigger=text_in,
 )
 
+launcher = Launcher()
+launcher.add_pkg(components=[vlm])
+launcher.bringup()
 ```
 
-#### 2. The Resilient "Always-On" Agent
+That's a complete robot agent. It sees through a camera, reasons with a vision-language model, and responds -- all running as a managed ROS2 lifecycle node.
 
-*Ensuring uptime by falling back to local compute when the internet fails.*
+## Architecture
 
-This demonstrates **Runtime Robustness**. We bind an `on_algorithm_fail` event to the intelligence component.
+EMOS is built on three open-source components that work in tandem:
+
+| Component | Layer | What It Does |
+| :--- | :--- | :--- |
+| [**EmbodiedAgents**](https://github.com/automatika-robotics/embodied-agents) | Intelligence | Agentic graphs of ML models with semantic memory, multi-modal perception, and event-driven adaptive reconfiguration. |
+| [**Kompass**](https://github.com/automatika-robotics/kompass) | Navigation | GPU-accelerated planning and control for real-world mobility. Cross-vendor SYCL support -- runs on Nvidia, AMD, Intel, and others. |
+| [**Sugarcoat**](https://github.com/automatika-robotics/sugarcoat) | System Primitives | Lifecycle-managed components, event-driven system design, and a Pythonic launch API that replaces XML configuration. |
+
+The three layers form a vertical stack. Sugarcoat provides the execution primitives. Kompass builds navigation nodes on top of them. EmbodiedAgents builds cognitive nodes on the same foundation. At runtime, the **Launcher** brings everything to life from a single Python script -- the Recipe.
+
+## What Makes EMOS Different
+
+**Hardware-agnostic Recipes.** A security patrol Recipe written for a wheeled AMR runs identically on a quadruped. EMOS handles kinematic translation and action commands beneath the surface.
+
+**Event-driven autonomy.** Robots must adapt to chaos. EMOS enables behavior switching at runtime based on environmental context -- not just internal state. If a cloud API disconnects, the Recipe triggers a fallback to a local model. If the navigation controller gets stuck, an event fires a recovery maneuver. Failure is a control flow state, not a crash.
 
 ```python
-# If the cloud API fails (runtime), instantly switch to the local backup model
-llm_component.on_algorithm_fail(
-    action=switch_to_backup,
-    max_retries=3
-)
+# Cloud API fails? Switch to local backup automatically.
+llm.on_algorithm_fail(action=switch_to_backup, max_retries=3)
 
-```
-
-#### 3. The Self-Recovering Warehouse Robot
-
-*A robot that unjams itself without human intervention.*
-
-Instead of a "Red Light" error, the robot uses an event/action pair to trigger a specific maneuvering routine when the planner gets stuck.
-
-```python
+# Emergency stop? Restart the planner and back away.
 events_actions = {
-    # If the emergency stop triggers, restart the planner and back away
     event_emergency_stop: [
         ComponentActions.restart(component=planner),
         unblock_action,
     ],
-    # If the controller algorithm fails, attempt unblocking maneuver
-    event_controller_fail: unblock_action,
 }
-
 ```
 
-#### 4. The "Off-Grid" Field Mule
+**GPU-accelerated navigation.** Kompass moves heavy geometric planning to the GPU, achieving up to **3,106x speedups** over CPU-based approaches. It is the first navigation framework with cross-vendor GPU support via SYCL.
 
-*Follow-me functionality in unmapped environments.*
+**ML models as first-class citizens.** Object detection outputs can trigger controller switches. VLMs can alter planning strategy. Vision components can drive target following. The intelligence and navigation layers are deeply integrated through a shared component model.
 
-Using the `VisionRGBDFollower`, the robot fuses depth data with visual detection to "lock on" to a human guide, ignoring the need for GPS or SLAM.
+**Auto-generated web UIs.** EMOS renders a fully functional web dashboard directly from your Recipe definition -- real-time telemetry, video feeds, and configuration controls with zero frontend code.
+
+<p align="center">
+<img alt="Auto-generated Web UI" src="docs/_static/agents_ui.gif" width="60%">
+</p>
+
+## Installation
+
+**Via the EMOS CLI** (recommended for deployment):
+
+```bash
+curl -sSL https://raw.githubusercontent.com/automatika-robotics/emos-cli/main/install.sh | sudo bash
+emos install YOUR-LICENSE-KEY
+```
+
+**From source** (for development):
+
+```bash
+# Prerequisites: ROS 2 (Iron or later), Python 3.10+
+mkdir -p emos_ws/src && cd emos_ws/src
+
+git clone https://github.com/automatika-robotics/sugarcoat
+git clone https://github.com/automatika-robotics/embodied-agents
+git clone https://github.com/automatika-robotics/kompass
+
+pip install numpy opencv-python-headless 'attrs>=23.2.0' jinja2 httpx \
+    setproctitle msgpack msgpack-numpy platformdirs tqdm pyyaml toml websockets
+
+# Install Kompass core (GPU recommended)
+curl -sSL https://raw.githubusercontent.com/automatika-robotics/kompass-core/refs/heads/main/build_dependencies/install_gpu.sh | bash
+# Or CPU-only: pip install kompass-core
+
+cd emos_ws
+rosdep update && rosdep install -y --from-paths src --ignore-src
+colcon build && source install/setup.bash
+```
+
+You also need a model serving platform. EMOS supports [Ollama](https://ollama.com), [RoboML](https://github.com/automatika-robotics/robo-ml), [vLLM](https://github.com/vllm-project/vllm), [LeRobot](https://github.com/huggingface/lerobot), and any OpenAI-compatible endpoint.
+
+## Recipes
+
+Recipes are not scripts. They are complete agentic workflows that combine intelligence, navigation, and system orchestration into a single, readable Python file.
+
+**The General-Purpose Assistant** -- routes verbal commands to the right capability using semantic intent:
 
 ```python
-# Setup controller to use Depth + Vision Fusion
+router = SemanticRouter(
+    inputs=[query_topic],
+    routes=[llm_route, goto_route, vision_route],
+    default_route=llm_route,
+    config=router_config
+)
+```
+
+**The Vision-Guided Follower** -- fuses depth and RGB to track a human guide without GPS or SLAM:
+
+```python
 controller.inputs(
     vision_detections=detections_topic,
     depth_camera_info=depth_cam_info_topic
 )
 controller.algorithm = "VisionRGBDFollower"
-
 ```
 
----
+The [documentation](https://emos.automatikarobotics.com/recipes/overview.html) includes 16 recipes covering conversational agents, prompt engineering, semantic mapping, tool calling, VLA manipulation, point navigation, vision tracking, multiprocessing, runtime fallbacks, and event-driven cognition.
 
-<div align="center">
-<p>
-Copyright © 2026 <a href="[https://automatikarobotics.com/](https://automatikarobotics.com/)">Automatika Robotics</a>.
-</p>
-</div>
+## AI-Assisted Recipe Development
+
+EMOS publishes an [`llms.txt`](https://emos.automatikarobotics.com/llms.txt) -- a structured context file designed for AI coding agents. Feed it to your preferred LLM and let it write Recipes for you.
+
+## Running Recipes
+
+With the EMOS CLI:
+
+```bash
+emos recipes              # Browse available recipes
+emos pull vision_follower  # Download one
+emos run vision_follower   # Launch it
+```
+
+Custom recipes go in `~/emos/recipes/<name>/` with a `recipe.py` and `manifest.json`. See the [CLI guide](https://emos.automatikarobotics.com/getting-started/cli.html) for details.
+
+## Contributing
+
+EMOS has been developed in collaboration between [Automatika Robotics](https://automatikarobotics.com/) and [Inria](https://inria.fr/). Contributions from the community are welcome.
+
+## License
+
+Copyright 2024-2026 [Automatika Robotics](https://automatikarobotics.com/). See the [LICENSE](LICENSE) file for details.

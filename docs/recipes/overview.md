@@ -16,26 +16,15 @@ The core promise of EMOS Recipes is hardware independence. A "Security Patrol" r
 
 ## Tutorial Structure
 
-The tutorials in this section follow a graduated structure, building from simple single-component examples to a full agentic system.
+The tutorials in this section follow a graduated structure, building from simple single-component examples to a full agentic system. They are organized into four subsections:
 
-### Foundation Recipes (Intelligence)
+- **[Foundation Recipes](foundation/index.md)** -- Build intelligent agents from the ground up using [EmbodiedAgents](https://github.com/automatika-robotics/embodied-agents): conversational agents, prompt engineering, semantic maps, navigation via RAG, tool calling, semantic routing, and a complete end-to-end agent.
 
-These recipes focus on the EMOS intelligence layer -- wiring up ML models, prompts, and memory.
+- **[Multimodal Planning & Manipulation](planning-and-manipulation/index.md)** -- Advanced AI capabilities: VLM-based planning and VLA-based end-to-end robotic manipulation, including event-driven closed-loop control.
 
-| Recipe | Description |
-| --- | --- |
-| [Conversational Agent](conversational-agent.md) | Audio-in, audio-out conversation using speech-to-text, a VLM, and text-to-speech. |
-| [Prompt Engineering](prompt-engineering.md) | Enrich VLM prompts with object detection output. |
-| [Semantic Map](semantic-map.md) | Build a spatio-temporal semantic memory using vector databases. |
-| [GoTo Navigation](goto-navigation.md) | RAG-powered "Go to X" using the semantic map. |
-| [Tool Calling](tool-calling.md) | Structured output via LLM tool calling for navigation goals. |
-| [Semantic Routing](semantic-routing.md) | Route user intent to the correct component with a Semantic Router. |
+- **[Navigation](navigation/index.md)** -- Set up and use [Kompass](https://github.com/automatika-robotics/kompass), the EMOS navigation engine: simulation quick starts, step-by-step point navigation, and vision-based target tracking.
 
-### Capstone
-
-| Recipe | Description |
-| --- | --- |
-| [Complete Agent](complete-agent.md) | Combine every foundation recipe into a single, fully capable embodied agent. |
+- **[Events, Fallbacks & Production Readiness](events-and-resilience/index.md)** -- Make your agents robust and adaptive using multiprocessing, runtime fallbacks, and event-driven cognition.
 
 ## Recipe Examples
 
@@ -45,7 +34,7 @@ Below are four real-world examples that illustrate what EMOS Recipes look like i
 
 *A robot that intelligently routes verbal commands to the correct capability.*
 
-This recipe uses a **Semantic Router** to analyze user intent. "Go to the kitchen" routes to the navigation layer, while "What tool is this?" routes to a VLM for visual question answering.
+This recipe uses a **Semantic Router** to analyze user intent. "Go to the kitchen" routes to Kompass for navigation, while "What tool is this?" routes to a VLM for visual question answering.
 
 ```python
 # Define routing logic based on semantic meaning, not just keywords

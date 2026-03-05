@@ -1,0 +1,23 @@
+# Sphinx build output
+docs/_build/
+
+# Auto-generated API docs
+docs/apidocs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

@@ -28,7 +28,7 @@ The Controller typically runs at a high frequency (10Hz-50Hz) to ensure smooth m
 | **vision_detections** | `Trackings`, `Detections2D` | None (provide to enable vision tracking) |
 
 :::{tip}
-Provide a `vision_detections` input topic to activate the vision-based target following action server. See the [Vision Tracking tutorial](../recipes/vision-tracking.md) for details.
+Provide a `vision_detections` input topic to activate the vision-based target following action server. See the [Vision Tracking tutorial](../recipes/navigation/vision-tracking.md) for details.
 :::
 
 ### Outputs

@@ -35,7 +35,7 @@ launcher.fallback_rate = 1 / 10  # 0.1 Hz or 10 seconds
 ```
 
 ```{seealso}
-EMOS provides advanced fallback behaviors at the component level. To learn more about these, checkout the [Fallback](../concepts/status-and-fallbacks.md) documentation.
+EMOS provides advanced fallback behaviors at the component level. To learn more about these, checkout the [Fallback](../../concepts/status-and-fallbacks.md) documentation.
 ```
 
 With these two simple modifications, our complex graph of an embodied agent can be made significantly more robust to failures and has a graceful fallback behavior in case a failure does occur. The complete agent code is as follows:

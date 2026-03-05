@@ -22,11 +22,11 @@ ros2 run usb_cam usb_cam_node_exe
 
 #### Start vision detection/tracking using an ML model
 
-To implement and run this example we will need a detection model processing the RGB camera images to provide the Detection or Tracking information. The most convenient way to obtain this is to use the EMOS intelligence layer and [RoboML](https://github.com/automatika-robotics/roboml) to deploy and serve the model locally. EMOS provides a Vision Component, which will allow us to easily deploy a ROS node in our system that interacts with vision models.
+To implement and run this example we will need a detection model processing the RGB camera images to provide the Detection or Tracking information. The most convenient way to obtain this is to use [EmbodiedAgents](https://github.com/automatika-robotics/embodied-agents) and [RoboML](https://github.com/automatika-robotics/roboml) to deploy and serve the model locally. EmbodiedAgents provides a Vision Component, which will allow us to easily deploy a ROS node in our system that interacts with vision models.
 
 Therefore, before starting with this tutorial you need to install both packages:
 
-- Install **EMOS**: check the instructions in the [installation guide](../getting-started/installation.md)
+- Install **EMOS**: check the instructions in the [installation guide](../../getting-started/installation.md)
 - Install RoboML: `pip install roboml`
 
 After installing both packages, you can start `roboml` to serve the model later either on the robot (or your development machine), or on another machine in the local network or any server in the cloud. To start a RoboML RESP server, simply run:
@@ -128,7 +128,7 @@ my_robot = RobotConfig(
 ```
 
 ```{seealso}
-See more details about the robot configuration in the [Point Navigation](point-navigation.md#step-1-robot-configuration) recipe and in the [Robot Configuration](../navigation/robot-config.md) reference.
+See more details about the robot configuration in the [Point Navigation](point-navigation.md#step-1-robot-configuration) recipe and in the [Robot Configuration](../../navigation/robot-config.md) reference.
 ```
 
 ### Import the required navigation components
@@ -141,7 +141,7 @@ from kompass.components import Controller, ControllerConfig, DriveManager
 
 ### Configure the VisionFollower and setup the components
 
-We select the vision follower method parameters by importing the config class `VisionRGBFollowerConfig` (see default parameters in the [Vision Follower RGB](../advanced/algorithms.md) reference), then configure both our components:
+We select the vision follower method parameters by importing the config class `VisionRGBFollowerConfig` (see default parameters in the [Vision Follower RGB](../../advanced/algorithms.md) reference), then configure both our components:
 
 ```python
 from kompass.control import VisionRGBFollowerConfig
@@ -334,7 +334,7 @@ ros2 launch realsense2_camera rs_camera.launch.py
 
 #### Start vision detection using an ML model
 
-To implement and run this example we will need a detection model processing the RGBD camera images to provide the Detection information. Similarly to the RGB section above, we will use the EMOS intelligence layer. It provides a Vision Component which will allow us to easily deploy a ROS node in our system that interacts with vision models.
+To implement and run this example we will need a detection model processing the RGBD camera images to provide the Detection information. Similarly to the RGB section above, we will use EmbodiedAgents. It provides a Vision Component which will allow us to easily deploy a ROS node in our system that interacts with vision models.
 
 ### Setting up the vision component and model client
 
@@ -485,5 +485,5 @@ launcher.bringup()
 ```
 
 ```{tip}
-You can take your design to the next step and make your system more robust by adding some [events](event-driven-cognition.md) or defining some [fallbacks](fallback-recipes.md)!
+You can take your design to the next step and make your system more robust by adding some [events](../events-and-resilience/event-driven-cognition.md) or defining some [fallbacks](../events-and-resilience/fallback-recipes.md)!
 ```

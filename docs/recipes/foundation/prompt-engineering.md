@@ -8,7 +8,7 @@ from agents.components import Vision, MLLM
 
 ## Setting up the Object Detection Component
 
-For object detection and tracking, EMOS provides a unified Vision [component](../intelligence/ai-components.md). This component takes as input an image topic published by a camera device onboard our robot. The output of this component can be a _detections_ topic in case of object detection or a _trackings_ topic in case of object tracking. In this example we will use a _detections_ topic.
+For object detection and tracking, EMOS provides a unified Vision [component](../../intelligence/ai-components.md). This component takes as input an image topic published by a camera device onboard our robot. The output of this component can be a _detections_ topic in case of object detection or a _trackings_ topic in case of object tracking. In this example we will use a _detections_ topic.
 
 ```python
 from agents.ros import Topic

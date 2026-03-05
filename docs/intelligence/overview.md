@@ -1,40 +1,42 @@
-# Intelligence Layer
+# EmbodiedAgents
 
-**The production-grade framework for deploying Physical AI on real-world robots.**
+**The intelligence layer of EMOS -- production-grade orchestration for Physical AI.**
 
-The Intelligence Layer is the cognitive core of EMOS -- the Embodied Operating System by Automatika Robotics. Powered by the EmbodiedAgents framework, it provides the orchestration infrastructure needed to create interactive, physical agents that do not just chat, but **understand**, **move**, **manipulate**, and **adapt** to their environment.
+[EmbodiedAgents](https://github.com/automatika-robotics/embodied-agents) enables you to create interactive, physical agents that do not just chat, but **understand**, **move**, **manipulate**, and **adapt** to their environment. It bridges the gap between foundation AI models and real-world robotic deployment, offering a structured yet flexible programming model for building adaptive intelligence.
 
-While the Hardware Layer manages sensors, actuators, and drivers, the Intelligence Layer sits above it, giving robots the ability to perceive, reason, plan, and act autonomously. It bridges the gap between foundation AI models and real-world robotic deployment, offering a structured yet flexible programming model for building adaptive intelligence.
+- {material-regular}`smart_toy;1.2em;sd-text-primary` **Production-Ready Physical Agents** -- Designed for autonomous systems in dynamic, real-world environments. Components are built around ROS2 Lifecycle Nodes with deterministic startup, shutdown, and error-recovery. Health monitoring, fallback behaviors, and graceful degradation are built in from the ground up.
 
-## Key Differentiators
+- {material-regular}`autorenew;1.2em;sd-text-primary` **Self-Referential and Event-Driven** -- Agents can start, stop, or reconfigure their own components based on internal and external events. Switch from cloud to local inference, swap planners based on vision input, or adjust behavior on the fly. In the spirit of [Godel machines](https://en.wikipedia.org/wiki/G%C3%B6del_machine), agents become capable of introspecting and modifying their own execution graph at runtime.
 
-### Production-Ready Physical Agents
+- {material-regular}`hub;1.2em;sd-text-primary` **Semantic Memory** -- Hierarchical spatio-temporal memory and semantic routing for arbitrarily complex agentic information flow. Components like MapEncoding and SemanticRouter let robots maintain structured, queryable representations of their environment over time -- no bloated GenAI frameworks required.
 
-The Intelligence Layer is designed for autonomous systems operating in dynamic, real-world environments. It provides a complete orchestration layer for **Adaptive Intelligence**, making Physical AI simple to deploy. Components are built around ROS2 Lifecycle Nodes, offering deterministic startup, shutdown, and error-recovery semantics that production robots demand. Health monitoring, fallback behaviors, and graceful degradation are built in from the ground up.
-
-### Self-Referential and Event-Driven
-
-Agents built with the Intelligence Layer can start, stop, or reconfigure their own components based on internal or external events. This makes it trivial to switch from cloud-based to local ML inference, swap planners based on location or vision input, or dynamically adjust behavior in response to environmental changes. In the spirit of [Godel machines](https://en.wikipedia.org/wiki/G%C3%B6del_machine), agents become self-referential -- capable of introspecting and modifying their own execution graph at runtime.
-
-### Semantic Memory
-
-The Intelligence Layer provides embodiment primitives such as hierarchical spatio-temporal memory and semantic routing to build arbitrarily complex graphs for agentic information flow. Components like MapEncoding and SemanticRouter allow robots to maintain structured, queryable representations of their environment over time -- without relying on bloated general-purpose GenAI frameworks.
-
-### Pure Python, Native ROS2
-
-Complex asynchronous execution graphs can be defined in standard Python without touching XML launch files. Yet, underneath, everything is pure ROS2 -- fully compatible with the entire ecosystem of hardware drivers, simulation tools, and visualization suites. This means developers get the ergonomics of a modern Python framework with the reliability and interoperability of the ROS2 middleware.
+- {material-regular}`code;1.2em;sd-text-primary` **Pure Python, Native ROS2** -- Define complex asynchronous execution graphs in standard Python without touching XML launch files. Underneath, everything is pure ROS2 -- fully compatible with the entire ecosystem of hardware drivers, simulation tools, and visualization suites.
 
 ## What You Can Build
 
-With the Intelligence Layer, you can compose components into flexible execution graphs for building autonomous, perceptive, and interactive robot behaviors. Common use cases include:
+::::{grid} 1 2 2 2
+:gutter: 3
 
-- **Conversational robots** with speech-to-text, LLM reasoning, and text-to-speech pipelines.
-- **Vision-guided manipulation** using VLMs for planning and VLAs for control.
-- **Semantic navigation** with map encoding and spatio-temporal memory.
-- **Multi-modal agents** that dynamically route information between perception, reasoning, and action components based on semantic content.
+:::{grid-item-card} {material-regular}`chat;1.2em;sd-text-primary` Conversational Robots
+Speech-to-text, LLM reasoning, and text-to-speech pipelines for natural dialogue.
+:::
+
+:::{grid-item-card} {material-regular}`precision_manufacturing;1.2em;sd-text-primary` Vision-Guided Manipulation
+VLMs for high-level planning and VLAs for end-to-end motor control.
+:::
+
+:::{grid-item-card} {material-regular}`map;1.2em;sd-text-primary` Semantic Navigation
+Map encoding and spatio-temporal memory for context-aware movement.
+:::
+
+:::{grid-item-card} {material-regular}`alt_route;1.2em;sd-text-primary` Multi-Modal Agents
+Dynamically route information between perception, reasoning, and action based on semantic content.
+:::
+
+::::
 
 ## Next Steps
 
-- {doc}`ai-components` -- Learn about the core building blocks: components and topics.
-- {doc}`clients` -- Understand how inference backends connect to components.
-- {doc}`models` -- Explore available model wrappers and vector databases.
+- {material-regular}`widgets;1.2em;sd-text-primary` {doc}`ai-components` -- The core building blocks: components and topics.
+- {material-regular}`cloud;1.2em;sd-text-primary` {doc}`clients` -- How inference backends connect to components.
+- {material-regular}`model_training;1.2em;sd-text-primary` {doc}`models` -- Available model wrappers and vector databases.

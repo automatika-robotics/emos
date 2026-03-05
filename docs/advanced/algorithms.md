@@ -1,6 +1,6 @@
 # Navigation Algorithms
 
-EMOS provides a suite of battle-tested control algorithms for the navigation layer. These range from classic geometric path-followers to modern, GPU-accelerated planners that handle dynamic obstacle avoidance or vision-based target following in real time.
+Kompass, the EMOS navigation engine, provides a suite of battle-tested control algorithms. These range from classic geometric path-followers to modern, GPU-accelerated planners that handle dynamic obstacle avoidance or vision-based target following in real time.
 
 Every algorithm is natively compatible with the three primary motion models. The internal logic automatically adapts to the specific constraints of your platform:
 

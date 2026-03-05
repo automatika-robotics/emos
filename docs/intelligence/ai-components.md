@@ -1,6 +1,6 @@
 # AI Components
 
-A **Component** is the primary execution unit in the EMOS Intelligence Layer. Components represent functional behaviors -- for example, the ability to process text, understand images, or synthesize speech. Components can be combined arbitrarily to create more complex systems such as multi-modal agents with perception-action loops. Conceptually, each component is a layer of syntactic sugar over a ROS2 Lifecycle Node, inheriting all its lifecycle behaviors while also offering allied functionality to manage inputs and outputs and simplify development. Components receive one or more ROS topics as inputs and produce outputs on designated topics. The specific types and formats of these topics depend on the component's function.
+A **Component** is the primary execution unit in EmbodiedAgents, the EMOS intelligence framework. Components represent functional behaviors -- for example, the ability to process text, understand images, or synthesize speech. Components can be combined arbitrarily to create more complex systems such as multi-modal agents with perception-action loops. Conceptually, each component is a layer of syntactic sugar over a ROS2 Lifecycle Node, inheriting all its lifecycle behaviors while also offering allied functionality to manage inputs and outputs and simplify development. Components receive one or more ROS topics as inputs and produce outputs on designated topics. The specific types and formats of these topics depend on the component's function.
 
 ```{note}
 To learn more about the internal structure and lifecycle behavior of components, check out the documentation of [Sugarcoat](https://automatika-robotics.github.io/sugarcoat/design/component.html).
@@ -8,7 +8,7 @@ To learn more about the internal structure and lifecycle behavior of components,
 
 ## Available Components
 
-The EMOS Intelligence Layer provides a suite of ready-to-use components. These can be composed into flexible execution graphs for building autonomous, perceptive, and interactive robot behavior. Each component focuses on a particular modality or functionality, from vision and speech to map reasoning and VLA-based manipulation.
+EmbodiedAgents provides a suite of ready-to-use components. These can be composed into flexible execution graphs for building autonomous, perceptive, and interactive robot behavior. Each component focuses on a particular modality or functionality, from vision and speech to map reasoning and VLA-based manipulation.
 
 ```{list-table}
 :widths: 20 80
@@ -168,7 +168,7 @@ Each component can optionally be configured using a `config` object. Configs are
 
 ## Component RunType
 
-In the EMOS Intelligence Layer, components can operate in one of three modes:
+In EmbodiedAgents, components can operate in one of three modes:
 
 ```{list-table}
 :widths: 10 80

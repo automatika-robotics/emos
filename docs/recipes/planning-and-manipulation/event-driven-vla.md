@@ -100,7 +100,7 @@ To prevent the VLM from consuming too much compute, we have configured a `float`
 ```
 
 ```{tip}
-In order to make sure that the VLM output is formatted as per our requirement (YES or NO), checkout how to use pre-processors in the [Semantic Map](semantic-map.md) recipe. For now we will assume that if YES is part of the output string, the event should fire.
+In order to make sure that the VLM output is formatted as per our requirement (YES or NO), checkout how to use pre-processors in the [Semantic Map](../foundation/semantic-map.md) recipe. For now we will assume that if YES is part of the output string, the event should fire.
 ```
 
 ## The Bridge: Semantic Event Trigger
@@ -128,7 +128,7 @@ player.set_termination_trigger(
 ```
 
 ```{seealso}
-Events are a very powerful concept in EMOS. You can get infinitely creative with them. For example, imagine setting off the VLA component with a voice command. This can be done by combining the output of a SpeechToText component and an Event that generates an action command. To learn more about them check out the recipes for [Events & Actions](event-driven-cognition.md).
+Events are a very powerful concept in EMOS. You can get infinitely creative with them. For example, imagine setting off the VLA component with a voice command. This can be done by combining the output of a SpeechToText component and an Event that generates an action command. To learn more about them check out the recipes for [Events & Actions](../events-and-resilience/event-driven-cognition.md).
 ```
 
 ## Launching the System

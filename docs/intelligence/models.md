@@ -1,6 +1,6 @@
 # Models
 
-Clients in the EMOS Intelligence Layer take as input a **model** or **vector database (DB)** specification. These are in most cases generic wrappers around a class of models or databases (e.g. Transformers-based LLMs) defined as [attrs](https://www.attrs.org/en/stable/) classes and include initialization parameters such as quantization schemes, inference options, embedding model (in case of vector DBs) etc. These specifications aim to standardize model initialization across diverse deployment platforms.
+Clients in EmbodiedAgents take as input a **model** or **vector database (DB)** specification. These are in most cases generic wrappers around a class of models or databases (e.g. Transformers-based LLMs) defined as [attrs](https://www.attrs.org/en/stable/) classes and include initialization parameters such as quantization schemes, inference options, embedding model (in case of vector DBs) etc. These specifications aim to standardize model initialization across diverse deployment platforms.
 
 ## Available Model Wrappers
 

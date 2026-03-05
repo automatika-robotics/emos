@@ -63,7 +63,7 @@ event_person_detected = Event(
 ```
 
 ```{seealso}
-Events can be used to create arbitrarily complex agent graphs. Check out all the events available in the [Events](../concepts/events-and-actions.md) documentation.
+Events can be used to create arbitrarily complex agent graphs. Check out all the events available in the [Events](../../concepts/events-and-actions.md) documentation.
 ```
 
 ### 3. The Cognition: VLM Component

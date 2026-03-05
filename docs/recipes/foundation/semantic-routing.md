@@ -1,6 +1,6 @@
 # Semantic Routing
 
-The SemanticRouter component in EMOS allows you to route text queries to specific [components](../intelligence/ai-components.md) based on the user's intent or the output of a preceding component.
+The SemanticRouter component in EMOS allows you to route text queries to specific [components](../../intelligence/ai-components.md) based on the user's intent or the output of a preceding component.
 
 The router operates in two distinct modes:
 
@@ -124,7 +124,7 @@ llm_route = Route(routes_to=llm_in,
 ```
 
 ```{note}
-The `routes_to` parameter of a `Route` can be a `Topic` or an `Action`. `Actions` can be system level functions (e.g. to restart a component), functions exposed by components (e.g. to start the VLA component for manipulation, or the 'say' method in TextToSpeech component) or arbitrary functions written in the recipe. `Actions` are a powerful concept in EMOS, because their arguments can come from any topic in the system. To learn more, check out [Events & Actions](../concepts/events-and-actions.md).
+The `routes_to` parameter of a `Route` can be a `Topic` or an `Action`. `Actions` can be system level functions (e.g. to restart a component), functions exposed by components (e.g. to start the VLA component for manipulation, or the 'say' method in TextToSpeech component) or arbitrary functions written in the recipe. `Actions` are a powerful concept in EMOS, because their arguments can come from any topic in the system. To learn more, check out [Events & Actions](../../concepts/events-and-actions.md).
 ```
 
 ## Option 1: Vector Mode (Similarity)

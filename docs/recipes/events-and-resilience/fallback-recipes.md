@@ -77,7 +77,7 @@ All components implement some default actions as well as component specific acti
 ```
 
 ```{seealso}
-To see a list of default actions available to all components, checkout the [Actions](../concepts/events-and-actions.md) documentation.
+To see a list of default actions available to all components, checkout the [Actions](../../concepts/events-and-actions.md) documentation.
 ```
 
 ```python

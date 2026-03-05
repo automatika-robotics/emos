@@ -1,6 +1,6 @@
 # Multimodal Planning
 
-Previously in the [Go-to-X Recipe](goto-navigation.md) we created an agent capable of understanding and responding to go-to commands. This agent relied on a semantic map that was stored in a vector database that could be accessed by an LLM component for doing retrieval augmented generation. Through the magic of tool use (or manual post-processing), we were able to extract position coordinates from our vectorized information and send it to a `Pose` topic for goal-point navigation by an autonomous navigation system. In this example, we will see how we can generate a similar navigation goal, but from the visual input coming in from the robot's sensors -- i.e. we should be able to ask our physical agent to navigate to an object that is in its sight.
+Previously in the [Go-to-X Recipe](../foundation/goto-navigation.md) we created an agent capable of understanding and responding to go-to commands. This agent relied on a semantic map that was stored in a vector database that could be accessed by an LLM component for doing retrieval augmented generation. Through the magic of tool use (or manual post-processing), we were able to extract position coordinates from our vectorized information and send it to a `Pose` topic for goal-point navigation by an autonomous navigation system. In this example, we will see how we can generate a similar navigation goal, but from the visual input coming in from the robot's sensors -- i.e. we should be able to ask our physical agent to navigate to an object that is in its sight.
 
 We will achieve this by utilizing two components in our agent: an LLM component and a VLM component. The LLM component will act as a sentence parser, isolating the object description from the user's command. The VLM component will use a planning Vision Language Model (VLM), which can perform visual grounding and pointing.
 
@@ -117,10 +117,10 @@ When a task is specified in VLMConfig, the VLM component automatically produces 
 
 ## Configure Autonomous Navigation
 
-EMOS provides a complete navigation stack through its Kompass subsystem. It is built with the same underlying principles as the intelligence layer -- event-driven and customizable with a simple Python script. In this section we will show how to start navigation in the same recipe that we have been developing for a vision guided, go-to agent.
+EMOS provides a complete navigation stack through [Kompass](https://github.com/automatika-robotics/kompass). It is built with the same underlying principles as EmbodiedAgents -- event-driven and customizable with a simple Python script. In this section we will show how to start navigation in the same recipe that we have been developing for a vision guided, go-to agent.
 
 ```{note}
-Learn about installing the EMOS navigation stack in the [installation guide](../getting-started/installation.md).
+Learn about installing the EMOS navigation stack in the [installation guide](../../getting-started/installation.md).
 ```
 
 EMOS allows for various kinds of navigation behaviour configured in the same recipe. However, we will only be using point-to-point navigation and the default configuration for its components. Since navigation is central to our task, as a first step, we will configure the robot and its motion model. EMOS provides a `RobotConfig` primitive where you can add your robot's motion model (ACKERMANN, OMNI, DIFFERENTIAL_DRIVE), the robot geometry parameters and the robot control limits:
@@ -150,7 +150,7 @@ my_robot = RobotConfig(
 Now we can add our default components. Our component of interest is the _planning_ component, that plots a path to the goal point. We will give the output topic from our VLM component as the goal point topic to the planning component.
 
 ```{important}
-While planning components typically require goal points as `Pose` or `PoseStamped` messages in world space, EMOS also accepts `Detection` and `PointOfInterest` messages from the intelligence layer. These contain pixel-space coordinates identified by ML models. When generated from RGBD inputs, the associated depth images are included, enabling EMOS to automatically convert pixel-space points to averaged world-space coordinates using camera intrinsics.
+While planning components typically require goal points as `Pose` or `PoseStamped` messages in world space, EMOS also accepts `Detection` and `PointOfInterest` messages from EmbodiedAgents. These contain pixel-space coordinates identified by ML models. When generated from RGBD inputs, the associated depth images are included, enabling EMOS to automatically convert pixel-space points to averaged world-space coordinates using camera intrinsics.
 ```
 
 ```python
@@ -180,7 +180,7 @@ driver = DriveManager(component_name="drive_manager")
 ```
 
 ```{seealso}
-Learn the details of point navigation in EMOS using the step-by-step [Point Navigation](point-navigation.md) recipe.
+Learn the details of point navigation in EMOS using the step-by-step [Point Navigation](../navigation/point-navigation.md) recipe.
 ```
 
 ## Launching the Components

@@ -6,7 +6,7 @@ Often times robots are equipped with a speaker system and a microphone. Once the
 from agents.components import VLM, SpeechToText, TextToSpeech
 ```
 
-[Components](../intelligence/ai-components.md) are basic functional units in EMOS. Their inputs and outputs are defined using ROS [Topics](../concepts/topics.md). And their function can be any input transformation, for example the inference of an ML model. Lets setup these components one by one. Since our input to the robot would be speech, we will setup the speech-to-text component first.
+[Components](../../intelligence/ai-components.md) are basic functional units in EMOS. Their inputs and outputs are defined using ROS [Topics](../../concepts/topics.md). And their function can be any input transformation, for example the inference of an ML model. Lets setup these components one by one. Since our input to the robot would be speech, we will setup the speech-to-text component first.
 
 ## SpeechToText Component
 
@@ -41,7 +41,7 @@ The _enable_wakeword_ option cannot be enabled without the _enable_vad_ option.
 ```
 
 ```{seealso}
-Check the available defaults and options for the SpeechToTextConfig in the [API reference](../apidocs/agents/agents.config).
+Check the available defaults and options for the SpeechToTextConfig in the [API reference](../../apidocs/agents/agents.config).
 ```
 
 To initialize the component we also need a model client for a speech to text model. We will be using the WebSocket client for RoboML for this purpose.

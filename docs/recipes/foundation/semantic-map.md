@@ -2,7 +2,7 @@
 
 Autonomous Mobile Robots (AMRs) keep a representation of their environment in the form of occupancy maps. One can layer semantic information on top of these occupancy maps and with the use of multimodal LLMs one can even add answers to arbitrary questions about the environment to this map. In EMOS such maps can be created using vector databases which are specifically designed to store natural language data and retrieve it based on natural language queries. Thus an embodied agent can keep a text based _spatio-temporal memory_, from which it can do retrieval to answer questions or do spatial planning.
 
-Here we will show an example of generating such a map using object detection information and questions answered by an MLLM. This map can of course be made arbitrarily complex and robust by adding checks on the data being stored, however in our example we will keep things simple. Lets start by importing relevant [components](../intelligence/ai-components.md).
+Here we will show an example of generating such a map using object detection information and questions answered by an MLLM. This map can of course be made arbitrarily complex and robust by adding checks on the data being stored, however in our example we will keep things simple. Lets start by importing relevant [components](../../intelligence/ai-components.md).
 
 ```python
 from agents.components import MapEncoding, Vision, MLLM
@@ -53,7 +53,7 @@ The vision component will provide us with semantic information to add to our map
 
 ## Setting up an MLLM Component
 
-With large scale multimodal LLMs we can ask higher level introspective questions about the sensor information the robot is receiving and record this information on our spatio-temporal map. As an example we will setup an MLLM component that periodically asks itself the same question, about the nature of the space the robot is present in. In order to achieve this we will use two concepts. First is that of a **FixedInput**, a simulated [Topic](../concepts/topics.md) that has a fixed value whenever it is read by a listener. And the second is that of a _timed_ component. In EMOS, components can get triggered by either an input received on a Topic or automatically after a certain period of time. This latter trigger specifies a timed component. Lets see what all of this looks like in code.
+With large scale multimodal LLMs we can ask higher level introspective questions about the sensor information the robot is receiving and record this information on our spatio-temporal map. As an example we will setup an MLLM component that periodically asks itself the same question, about the nature of the space the robot is present in. In order to achieve this we will use two concepts. First is that of a **FixedInput**, a simulated [Topic](../../concepts/topics.md) that has a fixed value whenever it is read by a listener. And the second is that of a _timed_ component. In EMOS, components can get triggered by either an input received on a Topic or automatically after a certain period of time. This latter trigger specifies a timed component. Lets see what all of this looks like in code.
 
 ```python
 from agents.clients import OllamaClient

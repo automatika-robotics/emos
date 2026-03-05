@@ -79,13 +79,13 @@ Many supported message types come with pre-defined callback and publisher classe
 
 * - **TwistStamped**
   - geometry_msgs
-  - --
-  - --
+  - \-\-
+  - \-\-
 
 * - **TwistArray**
   - kompass_interfaces
-  - --
-  - --
+  - \-\-
+  - \-\-
 
 * - **Image**
   - sensor_msgs
@@ -109,8 +109,8 @@ Many supported message types come with pre-defined callback and publisher classe
 
 * - **PointCloud2**
   - sensor_msgs
-  - --
-  - --
+  - \-\-
+  - \-\-
 
 * - **Odometry**
   - nav_msgs
@@ -139,13 +139,13 @@ Many supported message types come with pre-defined callback and publisher classe
 
 * - **Detections**
   - automatika_agents_interfaces
-  - --
-  - --
+  - \-\-
+  - \-\-
 
 * - **Trackings**
   - automatika_agents_interfaces
-  - --
-  - --
+  - \-\-
+  - \-\-
 
 ```
 

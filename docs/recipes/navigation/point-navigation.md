@@ -257,5 +257,5 @@ if __name__ == "__main__":
 Congratulations! You have created a full production-grade navigation recipe.
 
 * **[Vision Tracking](vision-tracking.md)**: Replace the Pure Pursuit controller with a Vision Follower to chase targets.
-* **[Runtime Model Fallback](fallback-recipes.md)**: Learn how to make your recipe robust by automatically restarting components if they crash.
-* **[Event-Driven Cognition](event-driven-cognition.md)**: Make your system reactive (e.g., "If battery is low, go to dock") by adding Events and Actions.
+* **[Runtime Model Fallback](../events-and-resilience/fallback-recipes.md)**: Learn how to make your recipe robust by automatically restarting components if they crash.
+* **[Event-Driven Cognition](../events-and-resilience/event-driven-cognition.md)**: Make your system reactive (e.g., "If battery is low, go to dock") by adding Events and Actions.

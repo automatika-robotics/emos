@@ -2,7 +2,7 @@
 
 This is the capstone recipe. Everything we have built in the previous tutorials -- conversational interfaces, prompt engineering, semantic mapping, RAG-powered navigation, and semantic routing -- comes together here into a single EMOS Recipe: a fully capable embodied agent defined in one Python script.
 
-This is what EMOS is designed for. Instead of stitching together dozens of ROS nodes, launch files, and custom middleware, you define a complete agentic workflow as a graph of [Components](../intelligence/ai-components.md) connected through [Topics](../concepts/topics.md), and bring it up with a single call. The result is a robot that can listen, see, think, remember, navigate, and speak -- all orchestrated by EMOS.
+This is what EMOS is designed for. Instead of stitching together dozens of ROS nodes, launch files, and custom middleware, you define a complete agentic workflow as a graph of [Components](../../intelligence/ai-components.md) connected through [Topics](../../concepts/topics.md), and bring it up with a single call. The result is a robot that can listen, see, think, remember, navigate, and speak -- all orchestrated by EMOS.
 
 ## The Complete Recipe
 
@@ -285,4 +285,4 @@ In this single Recipe, we have assembled a fully capable embodied agent with the
 
 This is the EMOS developer experience: a sophisticated, multi-capability embodied agent defined entirely in a single Python script. Every component -- perception, reasoning, memory, navigation, and speech -- is wired together through Topics and launched with one call to `bringup()`. The same Recipe runs on any robot that EMOS supports, from wheeled AMRs to quadrupeds, without modification.
 
-To add runtime resilience -- fallback logic, recovery maneuvers, algorithm switching -- see the [Events & Actions](../concepts/events-and-actions.md) documentation.
+To add runtime resilience -- fallback logic, recovery maneuvers, algorithm switching -- see the [Events & Actions](../../concepts/events-and-actions.md) documentation.

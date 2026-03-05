@@ -1,6 +1,6 @@
 # GoTo Navigation
 
-In the previous [recipe](semantic-map.md) we created a semantic map using the MapEncoding component. Intuitively one can imagine that using the map data would require some form of RAG. Let us suppose that we want to create a Go-to-X component, which, when given a command like 'Go to the yellow door', would retrieve the coordinates of the _yellow door_ from the map and publish them to a goal point topic of type _PoseStamped_ to be handled by our robot's [navigation system](../navigation/overview.md). We will create our Go-to-X component using the LLM [component](../intelligence/ai-components.md) provided by EMOS. We will start by initializing the component, and configuring it to use RAG.
+In the previous [recipe](semantic-map.md) we created a semantic map using the MapEncoding component. Intuitively one can imagine that using the map data would require some form of RAG. Let us suppose that we want to create a Go-to-X component, which, when given a command like 'Go to the yellow door', would retrieve the coordinates of the _yellow door_ from the map and publish them to a goal point topic of type _PoseStamped_ to be handled by our robot's [navigation system](../../navigation/overview.md). We will create our Go-to-X component using the LLM [component](../../intelligence/ai-components.md) provided by EMOS. We will start by initializing the component, and configuring it to use RAG.
 
 ## Initialize the component
 

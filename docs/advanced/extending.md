@@ -9,7 +9,7 @@ To see detailed examples of packages built with EMOS, check out [Kompass](https:
 :::
 
 :::{note}
-Before building your own package, review the core [design concepts](../design/concepts_overview.md).
+Before building your own package, review the core [design concepts](../concepts/components.md).
 :::
 
 ### Step 1 -- Create a ROS 2 Package
@@ -440,8 +440,8 @@ For robots that handle actions via ROS services, define custom client wrappers i
 
 Exposes the plugin capabilities using two dictionaries: `robot_feedback` and `robot_action`.
 
-```{youtube} oZN6pcJKgfY
-:width: 600
-:height: 338
-:align: center
+```{raw} html
+<div style="text-align: center;">
+<iframe width="600" height="338" src="https://www.youtube.com/embed/oZN6pcJKgfY" frameborder="0" allowfullscreen></iframe>
+</div>
 ```

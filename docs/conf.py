@@ -106,8 +106,8 @@ html_favicon = "_static/favicon.png"
 sitemap_url_scheme = "{link}"
 
 html_theme_options = {
-    "light_logo": "_static/automatika-logo.png",
-    "dark_logo": "_static/automatika-logo.png",
+    "light_logo": "_static/Emos_light.png",
+    "dark_logo": "_static/Emos_dark.png",
     "accent_color": "indigo",
     "twitter_url": "https://x.com/__automatika__",
     "github_url": "https://github.com/automatika-robotics/emos",

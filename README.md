@@ -1,7 +1,10 @@
 <div align="center">
-
-<h1>EMOS</h1>
-<h3>The Embodied Operating System</h3>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/_static/Emos_dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/_static/Emos_light.png">
+    <img alt="EMOS" src="_static/Emos_light.png" width="50%">
+  </picture>
+<h2>The Embodied Operating System</h2>
 
 <p><strong>The unified orchestration layer for Physical AI.</strong></p>
 

@@ -1,4 +1,4 @@
-# Planning & Manipulation
+# Planning & Manipulation Overview
 
 Bridge the gap between high-level reasoning and physical actuation. These recipes demonstrate VLM-based planning and VLA-based end-to-end robotic manipulation.
 

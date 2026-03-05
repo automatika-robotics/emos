@@ -150,7 +150,7 @@ LLMS_TXT_SELECTION = [
     "navigation/drive-manager.md",
     "navigation/mapping.md",
     "navigation/motion-server.md",
-    # Foundation Recipes -- from simple to complete agent
+    # Cognition Recipes -- from simple to complete agent
     "recipes/foundation/conversational-agent.md",
     "recipes/foundation/prompt-engineering.md",
     "recipes/foundation/semantic-map.md",
@@ -165,11 +165,18 @@ LLMS_TXT_SELECTION = [
     # Navigation Recipes
     "recipes/navigation/simulation-quickstarts.md",
     "recipes/navigation/point-navigation.md",
-    "recipes/navigation/vision-tracking.md",
-    # Events & Resilience Recipes
+    "recipes/navigation/path-recording.md",
+    "recipes/navigation/motion-testing.md",
+    "recipes/navigation/vision-tracking-rgb.md",
+    "recipes/navigation/vision-tracking-depth.md",
+    # Adaptivity & Resilience Recipes
     "recipes/events-and-resilience/multiprocessing.md",
     "recipes/events-and-resilience/fallback-recipes.md",
     "recipes/events-and-resilience/event-driven-cognition.md",
+    "recipes/events-and-resilience/external-reflexes.md",
+    "recipes/events-and-resilience/cross-component-events.md",
+    "recipes/events-and-resilience/composed-events.md",
+    "recipes/events-and-resilience/context-aware-actions.md",
     # Advanced -- configuration, extending, algorithms
     "advanced/configuration.md",
     "advanced/extending.md",

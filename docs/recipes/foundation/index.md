@@ -1,4 +1,4 @@
-# Foundation Recipes
+# Cognition Recipes Overview
 
 Build intelligent agents from the ground up using [EmbodiedAgents](https://github.com/automatika-robotics/embodied-agents), the EMOS intelligence framework. These recipes introduce the core [Components](../../intelligence/ai-components.md) -- the modular building blocks that drive your physical agents.
 

@@ -18,13 +18,13 @@ The core promise of EMOS Recipes is hardware independence. A "Security Patrol" r
 
 The tutorials in this section follow a graduated structure, building from simple single-component examples to a full agentic system. They are organized into four subsections:
 
-- **[Foundation Recipes](foundation/index.md)** -- Build intelligent agents from the ground up using [EmbodiedAgents](https://github.com/automatika-robotics/embodied-agents): conversational agents, prompt engineering, semantic maps, navigation via RAG, tool calling, semantic routing, and a complete end-to-end agent.
+- **[Cognition Recipes](foundation/index.md)** -- Build intelligent agents from the ground up using [EmbodiedAgents](https://github.com/automatika-robotics/embodied-agents): conversational agents, prompt engineering, semantic maps, navigation via RAG, tool calling, semantic routing, and a complete end-to-end agent.
 
 - **[Multimodal Planning & Manipulation](planning-and-manipulation/index.md)** -- Advanced AI capabilities: VLM-based planning and VLA-based end-to-end robotic manipulation, including event-driven closed-loop control.
 
-- **[Navigation](navigation/index.md)** -- Set up and use [Kompass](https://github.com/automatika-robotics/kompass), the EMOS navigation engine: simulation quick starts, step-by-step point navigation, and vision-based target tracking.
+- **[Navigation](navigation/index.md)** -- Set up and use [Kompass](https://github.com/automatika-robotics/kompass), the EMOS navigation engine: simulation quick starts, point navigation, path recording and replay, automated motion testing, and vision-based target tracking with RGB and depth cameras.
 
-- **[Events, Fallbacks & Production Readiness](events-and-resilience/index.md)** -- Make your agents robust and adaptive using multiprocessing, runtime fallbacks, and event-driven cognition.
+- **[Adaptivity & Resilience](events-and-resilience/index.md)** -- Make your agents robust and adaptive using multiprocessing, runtime fallbacks, event-driven cognition, cross-component healing, composed logic gates, and context-aware dynamic actions.
 
 ## Recipe Examples
 

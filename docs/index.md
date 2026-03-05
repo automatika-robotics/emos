@@ -26,7 +26,7 @@ recipes/overview
 
 ```{toctree}
 :hidden:
-:caption: Foundation Recipes
+:caption: Cognition
 
 recipes/foundation/index
 recipes/foundation/conversational-agent
@@ -55,17 +55,24 @@ recipes/planning-and-manipulation/event-driven-vla
 recipes/navigation/index
 recipes/navigation/simulation-quickstarts
 recipes/navigation/point-navigation
-recipes/navigation/vision-tracking
+recipes/navigation/path-recording
+recipes/navigation/motion-testing
+recipes/navigation/vision-tracking-rgb
+recipes/navigation/vision-tracking-depth
 ```
 
 ```{toctree}
 :hidden:
-:caption: Events & Resilience
+:caption: Adaptivity & Resilience
 
 recipes/events-and-resilience/index
 recipes/events-and-resilience/multiprocessing
 recipes/events-and-resilience/fallback-recipes
 recipes/events-and-resilience/event-driven-cognition
+recipes/events-and-resilience/external-reflexes
+recipes/events-and-resilience/cross-component-events
+recipes/events-and-resilience/composed-events
+recipes/events-and-resilience/context-aware-actions
 ```
 
 ```{toctree}

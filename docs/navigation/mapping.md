@@ -101,7 +101,7 @@ Unlike standard ROS2 map servers, the EMOS Map Server supports **native 3D Point
 
 - {material-regular}`view_in_ar;1.2em;sd-text-primary` **Point Cloud to Grid Conversion** — If the map data is provided as a PCD file, the MapServer generates an occupancy grid from the point cloud using the provided grid resolution and ground limits.
 
-- {material-regular}`frame_inspect;1.2em;sd-text-primary` **Custom Frame Handling** — Configurable reference frames ensuring the map aligns with your robot's TF tree.
+- {material-regular}`crop_free;1.2em;sd-text-primary` **Custom Frame Handling** — Configurable reference frames ensuring the map aligns with your robot's TF tree.
 
 - {material-regular}`save;1.2em;sd-text-primary` **Map Saving** — Supports saving both 2D and 3D maps to files via `Save2dMapToFile` and `Save3dMapToFile` services.
 

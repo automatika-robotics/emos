@@ -18,6 +18,18 @@ This separation means that the same application logic --- a "Recipe" --- can be 
 
 EMOS is built on three open-source, publicly developed core components that work in tandem. Each layer addresses a distinct concern of the robotic software stack.
 
+:::{image} ../_static/images/diagrams/emos_diagram_light.png
+:align: center
+:width: 500px
+:class: light-only
+:::
+
+:::{image} ../_static/images/diagrams/emos_diagram_dark.png
+:align: center
+:width: 500px
+:class: dark-only
+:::
+
 ### Intelligence Layer: EmbodiedAgents
 
 [EmbodiedAgents](https://github.com/automatika-robotics/embodied-agents) is the orchestration framework for building agentic graphs of ML models. It provides:

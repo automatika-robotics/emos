@@ -66,6 +66,18 @@ In traditional robotics, the automation logic is "backend" and the user interfac
 
 EMOS is built on three open-source components that work in tandem:
 
+:::{image} _static/images/diagrams/emos_diagram_light.png
+:align: center
+:width: 500px
+:class: light-only
+:::
+
+:::{image} _static/images/diagrams/emos_diagram_dark.png
+:align: center
+:width: 500px
+:class: dark-only
+:::
+
 | Component | Layer | What It Does |
 |:---|:---|:---|
 | [**EmbodiedAgents**](https://github.com/automatika-robotics/embodied-agents) | Intelligence | Agentic graphs of ML models with semantic memory, information routing, and adaptive reconfiguration |

@@ -1,10 +1,22 @@
 # EMOS -- The Embodied Operating System
 
-**The unified orchestration layer for Physical AI.**
+**The open-source unified orchestration layer for Physical AI.**
 
 EMOS transforms robots into **Physical AI Agents**. It provides a hardware-agnostic runtime that lets robots **see**, **think**, **move**, and **adapt** -- all orchestrated from pure Python scripts called **Recipes**.
 
 Write a Recipe once, deploy it on any robot -- from wheeled AMRs to humanoids -- without rewriting code.
+
+:::{image} _static/images/diagrams/emos_robot_stack_light.png
+:align: center
+:width: 600px
+:class: light-only
+:::
+
+:::{image} _static/images/diagrams/emos_robot_stack_dark.png
+:align: center
+:width: 600px
+:class: dark-only
+:::
 
 ---
 

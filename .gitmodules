@@ -1,6 +1,3 @@
-[submodule "stack/emos-cli"]
-	path = stack/emos-cli
-	url = https://github.com/automatika-robotics/emos-cli.git
 [submodule "stack/embodied-agents"]
 	path = stack/embodied-agents
 	url = https://github.com/automatika-robotics/embodied-agents.git

@@ -2,11 +2,18 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/_static/Emos_dark.png">
     <source media="(prefers-color-scheme: light)" srcset="docs/_static/Emos_light.png">
-    <img alt="EMOS" src="_static/Emos_light.png" width="50%">
+    <img alt="EMOS" src="docs/_static/Emos_light.png" width="50%">
   </picture>
 <h2>The Embodied Operating System</h2>
 
-<p><strong>The unified orchestration layer for Physical AI.</strong></p>
+<p><strong>The open-source unified orchestration layer for Physical AI.</strong></p>
+
+<p>
+<a href="https://emos.automatikarobotics.com/"><img src="https://img.shields.io/badge/docs-online-blue?style=flat-square" alt="Documentation"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-see%20LICENSE-green?style=flat-square" alt="License"></a>
+<a href="https://discord.gg/B9ZU6qjzND"><img src="https://img.shields.io/discord/1273108037498929265?style=flat-square&logo=discord&logoColor=white&label=discord" alt="Discord"></a>
+<a href="https://emos.automatikarobotics.com/getting-started/installation.html"><img src="https://img.shields.io/badge/ROS%202-Iron%20|%20Jazzy%20|%20Rolling-orange?style=flat-square&logo=ros" alt="ROS 2"></a>
+</p>
 
 <p>
 <a href="https://emos.automatikarobotics.com/">Documentation</a> &middot;
@@ -20,9 +27,17 @@
 
 ---
 
-EMOS is the software layer that transforms quadrupeds, humanoids, and mobile robots into **Physical AI Agents**. It decouples the robot's body from its mind, providing a hardware-agnostic runtime that lets robots see, think, move, and adapt -- orchestrated entirely from pure Python scripts called **Recipes**.
+EMOS is the open-source software layer that transforms quadrupeds, humanoids, and mobile robots into **Physical AI Agents**. It decouples the robot's body from its mind, providing a hardware-agnostic runtime that lets robots see, think, move, and adapt -- orchestrated entirely from pure Python scripts called **Recipes**.
 
 Write a Recipe once. Deploy it on any robot. No code changes.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/_static/images/diagrams/emos_robot_stack_dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/_static/images/diagrams/emos_robot_stack_light.png">
+    <img alt="EMOS Robot Stack" src="docs/_static/images/diagrams/emos_robot_stack_light.png" width="70%">
+  </picture>
+</p>
 
 ```python
 from agents.clients.ollama import OllamaClient
@@ -54,6 +69,14 @@ That's a complete robot agent. It sees through a camera, reasons with a vision-l
 ## Architecture
 
 EMOS is built on three open-source components that work in tandem:
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/_static/images/diagrams/emos_diagram_dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/_static/images/diagrams/emos_diagram_light.png">
+    <img alt="EMOS Architecture" src="docs/_static/images/diagrams/emos_diagram_light.png" width="45%">
+  </picture>
+</p>
 
 | Component | Layer | What It Does |
 | :--- | :--- | :--- |
@@ -97,7 +120,7 @@ events_actions = {
 **Via the EMOS CLI** (recommended for deployment):
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/automatika-robotics/emos-cli/main/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/automatika-robotics/emos/main/stack/emos-cli/install.sh | sudo bash
 emos install YOUR-LICENSE-KEY
 ```
 

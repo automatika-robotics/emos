@@ -11,8 +11,7 @@
 <p>
 <a href="https://emos.automatikarobotics.com/"><img src="https://img.shields.io/badge/docs-online-blue?style=flat-square" alt="Documentation"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-see%20LICENSE-green?style=flat-square" alt="License"></a>
-<a href="https://discord.gg/B9ZU6qjzND"><img src="https://img.shields.io/discord/1273108037498929265?style=flat-square&logo=discord&logoColor=white&label=discord" alt="Discord"></a>
-<a href="https://emos.automatikarobotics.com/getting-started/installation.html"><img src="https://img.shields.io/badge/ROS%202-Iron%20|%20Jazzy%20|%20Rolling-orange?style=flat-square&logo=ros" alt="ROS 2"></a>
+<a href="https://emos.automatikarobotics.com/getting-started/installation.html"><img src="https://img.shields.io/badge/ROS%202-Humble%20|%20Iron%20|%20Jazzy%20|%20Kilted%20|%20Rolling-orange?style=flat-square&logo=ros" alt="ROS 2"></a>
 </p>
 
 <p>

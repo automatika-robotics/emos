@@ -119,7 +119,7 @@ events_actions = {
 **Via the EMOS CLI** (recommended for deployment):
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/automatika-robotics/emos/main/stack/emos-cli/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/automatika-robotics/emos/main/stack/emos-cli/scripts/install.sh | sudo bash
 emos install YOUR-LICENSE-KEY
 ```
 

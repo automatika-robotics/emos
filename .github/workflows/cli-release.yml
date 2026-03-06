@@ -1,0 +1,56 @@
+name: CLI Build & Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "stack/emos-cli/**"
+  pull_request:
+    paths:
+      - "stack/emos-cli/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build CLI
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stack/emos-cli
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: stack/emos-cli/go.sum
+
+      - run: go vet ./...
+
+      - run: make build-all
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: emos-cli-binaries
+          path: stack/emos-cli/dist/
+
+  release:
+    name: Create Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/cli-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: emos-cli-binaries
+          path: dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "EMOS CLI ${{ github.ref_name }}"
+          files: dist/*
+          generate_release_notes: true

@@ -5,7 +5,7 @@
 The fastest way to get started with EMOS is through the CLI. Open your terminal and run:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/automatika-robotics/emos-cli/main/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/automatika-robotics/emos/main/stack/emos-cli/scripts/install.sh | sudo bash
 ```
 
 This downloads the official installer, which checks for dependencies (`gum`, `curl`, `jq`), fetches the latest `emos` executable, and places it in `/usr/local/bin` so it is available system-wide.
@@ -22,7 +22,7 @@ See the [CLI Reference](cli.md) for the full list of commands.
 
 :::{admonition} ROS 2 Required
 :class: note
-EMOS requires a working **ROS 2** installation, **Iron or later** (up to Rolling).
+EMOS requires a working **ROS 2** installation (**Humble**, **Iron**, **Jazzy**, **Kilted**, or **Rolling**).
 Please ensure you have [ROS 2 installed](https://docs.ros.org/) before proceeding.
 :::
 

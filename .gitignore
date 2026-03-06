@@ -12,6 +12,10 @@ __pycache__/
 dist/
 build/
 
+# Go CLI build artifacts
+stack/emos-cli/emos
+stack/emos-cli/dist/
+
 # OS
 .DS_Store
 Thumbs.db

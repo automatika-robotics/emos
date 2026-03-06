@@ -1,0 +1,166 @@
+# EMOS Jetson Dockerfile — for manual builds on Jetson hardware only.
+# NOT built in CI. See README.md for instructions.
+
+# Base Image: Ubuntu 20.04 for L4T with ONNX Runtime
+FROM dustynv/onnxruntime:r35.4.1
+
+ARG ROS_DISTRO=jazzy
+
+ENV ROS_DISTRO=${ROS_DISTRO}
+ENV ROS_ROOT=/opt/ros/${ROS_DISTRO}
+ENV ROS_WS=/tmp/ros2_ws
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+
+# --- Install System Dependencies & ROS 2 Tools ---
+RUN apt-get update && apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    curl \
+    git \
+    wget \
+    locales \
+    software-properties-common \
+    apt-utils \
+    python3-pip \
+    python3-setuptools \
+    python3-flake8 \
+    libpython3-dev && \
+    locale-gen en_US en_US.UTF-8 && \
+    update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 && \
+    add-apt-repository universe && \
+    apt-get update && \
+    export ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F "tag_name" | awk -F\" '{print $4}') && \
+    curl -L -o /tmp/ros2-apt-source.deb "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo $UBUNTU_CODENAME)_all.deb" && \
+    dpkg -i /tmp/ros2-apt-source.deb && \
+    rm /tmp/ros2-apt-source.deb && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+    python3-rosinstall-generator \
+    ros-dev-tools && \
+    rosdep init && \
+    rosdep update && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/*
+
+# --- Remove conflicting Python version ---
+RUN apt-get update && \
+    apt-get remove --purge -y python3.9 libpython3.9* || echo "python3.9 not found, skipping removal" && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/*
+
+# --- Get ROS 2 Source and Install rosdep dependencies ---
+WORKDIR ${ROS_WS}
+RUN rosinstall_generator --deps --rosdistro ${ROS_DISTRO} \
+    ros_base \
+    launch_xml \
+    launch_yaml \
+    launch_testing \
+    launch_testing_ament_cmake \
+    demo_nodes_cpp \
+    > ros2.rosinstall && \
+    mkdir src && \
+    vcs import src < ros2.rosinstall && \
+    apt-get update && \
+    rosdep install --from-paths src --ignore-src -y \
+    --skip-keys "fastcdr rti-connext-dds-6.0.1 urdfdom_headers python3-flake8-quotes python3-flake8-import-order python3-flake8-comprehensions python3-flake8-builtins"
+
+# Reinstall asio and pybind11 from source
+RUN apt-get remove --purge -y libasio-dev && apt-get autoremove -y && \
+    wget -O /tmp/asio.tar.gz https://sourceforge.net/projects/asio/files/asio/1.36.0%20%28Stable%29/asio-1.36.0.tar.gz && \
+    mkdir -p /tmp/asio_src && \
+    tar -xzf /tmp/asio.tar.gz -C /tmp/asio_src --strip-components=1 && \
+    cp -r /tmp/asio_src/include/* /usr/include/ && \
+    rm -rf /tmp/asio.tar.gz /tmp/asio_src && \
+    git clone https://github.com/pybind/pybind11.git /tmp/pybind11_src && \
+    cd /tmp/pybind11_src && \
+    git checkout v2.10.4 && \
+    mkdir build && cd build && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local && \
+    make -j$(nproc) && \
+    make install && \
+    cd / && rm -rf /tmp/pybind11_src
+
+# --- Build ROS 2 ---
+WORKDIR ${ROS_WS}
+RUN echo "Applying Python 3.8 compatibility patch to ros2topic..." && \
+    PATCH_FILE=${ROS_WS}/src/ros2cli/ros2topic/ros2topic/api/__init__.py && \
+    sed -i '1s/^/import typing\n/' ${PATCH_FILE} && \
+    sed -i 's/list\[str\]/typing.List[str]/g' ${PATCH_FILE} && \
+    echo "Patch applied successfully." && \
+    colcon build --merge-install --install-base ${ROS_ROOT} \
+    --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_DEFAULT_CMP0148=OLD && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm -rf ${ROS_WS} /root/.ros /tmp/*
+
+# --- Install Zenoh ---
+WORKDIR ${ROS_WS}
+RUN apt-get update && apt-get install -y \
+    nlohmann-json3-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl https://sh.rustup.rs -sSf | sh -s -- -y \
+    && export PATH="/root/.cargo/bin:${PATH}" \
+    && mkdir -p src \
+    && git clone --depth 1 -b ${ROS_DISTRO} https://github.com/ros2/rmw_zenoh.git src/rmw_zenoh \
+    && /bin/bash -c "source ${ROS_ROOT}/setup.bash && \
+    colcon build --merge-install --install-base ${ROS_ROOT} \
+    --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_DEFAULT_CMP0148=OLD" \
+    && rm -rf ${ROS_WS}/src ${ROS_WS}/build ${ROS_WS}/log \
+    && rm -rf /root/.cargo /root/.rustup \
+    && sed -i '/cargo\/env/d' /root/.bashrc
+
+# --- Install Localization Packages ---
+WORKDIR ${ROS_WS}/src
+RUN apt-get update && apt-get install -y \
+    libgeographic-dev \
+    && rm -rf /var/lib/apt/lists/* && \
+    git clone --depth 1 -b ${ROS_DISTRO} https://github.com/ros-geographic-info/geographic_info.git && \
+    git clone --depth 1 -b ${ROS_DISTRO}-devel https://github.com/cra-ros-pkg/robot_localization.git && \
+    git clone --depth 1 -b ros2 https://github.com/ros/angles.git && \
+    rm -rf geographic_info/geographic_info geographic_info/geodesy
+
+WORKDIR ${ROS_WS}
+RUN /bin/bash -c "source ${ROS_ROOT}/setup.bash && \
+    colcon build --merge-install --install-base ${ROS_ROOT} \
+    --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_DEFAULT_CMP0148=OLD" && \
+    rm -rf ${ROS_WS}/src ${ROS_WS}/build ${ROS_WS}/log
+
+# --- Install kompass-core with GPU acceleration ---
+WORKDIR /
+RUN ldconfig && \
+    echo "Verifying linker cache for Tegra CUDA driver..." && \
+    ldconfig -p | grep 'tegra/libcuda.so.1'
+RUN curl -sSL https://raw.githubusercontent.com/automatika-robotics/kompass-core/refs/heads/main/build_dependencies/install_gpu.sh | bash
+
+# --- Install Python Dependencies & EMOS Packages ---
+WORKDIR ${ROS_WS}/src
+RUN apt-get update && apt-get install -y portaudio19-dev jq && \
+    pip install --no-cache-dir numpy opencv-python-headless 'attrs>=23.2.0' jinja2 httpx msgpack msgpack-numpy \
+    setproctitle platformdirs tqdm pyyaml toml websockets && \
+    pip install --no-cache-dir ollama redis[hiredis] pyaudio soundfile fastapi[standard-no-fastapi-cloud-cli] && \
+    rm -rf /root/.cache/pip && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+COPY stack/sugarcoat sugarcoat
+COPY stack/kompass kompass
+COPY stack/embodied-agents embodied-agents
+
+# --- Build EMOS Packages ---
+WORKDIR ${ROS_WS}
+RUN /bin/bash -c "source ${ROS_ROOT}/setup.bash && \
+    colcon build --merge-install --install-base ${ROS_ROOT} \
+    --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_DEFAULT_CMP0148=OLD" && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* && rm -rf ${ROS_WS} /root/.ros /tmp/*
+
+# --- Final Configuration ---
+WORKDIR /
+ENV ROS_WS=
+ENV RMW_IMPLEMENTATION=rmw_zenoh_cpp
+COPY docker/jetson/entrypoint.sh /ros_entrypoint.sh
+RUN chmod +x /ros_entrypoint.sh
+
+ENTRYPOINT ["/ros_entrypoint.sh"]
+CMD ["bash"]

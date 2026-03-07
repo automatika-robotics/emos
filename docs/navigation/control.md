@@ -11,13 +11,13 @@ It supports modular **Plugins** allowing you to switch between different control
 The Controller typically runs at a high frequency (10Hz-50Hz) to ensure smooth motion.
 
 ```{list-table}
-:widths: 10 80
+:widths: 20 80
+* - **{material-regular}`schedule;1.2em;sd-text-primary` Timed**
+  - **Periodic Control Loop.** Computes a new velocity command periodically if all necessary inputs are available.
 
-* - **Timed**
-  - Compute a new control command periodically if all inputs are available.
+* - **{material-regular}`hourglass_top;1.2em;sd-text-primary` Action Server**
+  - **Goal Tracking.** Offers a [`ControlPath`](https://github.com/automatika-robotics/kompass/blob/main/kompass_interfaces/action/ControlPath.action) ROS2 Action. Continuously computes control commands until the goal is reached or the action is preempted.
 
-* - **ActionServer**
-  - Offers a [ControlPath](https://github.com/automatika-robotics/kompass/blob/main/kompass_interfaces/action/ControlPath.action) ROS2 Action and continuously computes a new control once an action request is received until the goal point is reached.
 ```
 
 ## Inputs

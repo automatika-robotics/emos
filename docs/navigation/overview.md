@@ -1,34 +1,27 @@
 # Kompass
 
-**The navigation engine of EMOS -- GPU-accelerated, event-driven autonomy for mobile robots.**
+**The navigation engine of EMOS --** <span class="text-red-strong">GPU-accelerated, event-driven autonomy for mobile robots</span>
 
-[Kompass](https://github.com/automatika-robotics/kompass) lets you create sophisticated navigation stacks within a single Python script -- with blazingly fast, hardware-agnostic performance. It is the only open-source navigation framework with cross-vendor GPU acceleration.
+[Kompass](https://github.com/automatika-robotics/kompass) lets you create sophisticated navigation stacks with blazingly fast, hardware-agnostic performance. It is the only open-source navigation framework with cross-vendor GPU acceleration.
 
 ## Why Kompass?
 
-Robotic navigation isn't about perfecting a single component -- it's about architecting a system that survives contact with the real world. While metric navigation has matured, deploying robots extensively in dynamic environments remains an unsolved challenge.
+Robotic navigation isn't about perfecting a single component; it is about architecting a system that survives contact with the real world.
 
-```{epigraph}
-_"... while it is worthwhile to extend navigation research in directions orthogonal to metric navigation, the community should also not overlook the problems that still remain in this space, especially when robots are expected to be extensively and reliably deployed in the real world."_
+While metric navigation has matured, deploying robots extensively in dynamic environments remains an unsolved challenge. As highlighted by the **ICRA BARN Challenges**, static pipelines fail when faced with the unpredictability of the physical world:
 
--- Lessons learned from The BARN Challenge at ICRA 2022, *[full article](https://www.researchgate.net/publication/362858861_Autonomous_Ground_Navigation_in_Highly_Constrained_Spaces_Lessons_learned_from_The_BARN_Challenge_at_ICRA_2022)*
-```
+> _"A single stand-alone approach that is able to address all variety of obstacle configurations all together is still out of our reach."_
+> — **Lessons from The 3rd BARN Challenge (ICRA 2024)**
 
-```{epigraph}
-_"All teams adopted a hybrid paradigm in terms of a finite-state-machine setup, which requires different components to address different situations in the obstacle courses, ... Such a pragmatic practice suggests that a single stand-alone approach that is able to address all variety of obstacle configurations all together is still out of our reach."_
+**Kompass was built to fill this gap.** Unlike existing solutions that rely on rigid behavior trees, Kompass is an event-driven, GPU-native stack designed for maximum adaptability and hardware efficiency.
 
--- Lessons learned from The 3rd BARN Challenge at ICRA 2024, *[full article](https://arxiv.org/html/2407.01862v1)*
-```
+- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`bolt;1.2em;sd-text-primary` Adaptive Event-Driven Core</span> -- The stack reconfigures itself on the fly based on environmental context. Use *Pure Pursuit* on open roads, switch to *DWA* indoors, fall back to a docking controller near the station -- all triggered by events, not brittle Behavior Trees. Adapt to external world events ("Crowd Detected", "Entering Warehouse"), not just internal robot states.
 
-Kompass was built to fill this gap:
+- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`speed;1.2em;sd-text-primary` GPU-Accelerated, Vendor-Agnostic</span> -- Core algorithms in C++ with SYCL-based GPU support. Runs natively on **Nvidia, AMD, Intel, and other** GPUs without vendor lock-in -- the first navigation framework to support cross-GPU acceleration. Up to **3,106x speedups** over CPU-based approaches.
 
-- {material-regular}`bolt;1.2em;sd-text-primary` **Adaptive Event-Driven Core** -- The stack reconfigures itself on the fly based on environmental context. Use *Pure Pursuit* on open roads, switch to *DWA* indoors, fall back to a docking controller near the station -- all triggered by events, not brittle Behavior Trees. Adapt to external world events ("Crowd Detected", "Entering Warehouse"), not just internal robot states.
+- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`psychology;1.2em;sd-text-primary` ML Models as First-Class Citizens</span> -- Event-driven design means ML model outputs can directly reconfigure the navigation stack. Use object detection to switch controllers, VLMs to answer abstract perception queries, or [EmbodiedAgents](https://github.com/automatika-robotics/embodied-agents) vision components for target tracking -- all seamlessly integrated through EMOS's unified architecture.
 
-- {material-regular}`speed;1.2em;sd-text-primary` **GPU-Accelerated, Vendor-Agnostic** -- Core algorithms in C++ with SYCL-based GPU support. Runs natively on **Nvidia, AMD, Intel, and other** GPUs without vendor lock-in -- the first navigation framework to support cross-GPU acceleration. Up to **3,106x speedups** over CPU-based approaches.
-
-- {material-regular}`psychology;1.2em;sd-text-primary` **ML Models as First-Class Citizens** -- Event-driven design means ML model outputs can directly reconfigure the navigation stack. Use object detection to switch controllers, VLMs to answer abstract perception queries, or [EmbodiedAgents](https://github.com/automatika-robotics/embodied-agents) vision components for target tracking -- all seamlessly integrated through EMOS's unified architecture.
-
-- {material-regular}`code;1.2em;sd-text-primary` **Pythonic Simplicity** -- Configure a sophisticated, multi-fallback navigation system in a single readable Python script. Core algorithms are decoupled from ROS wrappers, so upgrading ROS distributions won't break your navigation logic. Extend with new planners in Python for prototyping or C++ for production.
+- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`code;1.2em;sd-text-primary` Pythonic Simplicity</span> -- Configure a sophisticated, multi-fallback navigation system in a single readable Python script. Core algorithms are decoupled from ROS wrappers, so upgrading ROS distributions won't break your navigation logic. Extend with new planners in Python for prototyping or C++ for production.
 
 ---
 

@@ -26,24 +26,20 @@ The available motion tests include Step tests and Circle test and can be configu
 ## Available Run Types
 
 ```{list-table}
-:widths: 10 80
+:widths: 20 80
+* - **{material-regular}`schedule;1.2em;sd-text-primary` Timed**
+  - **Auto-Start Tests.** Automatically launches the configured motion tests periodically after the component starts.
 
-* - **Timed**
-  - Launches automated tests periodically after the component starts.
+* - **{material-regular}`touch_app;1.2em;sd-text-primary` Event**
+  - **Triggered Tests.** Waits for a `True` signal on the `run_tests` input topic to launch the calibration sequence.
 
-* - **Event**
-  - Launches automated testing when a trigger is received on the `run_tests` input topic.
+* - **{material-regular}`hourglass_top;1.2em;sd-text-primary` Action Server**
+  - **On-Demand Recording.** Offers a `MotionRecording` ROS2 Action. Allows you to start/stop recording specific topics for a set duration via an Action Goal.
 
-* - **ActionServer**
-  - Offers a `MotionRecording` ROS2 Action to start/stop recording for a set duration.
 ```
 
-```{tip}
-Launch the MotionServer as a **Timed** component to launch the basic motion tests automatically, or as an **Event** component to launch the tests when a trigger is received.
-```
-
-```{tip}
-Launch the MotionServer as an **ActionServer** component and send a request to record your robot's motion at any time during the navigation.
+```{note}
+The available motion tests include Step tests and Circle test and can be configured by adjusting the [MotionServerConfig](../apidocs/kompass/kompass.components.motion_server.md)
 ```
 
 ## Inputs

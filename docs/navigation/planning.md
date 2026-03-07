@@ -1,4 +1,4 @@
-# Path Planning
+# Global Planner
 
 **Global path planning and trajectory generation.**
 
@@ -11,19 +11,18 @@ It leverages the **[Open Motion Planning Library (OMPL)](https://ompl.kavrakilab
 Planner can be used with all four available Run Types:
 
 ```{list-table}
-:widths: 10 80
+:widths: 20 80
+* - **{material-regular}`schedule;1.2em;sd-text-primary` Timed**
+  - **Periodic Re-planning.** Compute a new plan periodically (e.g., at 1Hz) from the robot's current location to the last received goal.
 
-* - **Timed**
-  - Compute a new plan periodically from current location (last message received on location input Topic) to the goal location (last message received on goal_point input Topic).
+* - **{material-regular}`touch_app;1.2em;sd-text-primary` Event**
+  - **Reactive Planning.** Trigger a new plan computation *only* when a new message is received on the `goal_point` topic.
 
-* - **Event**
-  - Compute a new plan from current location on every new message received on **goal_point** input Topic.
+* - **{material-regular}`dns;1.2em;sd-text-primary` Service**
+  - **Request/Response.** Offers a standard ROS2 Service (`PlanPath`). Computes a single plan per request and returns it immediately.
 
-* - **Server**
-  - Offers a PlanPath ROS2 Service and computes a new plan on every service request.
-
-* - **ActionServer**
-  - Offers a PlanPath ROS2 Action and continuously computes a plan once an action request is received until the goal point is reached.
+* - **{material-regular}`hourglass_top;1.2em;sd-text-primary` Action Server**
+  - **Long-Running Goal.** Offers a standard ROS2 Action. continuously computes and updates the plan until the goal is reached or canceled.
 ```
 
 ## Inputs

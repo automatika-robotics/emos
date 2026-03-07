@@ -17,15 +17,6 @@ To maximize performance and adaptability, the implementation **supports both CPU
 - <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`developer_board;1.5em;sd-text-primary` Multi-Threaded CPU</span> — Falls back to a highly optimized multi-threaded CPU implementation if no GPU is available.
 
 
-### Available Run Types
-
-```{list-table}
-:widths: 10 80
-
-* - **Timed**
-  - Produces a local map periodically if all inputs are available.
-```
-
 ### Inputs
 
 ```{list-table}

@@ -18,11 +18,11 @@ robot_config = RobotConfig(
 
 EMOS supports three distinct kinematic models. Choose the one that matches your robot's drivetrain.
 
-- {material-regular}`directions_car;1.2em;sd-text-primary` **Ackermann** — Car-Like Vehicles. Non-holonomic constraints (bicycle model). The robot has a limited steering angle and cannot rotate in place.
+- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`directions_car;1.2em;sd-text-primary` Ackermann</span> — Car-Like Vehicles. Non-holonomic constraints (bicycle model). The robot has a limited steering angle and cannot rotate in place.
 
-- {material-regular}`swap_horiz;1.2em;sd-text-primary` **Differential** — Two-Wheeled Robots. Capable of forward/backward motion and zero-radius rotation (spinning in place).
+- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`swap_horiz;1.2em;sd-text-primary` Differential</span> — Two-Wheeled Robots. Capable of forward/backward motion and zero-radius rotation (spinning in place).
 
-- {material-regular}`open_with;1.2em;sd-text-primary` **Omni** — Holonomic Robots. Mecanum-wheel platforms or quadrupeds. Capable of instantaneous motion in any direction (x, y) and rotation.
+- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`open_with;1.2em;sd-text-primary` Omni</span> — Holonomic Robots. Mecanum-wheel platforms or quadrupeds. Capable of instantaneous motion in any direction (x, y) and rotation.
 
 ## Robot Geometry
 

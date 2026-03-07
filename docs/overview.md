@@ -2,21 +2,29 @@
 
 **The open-source unified orchestration layer for Physical AI.**
 
-EMOS transforms robots into **Physical AI Agents**. It provides a hardware-agnostic runtime that lets robots **see**, **think**, **move**, and **adapt** -- all orchestrated from pure Python scripts called **Recipes**.
+EMOS transforms robots into <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">Physical AI Agents</span>. It provides a hardware-agnostic runtime that lets robots **see**, **think**, **move**, and **adapt** -- all orchestrated from pure Python scripts called <span class="text-red-strong">Recipes</span>.
 
-Write a Recipe once, deploy it on any robot -- from wheeled AMRs to humanoids -- without rewriting code.
+Write a _Recipe_ once, deploy it on any robot -- from wheeled AMRs to humanoids -- without rewriting code.
 
 :::{image} _static/images/diagrams/emos_robot_stack_light.png
 :align: center
-:width: 600px
+:width: 70%
 :class: light-only
 :::
 
 :::{image} _static/images/diagrams/emos_robot_stack_dark.png
 :align: center
-:width: 600px
+:width: 70%
 :class: dark-only
 :::
+
+<br/>
+
+<p align="center">
+  <a href="./getting-started/installation.md">Get Started</a> •
+  <a href="./why-emos.md">Why EMOS?</a> •
+  <a href="https://github.com/automatika-robotics/emos">View on GitHub</a>
+</p>
 
 ---
 
@@ -25,26 +33,26 @@ Write a Recipe once, deploy it on any robot -- from wheeled AMRs to humanoids --
 ::::{grid} 1 2 2 2
 :gutter: 3
 
-:::{grid-item-card} {material-regular}`psychology;1.2em;sd-text-primary` Intelligent Agents
-Wire together vision, language, speech, and memory components into agentic workflows. Route queries by intent, answer questions about the environment, or build a semantic map -- all from a single Python script.
+:::{grid-item-card} <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`psychology;1.2em;sd-text-primary` Intelligent Agents</span>
+Wire together vision, language, speech, and memory components into **agentic workflows**. Route queries by intent, answer questions about the environment, or build a semantic map -- all from a single Python script.
 
 [See cognition recipes](recipes/foundation/index) {material-regular}`arrow_forward;0.9em`
 :::
 
-:::{grid-item-card} {material-regular}`route;1.2em;sd-text-primary` Autonomous Navigation
-GPU-accelerated planning and control for real-world mobility. Point-to-point navigation, path recording, and vision-based target following -- across differential drive, Ackermann, and omnidirectional platforms.
+:::{grid-item-card} <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`route;1.2em;sd-text-primary` Autonomous Navigation</span>
+**GPU-accelerated** planning and control for real-world mobility. Point-to-point navigation, path recording, and vision-based target following -- across differential drive, Ackermann, and omnidirectional platforms.
 
 [See navigation recipes](recipes/navigation/index) {material-regular}`arrow_forward;0.9em`
 :::
 
-:::{grid-item-card} {material-regular}`sync_alt;1.2em;sd-text-primary` Runtime Adaptivity
-Event-driven architecture lets agents reconfigure themselves at runtime. Hot-swap ML models on network failure, switch navigation algorithms when stuck, trigger recovery maneuvers from sensor events, or compose complex behaviors with logic gates.
+:::{grid-item-card} <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`sync_alt;1.2em;sd-text-primary` Runtime Adaptivity</span>
+**Event-driven** architecture lets agents reconfigure themselves at runtime. Hot-swap ML models on network failure, switch navigation algorithms when stuck, trigger recovery maneuvers from sensor events, or compose complex behaviors with logic gates.
 
 [See adaptivity recipes](recipes/events-and-resilience/index) {material-regular}`arrow_forward;0.9em`
 :::
 
-:::{grid-item-card} {material-regular}`precision_manufacturing;1.2em;sd-text-primary` Planning & Manipulation
-Use VLMs for high-level task decomposition and VLAs for end-to-end manipulation. Closed-loop control where a VLM referee stops actions on visual task completion.
+:::{grid-item-card} <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`precision_manufacturing;1.2em;sd-text-primary` Planning & Manipulation</span>
+Use **VLMs** for high-level task decomposition and **VLAs** for end-to-end manipulation. Closed-loop control where a VLM referee stops actions on visual task completion.
 
 [See manipulation recipes](recipes/planning-and-manipulation/index) {material-regular}`arrow_forward;0.9em`
 :::
@@ -59,9 +67,9 @@ EMOS is built on three open-source components:
 
 | Component | Role |
 | :--- | :--- |
-| **[EmbodiedAgents](https://github.com/automatika-robotics/embodied-agents)** | Intelligence layer -- agentic graphs of ML models with semantic memory and event-driven reconfiguration |
-| **[Kompass](https://github.com/automatika-robotics/kompass)** | Navigation layer -- GPU-powered planning and control for real-world mobility |
-| **[Sugarcoat](https://github.com/automatika-robotics/sugarcoat)** | Architecture layer -- event-driven system primitives and imperative launch API |
+| **[EmbodiedAgents](https://github.com/automatika-robotics/embodied-agents)** | <span class="text-red-strong" style="font-size: 1em;">Intelligence layer</span> -- agentic graphs of ML models with semantic memory and event-driven reconfiguration |
+| **[Kompass](https://github.com/automatika-robotics/kompass)** | <span class="text-red-strong" style="font-size: 1em;">Navigation layer</span> -- GPU-powered planning and control for real-world mobility |
+| **[Sugarcoat](https://github.com/automatika-robotics/sugarcoat)** | <span class="text-red-strong" style="font-size: 1em;">Architecture layer</span> -- event-driven system primitives and imperative launch API |
 
 ---
 

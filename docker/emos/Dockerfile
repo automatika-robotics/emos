@@ -31,7 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Python dependencies
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
-RUN pip install --no-cache-dir \
+RUN pip install --no-cache-dir --ignore-installed \
     numpy \
     opencv-python-headless \
     'attrs>=23.2.0' \

@@ -79,7 +79,7 @@ EMOS is built on three open-source components that work in tandem:
 
 | Component | Layer | What It Does |
 | :--- | :--- | :--- |
-| [**EmbodiedAgents**](https://github.com/automatika-robotics/embodied-agents) | Intelligence | Agentic graphs of ML models with semantic memory, multi-modal perception, and event-driven adaptive reconfiguration. |
+| [**EmbodiedAgents**](https://github.com/automatika-robotics/embodied-agents) | Intelligence & Manipulation | Agentic graphs of ML models with semantic memory, multi-modal perception, manipulation, and event-driven adaptive reconfiguration. |
 | [**Kompass**](https://github.com/automatika-robotics/kompass) | Navigation | GPU-accelerated planning and control for real-world mobility. Cross-vendor SYCL support -- runs on Nvidia, AMD, Intel, and others. |
 | [**Sugarcoat**](https://github.com/automatika-robotics/sugarcoat) | System Primitives | Lifecycle-managed components, event-driven system design, and a Pythonic launch API that replaces XML configuration. |
 

@@ -1,13 +1,11 @@
 package ui
 
 import (
-	"bufio"
 	"fmt"
-	"os"
 	"strings"
-	"sync"
 	"time"
 
+	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -46,6 +44,44 @@ func Banner(version string) {
 	fmt.Println()
 }
 
+func StatusCard(version string) {
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#FFFFFF")).
+		Background(lipgloss.Color("#d54e53")).
+		Padding(0, 1)
+
+	descStyle := lipgloss.NewStyle().
+		Foreground(ThemeNeutral).
+		PaddingLeft(2)
+
+	linkStyle := lipgloss.NewStyle().
+		Foreground(ThemeBlue).
+		Underline(true).
+		PaddingLeft(2)
+
+	orgStyle := lipgloss.NewStyle().
+		Foreground(ThemeYellow).
+		Bold(true).
+		PaddingLeft(2)
+
+	card := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#444444")).
+		Padding(1, 3).
+		Width(56)
+
+	content := titleStyle.Render(" EMOS ") + "  " +
+		faintStyle.Render("v"+version) + "\n\n" +
+		descStyle.Render("The Embodied Operating System") + "\n" +
+		descStyle.Render("The automation orchestration layer for your robot.") + "\n\n" +
+		orgStyle.Render("Automatika Robotics") + "\n" +
+		linkStyle.Render("https://automatikarobotics.com") + "\n" +
+		linkStyle.Render("https://github.com/automatika-robotics/emos")
+
+	fmt.Println(card.Render(content))
+}
+
 func Header(msg string) {
 	style := lipgloss.NewStyle().
 		Bold(true).
@@ -67,32 +103,34 @@ func SuccessBox(msg string) {
 }
 
 func Confirm(prompt string) bool {
-	fmt.Printf("  %s [y/N] ", prompt)
-	scanner := bufio.NewScanner(os.Stdin)
-	scanner.Scan()
-	response := strings.TrimSpace(strings.ToLower(scanner.Text()))
-	return response == "y" || response == "yes"
+	var result bool
+	huh.NewConfirm().
+		Title(prompt).
+		Affirmative("Yes").
+		Negative("No").
+		Value(&result).
+		WithTheme(huhTheme()).
+		Run()
+	return result
 }
 
 func Input(prompt, defaultVal string) string {
-	if defaultVal != "" {
-		fmt.Printf("  %s (default: %s): ", prompt, defaultVal)
-	} else {
-		fmt.Printf("  %s: ", prompt)
-	}
-	scanner := bufio.NewScanner(os.Stdin)
-	scanner.Scan()
-	val := strings.TrimSpace(scanner.Text())
-	if val == "" {
+	var result string
+	huh.NewInput().
+		Title(prompt).
+		Value(&result).
+		Placeholder(defaultVal).
+		WithTheme(huhTheme()).
+		Run()
+	if result == "" {
 		return defaultVal
 	}
-	return val
+	return result
 }
 
 func Spinner(title string, fn func() error) error {
 	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 	done := make(chan error, 1)
-	var once sync.Once
 
 	go func() {
 		done <- fn()
@@ -106,19 +144,41 @@ func Spinner(title string, fn func() error) error {
 		select {
 		case err := <-done:
 			fmt.Print("\r\033[K") // clear line
-			once.Do(func() {
-				if err != nil {
-					Error(title)
-				} else {
-					Success(title)
-				}
-			})
+			if err != nil {
+				Error(title)
+			} else {
+				Success(title)
+			}
 			return err
 		case <-ticker.C:
 			fmt.Printf("\r  %s %s", blueStyle.Render(frames[i%len(frames)]), title)
 			i++
 		}
 	}
+}
+
+// Select displays an interactive arrow-key menu and returns the 0-based index of the chosen option.
+func Select(prompt string, options []string) int {
+	var result int
+	opts := make([]huh.Option[int], len(options))
+	for i, opt := range options {
+		opts[i] = huh.NewOption(opt, i)
+	}
+	huh.NewSelect[int]().
+		Title(prompt).
+		Options(opts...).
+		Value(&result).
+		WithTheme(huhTheme()).
+		Run()
+	return result
+}
+
+func huhTheme() *huh.Theme {
+	t := huh.ThemeCharm()
+	t.Focused.Title = lipgloss.NewStyle().Foreground(ThemeBlue).Bold(true)
+	t.Focused.SelectedOption = lipgloss.NewStyle().Foreground(ThemeGreen)
+	t.Focused.UnselectedOption = lipgloss.NewStyle().Foreground(ThemeNeutral)
+	return t
 }
 
 func PrintTable(headers []string, rows [][]string) {

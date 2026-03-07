@@ -19,13 +19,14 @@ const (
 )
 
 type recipeManifest struct {
-	AutonomousMode       bool     `json:"autonomous_mode"`
-	WebClient            bool     `json:"web_client"`
-	Sensors              []string `json:"sensors"`
-	ZenohRouterConfig    string   `json:"zenoh_router_config_file"`
+	AutonomousMode    bool                `json:"autonomous_mode"`
+	WebClient         bool                `json:"web_client"`
+	Sensors           []string            `json:"sensors"`
+	ZenohRouterConfig string              `json:"zenoh_router_config_file"`
+	SensorTopics      map[string][]string `json:"sensor_topics,omitempty"`
 }
 
-func RunRecipe(recipeName, rmwImpl string) error {
+func RunRecipe(recipeName, rmwImpl string, skipSensorCheck bool) error {
 	// Validate RMW implementation
 	validRMW := map[string]bool{
 		"rmw_fastrtps_cpp":   true,
@@ -56,110 +57,72 @@ func RunRecipe(recipeName, rmwImpl string) error {
 	}
 
 	// Setup logging
-	logDir := filepath.Join(config.HomeDir, "emos", "logs")
-	os.MkdirAll(logDir, 0755)
+	os.MkdirAll(config.LogsDir, 0755)
 	timestamp := time.Now().Format("20060102_150405")
-	logFile := filepath.Join(logDir, fmt.Sprintf("%s_%s.log", recipeName, timestamp))
+	logFile := filepath.Join(config.LogsDir, fmt.Sprintf("%s_%s.log", recipeName, timestamp))
+
+	// Determine strategy from config
+	cfg := config.LoadConfig()
+	if cfg == nil {
+		return fmt.Errorf("no EMOS installation found — run 'emos install' first")
+	}
+	mode := cfg.Mode
 
 	ui.Header("EMOS - PRE-RECIPE SETUP")
 	ui.Info("Recipe Name: " + recipeName)
+	ui.Info("Mode: " + string(mode))
 	ui.Info("RMW Implementation: " + rmwImpl)
-	ui.Info("Container: " + config.ContainerName)
 	ui.Info("Required sensors: " + strings.Join(manifest.Sensors, ", "))
 	ui.Info("Autonomous mode: " + fmt.Sprintf("%v", manifest.AutonomousMode))
 
-	// Container management
-	ui.Header("HOST & CONTAINER MANAGEMENT")
-
-	killROSProcesses()
-
-	if !container.Exists(config.ContainerName) {
-		return fmt.Errorf("container '%s' does not exist — run 'emos install' first", config.ContainerName)
+	var strategy RuntimeStrategy
+	switch mode {
+	case config.ModeOSSContainer:
+		strategy = NewContainerStrategy(false)
+	case config.ModeLicensed:
+		strategy = NewContainerStrategy(true)
+	case config.ModeNative:
+		strategy = NewNativeStrategy()
+	default:
+		return fmt.Errorf("unknown install mode: %s", mode)
 	}
 
-	if container.IsRunning(config.ContainerName) {
-		ui.Spinner("Stopping existing EMOS container...", func() error {
-			return container.Stop(config.ContainerName)
-		})
+	// Execute the recipe pipeline
+	if err := strategy.PrepareEnvironment(); err != nil {
+		return err
 	}
 
-	if err := ui.Spinner("Starting EMOS container...", func() error {
-		return container.Start(config.ContainerName)
-	}); err != nil {
-		return fmt.Errorf("failed to start container: %w", err)
+	if err := strategy.SetRMWImpl(rmwImpl); err != nil {
+		return err
 	}
-
-	// RMW Configuration
-	ui.Header("RMW CONFIGURATION")
-	ui.Info("Setting RMW_IMPLEMENTATION=" + rmwImpl)
-	setRMWImpl(rmwImpl)
 
 	if rmwImpl == "rmw_zenoh_cpp" {
-		if err := configureZenoh(recipeName, &manifest); err != nil {
+		if err := strategy.ConfigureZenoh(recipeName, &manifest); err != nil {
 			return err
 		}
 	}
 
-	// Hardware & Sensor Launch
-	ui.Header("HARDWARE & SENSOR LAUNCH")
-
-	if err := ui.Spinner("Launching robot base hardware...", func() error {
-		return container.ExecDetached(config.ContainerName,
-			"source ros_entrypoint.sh && ros2 launch "+emosRoot+"/robot/launch/bringup_robot.py")
-	}); err != nil {
+	if err := strategy.LaunchRobotHardware(); err != nil {
 		return err
 	}
 
 	for _, sensor := range manifest.Sensors {
-		if err := launchSensor(recipeName, sensor); err != nil {
+		configFile := findSensorConfig(recipeName, sensor, mode)
+		if err := strategy.LaunchSensor(recipeName, sensor, configFile); err != nil {
 			return err
 		}
 	}
 
-	// Node Verification
-	ui.Header("VERIFYING ROS2 NODES")
-	time.Sleep(5 * time.Second)
-
-	if err := verifyNodes(manifest.Sensors); err != nil {
-		container.Stop(config.ContainerName)
-		return err
-	}
-
-	// Final Configuration
-	ui.Header("FINAL CONFIGURATION")
-
-	if manifest.AutonomousMode {
-		ui.Spinner("Activating autonomous mode...", func() error {
-			return container.ExecDetached(config.ContainerName,
-				"source ros_entrypoint.sh && ./"+emosRoot+"/robot/scripts/activate_autonomous_mode.sh")
-		})
-		ui.Warn("ATTENTION: Autonomous Mode is now ON.")
+	if !skipSensorCheck {
+		if err := strategy.VerifyNodes(manifest.Sensors, &manifest); err != nil {
+			strategy.Cleanup()
+			return err
+		}
 	} else {
-		ui.Spinner("Deactivating autonomous mode...", func() error {
-			return container.ExecDetached(config.ContainerName,
-				"source ros_entrypoint.sh && ./"+emosRoot+"/robot/scripts/deactivate_autonomous_mode.sh")
-		})
+		ui.Info("Sensor check skipped (--skip-sensor-check)")
 	}
 
-	// Recipe Execution
-	ui.Header("LAUNCHING RECIPE: " + recipeName)
-	ui.Info("All output will be saved to: " + logFile)
-
-	if manifest.WebClient {
-		ui.Spinner("Starting web client in background...", func() error {
-			return container.ExecDetached(config.ContainerName,
-				"source ros_entrypoint.sh && ros2 run automatika_embodied_agents tiny_web_client")
-		})
-		ui.Info("Web client should be available at http://<ROBOT_IP>:8080")
-	}
-
-	ui.Success("BEGIN RECIPE OUTPUT")
-	fmt.Println()
-
-	// Execute recipe interactively with tee to log file
-	recipeCmd := fmt.Sprintf("source ros_entrypoint.sh && python3 %s/%s/recipe.py | tee %s",
-		recipesRoot, recipeName, logFile)
-	err = container.ExecInteractive(config.ContainerName, recipeCmd)
+	err = strategy.ExecRecipe(recipeName, &manifest, logFile)
 
 	fmt.Println()
 	if err != nil {
@@ -168,18 +131,35 @@ func RunRecipe(recipeName, rmwImpl string) error {
 		ui.Success(fmt.Sprintf("Recipe '%s' finished successfully.", recipeName))
 	}
 
-	// Cleanup
-	ui.Spinner("EMOS container cleanup...", func() error {
-		return container.Stop(config.ContainerName)
-	})
-
+	strategy.Cleanup()
 	return err
+}
+
+// findSensorConfig looks for a sensor-specific config file in the recipe directory.
+func findSensorConfig(recipeName, sensor string, mode config.InstallMode) string {
+	if mode == config.ModeNative {
+		for _, ext := range []string{"yaml", "json", "toml"} {
+			candidate := filepath.Join(config.RecipesDir, recipeName, sensor+"_config."+ext)
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate
+			}
+		}
+		return ""
+	}
+	// Container modes: check inside container
+	for _, ext := range []string{"yaml", "json", "toml"} {
+		candidate := fmt.Sprintf("%s/%s/%s_config.%s", recipesRoot, recipeName, sensor, ext)
+		if container.FileExists(config.ContainerName, candidate) {
+			return candidate
+		}
+	}
+	return ""
 }
 
 func killROSProcesses() {
 	ui.Info("Killing host ROS processes...")
 	for _, proc := range []string{"roslaunch", "roscore", "ros2"} {
-		exec_command("sudo", "pkill", "-f", proc)
+		runQuiet("sudo", "pkill", "-f", proc)
 	}
 	time.Sleep(time.Second)
 	ui.Success("Terminated host ROS processes.")
@@ -223,7 +203,6 @@ func configureZenoh(recipeName string, manifest *recipeManifest) error {
 	}
 	time.Sleep(2 * time.Second)
 
-	// Set or remove ZENOH_ROUTER_CONFIG_URI
 	if zenohConfigURI != "" {
 		container.Exec(config.ContainerName, fmt.Sprintf(`
 if grep -q '^export ZENOH_ROUTER_CONFIG_URI=' /ros_entrypoint.sh; then
@@ -239,83 +218,65 @@ fi`, zenohConfigURI, zenohConfigURI))
 	return nil
 }
 
-func launchSensor(recipeName, sensor string) error {
-	// Look for custom config file
-	configFile := ""
-	for _, ext := range []string{"yaml", "json", "toml"} {
-		candidate := fmt.Sprintf("%s/%s/%s_config.%s", recipesRoot, recipeName, sensor, ext)
-		if container.FileExists(config.ContainerName, candidate) {
-			configFile = candidate
-			break
-		}
-	}
-
-	title := "Launching sensor: " + sensor
-	return ui.Spinner(title, func() error {
-		cmd := "source ros_entrypoint.sh && ros2 launch " + emosRoot + "/robot/launch/bringup_" + sensor + ".py"
-		if configFile != "" {
-			cmd += " config_file:=" + configFile
-		}
-		return container.ExecDetached(config.ContainerName, cmd)
-	})
+// runQuiet runs a system command, ignoring errors (used for pkill etc.)
+func runQuiet(name string, args ...string) {
+	execCommand(name, args...).Run()
 }
 
-func verifyNodes(sensors []string) error {
-	robotManifest := filepath.Join(config.HomeDir, emosRoot, "robot", "manifest.json")
-	data, err := os.ReadFile(robotManifest)
-	if err != nil {
-		return fmt.Errorf("robot manifest not found: %w", err)
-	}
+// topicChecker abstracts how to run `ros2 topic list` for different modes.
+type topicChecker func() (string, error)
 
-	var robotConfig map[string]json.RawMessage
-	json.Unmarshal(data, &robotConfig)
-
-	// Get base nodes
-	var baseNodes []string
-	if raw, ok := robotConfig["base"]; ok {
-		json.Unmarshal(raw, &baseNodes)
-	}
-
-	// Get sensor nodes
+// expectedSensorTopics builds the map of sensor->topics from the manifest or defaults.
+func expectedSensorTopics(sensors []string, manifest *recipeManifest) map[string][]string {
+	topics := map[string][]string{}
 	for _, sensor := range sensors {
-		if raw, ok := robotConfig[sensor]; ok {
-			var node string
-			if json.Unmarshal(raw, &node) == nil && node != "" {
-				baseNodes = append(baseNodes, node)
-			}
-		}
-	}
-
-	ui.Info("Verifying required ROS2 nodes are active...")
-	allPresent := true
-	for _, node := range baseNodes {
-		node = strings.TrimSpace(node)
-		found := false
-		for i := 0; i < 10; i++ {
-			out, err := container.Exec(config.ContainerName,
-				"source ros_entrypoint.sh && ros2 node list")
-			if err == nil && strings.Contains(out, node) {
-				found = true
-				break
-			}
-			time.Sleep(time.Second)
-		}
-		if found {
-			ui.Success(fmt.Sprintf("Node '%s' is active.", node))
+		if t, ok := manifest.SensorTopics[sensor]; ok {
+			topics[sensor] = t
 		} else {
-			ui.Error(fmt.Sprintf("Node '%s' did not appear within 10 seconds!", node))
-			allPresent = false
+			switch sensor {
+			case "camera":
+				topics[sensor] = []string{"/camera/image_raw"}
+			case "lidar":
+				topics[sensor] = []string{"/scan"}
+			default:
+				topics[sensor] = []string{"/" + sensor}
+			}
 		}
 	}
+	return topics
+}
 
+// verifySensorTopics checks that expected sensor topics are published.
+func verifySensorTopics(sensors []string, manifest *recipeManifest, check topicChecker) error {
+	if len(sensors) == 0 && len(manifest.SensorTopics) == 0 {
+		ui.Info("No sensor verification required.")
+		return nil
+	}
+
+	expected := expectedSensorTopics(sensors, manifest)
+	ui.Info("Verifying sensor topics are available...")
+	allPresent := true
+	for sensor, topics := range expected {
+		for _, topic := range topics {
+			found := false
+			for i := 0; i < 10; i++ {
+				out, err := check()
+				if err == nil && strings.Contains(out, topic) {
+					found = true
+					break
+				}
+				time.Sleep(time.Second)
+			}
+			if found {
+				ui.Success(fmt.Sprintf("Sensor '%s': topic '%s' found.", sensor, topic))
+			} else {
+				ui.Error(fmt.Sprintf("Sensor '%s': topic '%s' not found within 10s.", sensor, topic))
+				allPresent = false
+			}
+		}
+	}
 	if !allPresent {
-		return fmt.Errorf("required nodes are missing")
+		return fmt.Errorf("required sensor topics are missing")
 	}
 	return nil
-}
-
-// exec_command runs a system command, ignoring errors (used for pkill etc.)
-func exec_command(name string, args ...string) {
-	cmd := execCommand(name, args...)
-	cmd.Run()
 }

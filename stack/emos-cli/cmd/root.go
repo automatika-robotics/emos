@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/ui"
 	"github.com/spf13/cobra"
@@ -26,9 +24,7 @@ var versionCmd = &cobra.Command{
 	Short: "Show the current CLI version",
 	Run: func(cmd *cobra.Command, args []string) {
 		ui.Banner(config.Version)
-		fmt.Println("  EMOS is a self-contained automation layer for your robot.")
-		fmt.Println("  This tool helps you manage its lifecycle on this machine.")
-		fmt.Println("  Developed by Automatika Robotics.")
+		ui.StatusCard(config.Version)
 	},
 }
 

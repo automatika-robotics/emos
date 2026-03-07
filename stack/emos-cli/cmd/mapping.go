@@ -44,5 +44,4 @@ func init() {
 	mapCmd.AddCommand(mapRecordCmd)
 	mapCmd.AddCommand(mapInstallEditorCmd)
 	mapCmd.AddCommand(mapEditCmd)
-	_ = config.Version // ensure config is referenced
 }

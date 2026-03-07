@@ -74,6 +74,15 @@ func Pull(image string) error {
 	return cmd.Run()
 }
 
+// HasNVIDIARuntime checks if the Docker NVIDIA runtime is available.
+func HasNVIDIARuntime() bool {
+	out, err := run("info", "--format", "{{range $k, $v := .Runtimes}}{{$k}} {{end}}")
+	if err != nil {
+		return false
+	}
+	return strings.Contains(out, "nvidia")
+}
+
 func Run(name, image string, extraArgs ...string) error {
 	args := []string{
 		"run", "-d", "-it",
@@ -83,8 +92,9 @@ func Run(name, image string, extraArgs ...string) error {
 		"-v", os.Getenv("HOME") + "/emos:/emos",
 		"--name", name,
 		"--network", "host",
-		"--runtime", "nvidia",
-		"--gpus=all",
+	}
+	if HasNVIDIARuntime() {
+		args = append(args, "--runtime", "nvidia", "--gpus=all")
 	}
 	args = append(args, extraArgs...)
 	args = append(args, image)

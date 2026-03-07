@@ -19,6 +19,19 @@ import (
 const mappingContainerName = "emos-mapping"
 
 func RunMapping() error {
+	cfg := config.LoadConfig()
+	mode := config.ModeLicensed
+	if cfg != nil {
+		mode = cfg.Mode
+	}
+
+	if mode == config.ModeNative {
+		return runMappingNative(cfg)
+	}
+	return runMappingContainer(mode)
+}
+
+func runMappingContainer(mode config.InstallMode) error {
 	mapName := ui.Input("Enter a map name", "map_default")
 
 	ui.Header("EMOS - PRE-MAPPING SETUP")
@@ -56,35 +69,45 @@ func RunMapping() error {
 	// Hardware Launch
 	ui.Header("HARDWARE & SENSOR LAUNCH")
 
-	logDir := filepath.Join(config.HomeDir, "emos", "logs")
-	os.MkdirAll(logDir, 0755)
+	os.MkdirAll(config.LogsDir, 0755)
 	timestamp := time.Now().Format("20060102_150405")
-	logFile := filepath.Join(logDir, fmt.Sprintf("mapping_%s_%s.log", mapName, timestamp))
+	logFile := filepath.Join(config.LogsDir, fmt.Sprintf("mapping_%s_%s.log", mapName, timestamp))
 	ui.Info("All output will be saved to: " + logFile)
 
 	mappingLaunch := emosRoot + "/robot/launch/bringup_mapping.py"
-	if err := ui.Spinner("Launching mapping hardware...", func() error {
-		return container.ExecDetached(config.ContainerName,
-			"source ros_entrypoint.sh && ros2 launch "+mappingLaunch)
-	}); err != nil {
-		return err
+	hasBringup := container.FileExists(config.ContainerName, mappingLaunch)
+
+	if hasBringup {
+		if err := ui.Spinner("Launching mapping hardware...", func() error {
+			return container.ExecDetached(config.ContainerName,
+				"source ros_entrypoint.sh && ros2 launch "+mappingLaunch)
+		}); err != nil {
+			return err
+		}
+	} else {
+		ui.Warn("No bringup_mapping.py found in container.")
+		ui.Faint("Ensure your mapping launch files and sensor drivers are running externally.")
+		if !ui.Confirm("Continue without launching mapping hardware?") {
+			return fmt.Errorf("aborted by user")
+		}
 	}
 
-	// Node Verification
-	ui.Header("VERIFYING ROS2 NODES")
-	time.Sleep(5 * time.Second)
+	// Node Verification (only in licensed mode with bringup)
+	if hasBringup && mode == config.ModeLicensed {
+		ui.Header("VERIFYING ROS2 NODES")
+		time.Sleep(5 * time.Second)
 
-	if err := verifyNodes(nil); err != nil {
-		container.Stop(config.ContainerName)
-		return err
+		if err := verifyNodes(nil); err != nil {
+			container.Stop(config.ContainerName)
+			return err
+		}
+
+		ui.Header("FINAL CONFIGURATION")
+		ui.Spinner("Deactivating autonomous mode...", func() error {
+			return container.ExecDetached(config.ContainerName,
+				"source ros_entrypoint.sh && ./"+emosRoot+"/robot/scripts/deactivate_autonomous_mode.sh")
+		})
 	}
-
-	// Final Configuration
-	ui.Header("FINAL CONFIGURATION")
-	ui.Spinner("Deactivating autonomous mode...", func() error {
-		return container.ExecDetached(config.ContainerName,
-			"source ros_entrypoint.sh && ./"+emosRoot+"/robot/scripts/deactivate_autonomous_mode.sh")
-	})
 
 	// Data Recording
 	ui.Header("LAUNCHING DATA RECORDING")
@@ -145,6 +168,110 @@ func RunMapping() error {
 				bagPath, bagDir, mapName, bagPath)
 			_, err := container.Exec(config.ContainerName, zipCmd)
 			return err
+		})
+		if err != nil {
+			return err
+		}
+		ui.Success("Map data saved to " + bagPath + ".tar.gz")
+
+	case err := <-done:
+		if err != nil {
+			return fmt.Errorf("bag recording ended with error: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func runMappingNative(cfg *config.EMOSConfig) error {
+	mapName := ui.Input("Enter a map name", "map_default")
+
+	ui.Header("EMOS - PRE-MAPPING SETUP (NATIVE)")
+
+	distro := cfg.ROSDistro
+	wsPath := cfg.WorkspacePath
+	rosSetup := filepath.Join("/opt/ros", distro, "setup.bash")
+	sourceCmd := "source " + rosSetup
+	if wsPath != "" {
+		wsSetup := filepath.Join(wsPath, "install", "setup.bash")
+		if _, err := os.Stat(wsSetup); err == nil {
+			sourceCmd += " && source " + wsSetup
+		}
+	}
+
+	ui.Info("Map Name: " + mapName)
+	ui.Info("ROS Distro: " + distro)
+
+	// Check for bringup_mapping.py on host
+	mappingLaunch := filepath.Join(config.HomeDir, "emos", "robot", "launch", "bringup_mapping.py")
+	if _, err := os.Stat(mappingLaunch); err == nil {
+		ui.Spinner("Launching mapping hardware...", func() error {
+			cmd := exec.Command("bash", "-c", sourceCmd+" && ros2 launch "+mappingLaunch+" &")
+			return cmd.Start()
+		})
+		time.Sleep(5 * time.Second)
+	} else {
+		ui.Warn("No bringup_mapping.py found.")
+		ui.Faint("Ensure your mapping launch files and sensor drivers are running on the host.")
+		if !ui.Confirm("Continue without launching mapping hardware?") {
+			return fmt.Errorf("aborted by user")
+		}
+	}
+
+	// Data Recording
+	ui.Header("LAUNCHING DATA RECORDING")
+
+	bagDir := filepath.Join(config.HomeDir, "emos", "maps")
+	os.MkdirAll(bagDir, 0755)
+	bagPath := filepath.Join(bagDir, mapName)
+	topics := []string{"/lidar/raw", "/imu/raw", "/tf", "/tf_static"}
+
+	if !ui.Confirm("Get your robot ready and confirm to start mapping data recording") {
+		ui.Warn("User canceled mapping.")
+		return nil
+	}
+
+	// Check for existing bag
+	if _, err := os.Stat(bagPath + ".tar.gz"); err == nil {
+		ui.Warn("A map data file already exists at " + bagPath + ".tar.gz")
+		if !ui.Confirm("Do you want to overwrite it?") {
+			return fmt.Errorf("user chose not to overwrite")
+		}
+		os.Remove(bagPath + ".tar.gz")
+	}
+
+	recordCmd := fmt.Sprintf("%s && ros2 bag record -o '%s' --storage mcap --compression-mode file --compression-format zstd --topics %s",
+		sourceCmd, bagPath, strings.Join(topics, " "))
+	bagProcess := exec.Command("bash", "-c", recordCmd)
+	bagProcess.Stdout = os.Stdout
+	bagProcess.Stderr = os.Stderr
+	if err := bagProcess.Start(); err != nil {
+		return fmt.Errorf("failed to start bag recording: %w", err)
+	}
+
+	ui.Info("Map Data Recording Started...")
+	ui.Info("Press Ctrl+C once to end data recording process.")
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- bagProcess.Wait()
+	}()
+
+	select {
+	case <-sigChan:
+		ui.Info("Got Ctrl+C, terminating mapping...")
+		bagProcess.Process.Kill()
+		time.Sleep(2 * time.Second)
+
+		err := ui.Spinner("Zipping & saving mapped data...", func() error {
+			cmd := exec.Command("tar", "-czvf", bagPath+".tar.gz", "-C", bagDir, mapName)
+			if err := cmd.Run(); err != nil {
+				return err
+			}
+			return os.RemoveAll(bagPath)
 		})
 		if err != nil {
 			return err

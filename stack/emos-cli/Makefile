@@ -1,11 +1,12 @@
 VERSION ?= 0.4.0
 BINARY  := emos
+GO      ?= $(shell which go 2>/dev/null || echo /usr/local/go/bin/go)
 LDFLAGS := -ldflags "-s -w -X github.com/automatika-robotics/emos-cli/internal/config.Version=$(VERSION)"
 
 .PHONY: build build-all install clean tidy
 
 build:
-	go build $(LDFLAGS) -o $(BINARY) .
+	$(GO) build $(LDFLAGS) -o $(BINARY) .
 
 build-all: clean
 	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/$(BINARY)-linux-amd64 .
@@ -16,7 +17,7 @@ install: build
 	@echo "Installed to /usr/local/bin/$(BINARY)"
 
 tidy:
-	go mod tidy
+	$(GO) mod tidy
 
 clean:
 	rm -f $(BINARY)

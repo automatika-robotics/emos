@@ -1,0 +1,152 @@
+package runner
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"time"
+
+	"github.com/automatika-robotics/emos-cli/internal/config"
+	"github.com/automatika-robotics/emos-cli/internal/ui"
+)
+
+// NativeStrategy handles recipe execution directly on the host (no container).
+type NativeStrategy struct {
+	workspacePath string
+	rosDistro     string
+}
+
+func NewNativeStrategy() *NativeStrategy {
+	cfg := config.LoadConfig()
+	ws := filepath.Join(config.HomeDir, "emos", "ros_ws")
+	distro := "jazzy"
+	if cfg != nil {
+		if cfg.WorkspacePath != "" {
+			ws = cfg.WorkspacePath
+		}
+		if cfg.ROSDistro != "" {
+			distro = cfg.ROSDistro
+		}
+	}
+	return &NativeStrategy{workspacePath: ws, rosDistro: distro}
+}
+
+func (s *NativeStrategy) sourceCmd() string {
+	rosSetup := filepath.Join("/opt/ros", s.rosDistro, "setup.bash")
+	wsSetup := filepath.Join(s.workspacePath, "install", "setup.bash")
+	cmd := "source " + rosSetup
+	if _, err := os.Stat(wsSetup); err == nil {
+		cmd += " && source " + wsSetup
+	}
+	return cmd
+}
+
+func (s *NativeStrategy) PrepareEnvironment() error {
+	ui.Header("HOST ENVIRONMENT SETUP")
+
+	// Verify ros2 is available
+	if _, err := exec.LookPath("ros2"); err != nil {
+		return fmt.Errorf("ros2 not found in PATH — is ROS 2 installed and sourced?")
+	}
+	ui.Success("ROS 2 available on host.")
+
+	// Verify workspace exists
+	wsSetup := filepath.Join(s.workspacePath, "install", "setup.bash")
+	if _, err := os.Stat(wsSetup); err != nil {
+		ui.Warn(fmt.Sprintf("EMOS workspace not found at %s", s.workspacePath))
+		ui.Faint("Run 'emos install --mode native' to set up the workspace.")
+		return fmt.Errorf("EMOS workspace not built")
+	}
+	ui.Success("EMOS workspace found at " + s.workspacePath)
+
+	return nil
+}
+
+func (s *NativeStrategy) SetRMWImpl(rmw string) error {
+	ui.Header("RMW CONFIGURATION")
+	ui.Info("Setting RMW_IMPLEMENTATION=" + rmw)
+	os.Setenv("RMW_IMPLEMENTATION", rmw)
+	return nil
+}
+
+func (s *NativeStrategy) ConfigureZenoh(recipeName string, manifest *recipeManifest) error {
+	if manifest.ZenohRouterConfig != "" {
+		configPath := filepath.Join(config.RecipesDir, manifest.ZenohRouterConfig)
+		if _, err := os.Stat(configPath); err == nil {
+			ui.Info("Using Zenoh router config: " + configPath)
+			os.Setenv("ZENOH_ROUTER_CONFIG_URI", configPath)
+		} else {
+			ui.Warn("Zenoh config file not found — using default")
+		}
+	}
+
+	ui.Spinner("Starting zenoh router...", func() error {
+		cmd := exec.Command("bash", "-c", s.sourceCmd()+" && ros2 run rmw_zenoh_cpp rmw_zenohd &")
+		return cmd.Start()
+	})
+	time.Sleep(2 * time.Second)
+	return nil
+}
+
+func (s *NativeStrategy) LaunchRobotHardware() error {
+	ui.Header("HARDWARE & SENSOR LAUNCH")
+
+	bringup := filepath.Join(config.HomeDir, "emos", "robot", "launch", "bringup_robot.py")
+	if _, err := os.Stat(bringup); err != nil {
+		ui.Info("Native mode: no robot bringup found. Ensure hardware drivers are running.")
+		return nil
+	}
+
+	return ui.Spinner("Launching robot base hardware...", func() error {
+		cmd := exec.Command("bash", "-c", s.sourceCmd()+" && ros2 launch "+bringup+" &")
+		return cmd.Start()
+	})
+}
+
+func (s *NativeStrategy) LaunchSensor(recipeName, sensor, configFile string) error {
+	ui.Info(fmt.Sprintf("Native mode: skipping sensor '%s' launch. Ensure it is running on the host.", sensor))
+	return nil
+}
+
+func (s *NativeStrategy) VerifyNodes(sensors []string, manifest *recipeManifest) error {
+	ui.Header("VERIFYING ROS2 TOPICS")
+	time.Sleep(5 * time.Second)
+
+	src := s.sourceCmd()
+	checker := func() (string, error) {
+		out, err := exec.Command("bash", "-c", src+" && ros2 topic list").CombinedOutput()
+		return string(out), err
+	}
+	return verifySensorTopics(sensors, manifest, checker)
+}
+
+func (s *NativeStrategy) ExecRecipe(recipeName string, manifest *recipeManifest, logFile string) error {
+	ui.Header("LAUNCHING RECIPE: " + recipeName)
+	ui.Info("All output will be saved to: " + logFile)
+
+	if manifest.WebClient {
+		ui.Spinner("Starting web client in background...", func() error {
+			cmd := exec.Command("bash", "-c", s.sourceCmd()+" && ros2 run automatika_embodied_agents tiny_web_client &")
+			return cmd.Start()
+		})
+		ui.Info("Web client should be available at http://<ROBOT_IP>:8080")
+	}
+
+	ui.Success("BEGIN RECIPE OUTPUT")
+	fmt.Println()
+
+	recipePath := filepath.Join(config.RecipesDir, recipeName, "recipe.py")
+	shellCmd := fmt.Sprintf("%s && python3 %s 2>&1 | tee %s", s.sourceCmd(), recipePath, logFile)
+	cmd := exec.Command("bash", "-c", shellCmd)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func (s *NativeStrategy) Cleanup() error {
+	ui.Info("Native mode: no container cleanup needed.")
+	return nil
+}
+

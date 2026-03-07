@@ -7,7 +7,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var rmwFlag string
+var (
+	rmwFlag            string
+	skipSensorCheckFlag bool
+)
 
 var runCmd = &cobra.Command{
 	Use:   "run <recipe_name>",
@@ -15,11 +18,13 @@ var runCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ui.Banner(config.Version)
-		return runner.RunRecipe(args[0], rmwFlag)
+		return runner.RunRecipe(args[0], rmwFlag, skipSensorCheckFlag)
 	},
 }
 
 func init() {
 	runCmd.Flags().StringVar(&rmwFlag, "rmw", "rmw_zenoh_cpp",
 		"RMW implementation (rmw_fastrtps_cpp, rmw_cyclonedds_cpp, rmw_zenoh_cpp)")
+	runCmd.Flags().BoolVar(&skipSensorCheckFlag, "skip-sensor-check", false,
+		"Skip sensor topic/node verification before running the recipe")
 }

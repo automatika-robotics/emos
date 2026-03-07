@@ -51,7 +51,7 @@ jobs:
           if [ -n "${{ inputs.version }}" ]; then
             echo "tag=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "tag=v$(grep '^VERSION' stack/emos-cli/Makefile | head -1 | sed 's/.*?= *//')" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: docker/setup-buildx-action@v3
@@ -82,13 +82,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: stack/emos-cli/Makefile
+
       - name: Determine version
         id: version
         run: |
           if [ -n "${{ inputs.version }}" ]; then
             echo "tag=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "tag=v$(grep '^VERSION' stack/emos-cli/Makefile | head -1 | sed 's/.*?= *//')" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Create and push multi-arch manifests

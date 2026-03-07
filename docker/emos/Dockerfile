@@ -29,7 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         || apt-get install -y --no-install-recommends libgeographic-dev) \
     && rm -rf /var/lib/apt/lists/*
 
-# Python dependencies
+# Python dependencies (excluding kompass-core, installed via GPU script below)
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
 RUN pip install --no-cache-dir --ignore-installed \
     numpy \
@@ -50,8 +50,10 @@ RUN pip install --no-cache-dir --ignore-installed \
     pyaudio \
     soundfile \
     python-fasthtml \
-    monsterui \
-    kompass-core
+    monsterui
+
+# Install kompass-core with GPU support (also works on non-GPU machines)
+RUN curl -fsSL https://raw.githubusercontent.com/automatika-robotics/kompass-core/main/build_dependencies/install_gpu.sh | bash -s -- --quiet
 
 # --- Build localization packages from source ---
 WORKDIR ${ROS_WS}/src
@@ -102,6 +104,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     portaudio19-dev \
     jq \
     ros-${ROS_DISTRO}-rmw-zenoh-cpp \
+    libomp-dev \
     && (apt-get install -y --no-install-recommends libgeographiclib-dev \
         || apt-get install -y --no-install-recommends libgeographic-dev) \
     && rm -rf /var/lib/apt/lists/*
@@ -109,8 +112,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy built ROS install space from builder
 COPY --from=builder ${ROS_ROOT}/ ${ROS_ROOT}/
 
+# Copy AdaptiveCpp and kompass-core artifacts from builder
+COPY --from=builder /usr/local/ /usr/local/
+
 # Copy Python site-packages from builder
-COPY --from=builder /usr/local/lib/python3*/dist-packages/ /usr/local/lib/python3/dist-packages/
 COPY --from=builder /usr/lib/python3/dist-packages/ /usr/lib/python3/dist-packages/
 
 # Entrypoint

@@ -1,25 +1,26 @@
 # EMOS CLI
 
-The `emos` CLI is the main entry point for managing and running recipes on your robot. It handles environment setup, recipe discovery, download, and execution -- all from the terminal.
+The `emos` CLI is the main entry point for managing and running recipes on your robot. It handles installation, recipe discovery, download, and execution across container, native, and licensed deployment modes.
 
 ## Quick Reference
 
 | Command | Description |
 | :--- | :--- |
-| `emos install <key>` | Install EMOS using your license key |
-| `emos update` | Update the CLI and EMOS container |
-| `emos status` | Show container status |
+| `emos install` | Install EMOS (interactive mode selection) |
+| `emos update` | Update EMOS to the latest version |
+| `emos status` | Show installation status |
 | `emos recipes` | List recipes available for download |
 | `emos pull <name>` | Download a recipe |
 | `emos ls` | List locally installed recipes |
 | `emos run <name>` | Run a recipe |
 | `emos map <cmd>` | Mapping tools (record, edit) |
+| `emos version` | Show CLI version |
 
 ## Typical Workflow
 
 ```bash
 # 1. Install EMOS (one-time setup)
-emos install YOUR-LICENSE-KEY
+emos install
 
 # 2. Browse available recipes
 emos recipes
@@ -33,13 +34,22 @@ emos run vision_follower
 
 ## Running Recipes
 
-When you run `emos run <name>`, the CLI:
+When you run `emos run <name>`, the CLI adapts its behavior to your installation mode:
+
+**Container mode** (oss-container and licensed):
 
 1. Starts the EMOS Docker container
-2. Configures the ROS2 middleware (Zenoh by default)
-3. Launches robot hardware drivers and sensors declared in the recipe's `manifest.json`
-4. Verifies all required ROS2 nodes are active
-5. Executes the recipe's `recipe.py` inside the container
+2. Configures the ROS 2 middleware (Zenoh by default)
+3. Launches robot hardware drivers and sensors (licensed mode only)
+4. Verifies sensor topics are publishing
+5. Executes the recipe inside the container
+
+**Native mode:**
+
+1. Verifies the ROS 2 environment and EMOS workspace
+2. Configures the ROS 2 middleware
+3. Verifies sensor topics are publishing
+4. Executes the recipe directly on the host
 
 All output is streamed to your terminal and saved to `~/emos/logs/`.
 
@@ -63,18 +73,25 @@ The manifest tells EMOS what hardware your recipe needs:
 {
   "name": "My Custom Recipe",
   "sensors": ["camera", "lidar"],
+  "sensor_topics": {
+    "camera": ["/camera/image_raw"],
+    "lidar": ["/scan"]
+  },
   "autonomous_mode": false,
-  "web_client": true
+  "web_client": true,
+  "rmw": "rmw_zenoh_cpp"
 }
 ```
 
-- {material-regular}`sensors;1.2em;sd-text-primary` **sensors**: List of sensor drivers to launch (e.g. `"camera"`, `"lidar"`). EMOS looks for a matching `bringup_<sensor>.py` launch file.
+- {material-regular}`sensors;1.2em;sd-text-primary` **sensors**: List of sensor drivers to launch (e.g. `"camera"`, `"lidar"`). In licensed mode, EMOS looks for a matching `bringup_<sensor>.py` launch file. In container and native modes, sensors must be running externally.
+- {material-regular}`topic;1.2em;sd-text-primary` **sensor_topics**: Maps each sensor to its expected ROS 2 topics. Used for verification in container and native modes.
 - {material-regular}`gamepad;1.2em;sd-text-primary` **autonomous_mode**: Set to `true` if the recipe commands the robot to move.
 - {material-regular}`web;1.2em;sd-text-primary` **web_client**: Set to `true` to start the auto-generated web UI.
+- {material-regular}`settings;1.2em;sd-text-primary` **rmw**: ROS 2 middleware implementation to use.
 
 ### recipe.py
 
-This is a standard EMOS Python script -- the same code you write in the tutorials:
+This is a standard EMOS Python script, the same code you write in the tutorials:
 
 ```python
 from agents.clients.ollama import OllamaClient
@@ -119,10 +136,16 @@ emos run my_recipe   # Launch it
 ### emos install
 
 ```bash
-emos install <license_key>
+emos install                          # Interactive mode selection
+emos install --mode container         # Container mode (no ROS required)
+emos install --mode native            # Native mode (requires ROS 2)
+emos install YOUR-LICENSE-KEY         # Licensed mode
 ```
 
-Validates your license, pulls the EMOS Docker image, starts the container, and creates a systemd service for auto-restart on boot. Run this once on each machine.
+Flags:
+
+- `--mode`: Installation mode (`container`, `native`, or `licensed`)
+- `--distro`: ROS 2 distribution (`jazzy`, `humble`, or `kilted`)
 
 ### emos update
 
@@ -130,7 +153,15 @@ Validates your license, pulls the EMOS Docker image, starts the container, and c
 emos update
 ```
 
-Updates the CLI tools, re-validates your license, pulls the latest container image, and redeploys robot configuration files.
+Detects your installation mode and updates accordingly. Container modes pull the latest image and recreate the container. Native mode pulls the latest source and rebuilds the workspace.
+
+### emos status
+
+```bash
+emos status
+```
+
+Displays the current installation mode, ROS 2 distro, and status. For container modes, shows whether the container is running. For native mode, shows ROS 2 availability.
 
 ### emos pull
 
@@ -146,13 +177,14 @@ Downloads a recipe from the Automatika recipe server and extracts it to `~/emos/
 emos run <recipe_short_name>
 ```
 
-Launches a locally installed recipe. Accepts an optional `--rmw_implementation` argument to override the default ROS2 middleware:
+Launches a locally installed recipe. Optional flags:
 
 ```bash
-emos run my_recipe --rmw_implementation=rmw_cyclonedds_cpp
+emos run my_recipe --rmw rmw_cyclonedds_cpp    # Override RMW middleware
+emos run my_recipe --skip-sensor-check         # Skip sensor topic verification
 ```
 
-Supported values: `rmw_zenoh_cpp` (default), `rmw_fastrtps_cpp`, `rmw_cyclonedds_cpp`.
+Supported RMW values: `rmw_zenoh_cpp` (default), `rmw_fastrtps_cpp`, `rmw_cyclonedds_cpp`.
 
 ### emos map
 

@@ -96,13 +96,13 @@ jobs:
           BASE="${REGISTRY}/${IMAGE_NAME}"
 
           # Version tag: {distro}-{version}
-          docker manifest create "${BASE}:${{ matrix.ros_distro }}-${VERSION}" \
+          docker manifest create --amend "${BASE}:${{ matrix.ros_distro }}-${VERSION}" \
             "${BASE}:${{ matrix.ros_distro }}-${VERSION}-amd64" \
             "${BASE}:${{ matrix.ros_distro }}-${VERSION}-arm64"
           docker manifest push "${BASE}:${{ matrix.ros_distro }}-${VERSION}"
 
           # Latest per distro: {distro}-latest
-          docker manifest create "${BASE}:${{ matrix.ros_distro }}-latest" \
+          docker manifest create --amend "${BASE}:${{ matrix.ros_distro }}-latest" \
             "${BASE}:${{ matrix.ros_distro }}-${VERSION}-amd64" \
             "${BASE}:${{ matrix.ros_distro }}-${VERSION}-arm64"
           docker manifest push "${BASE}:${{ matrix.ros_distro }}-latest"
@@ -113,7 +113,7 @@ jobs:
           VERSION="${{ steps.version.outputs.tag }}"
           BASE="${REGISTRY}/${IMAGE_NAME}"
 
-          docker manifest create "${BASE}:latest" \
+          docker manifest create --amend "${BASE}:latest" \
             "${BASE}:jazzy-${VERSION}-amd64" \
             "${BASE}:jazzy-${VERSION}-arm64"
           docker manifest push "${BASE}:latest"

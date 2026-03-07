@@ -1,8 +1,18 @@
 # EMOS Jetson Dockerfile — for manual builds on Jetson hardware only.
 # NOT built in CI. See README.md for instructions.
+#
+# Build args:
+#   JETSON_BASE  - base image for the target Jetson platform (see README.md)
+#   ROS_DISTRO   - ROS 2 distribution (humble, jazzy, kilted)
+#
+# Example (Orin + Jazzy):
+#   docker build -f docker/jetson/Dockerfile.jetson \
+#     --build-arg JETSON_BASE=dustynv/onnxruntime:1.22-r36.4.0-cu128-24.04 \
+#     --build-arg ROS_DISTRO=jazzy \
+#     -t emos:jetson-orin-jazzy .
 
-# Base Image: Ubuntu 20.04 for L4T with ONNX Runtime
-FROM dustynv/onnxruntime:r35.4.1
+ARG JETSON_BASE=dustynv/onnxruntime:1.22-r36.4.0-cu128-24.04
+FROM ${JETSON_BASE}
 
 ARG ROS_DISTRO=jazzy
 
@@ -12,6 +22,7 @@ ENV ROS_WS=/tmp/ros2_ws
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
 # --- Install System Dependencies & ROS 2 Tools ---
 RUN apt-get update && apt-get upgrade -y && \
@@ -45,7 +56,7 @@ RUN apt-get update && apt-get upgrade -y && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/*
 
-# --- Remove conflicting Python version ---
+# --- Remove conflicting Python version (Xavier/L4T R35 only) ---
 RUN apt-get update && \
     apt-get remove --purge -y python3.9 libpython3.9* || echo "python3.9 not found, skipping removal" && \
     apt-get clean && \
@@ -84,19 +95,26 @@ RUN apt-get remove --purge -y libasio-dev && apt-get autoremove -y && \
     cd / && rm -rf /tmp/pybind11_src
 
 # --- Build ROS 2 ---
+# Apply Python 3.8 compatibility patch for ros2topic only when the base image
+# has Python < 3.9 (Xavier/L4T R35 is Ubuntu 20.04 with Python 3.8).
 WORKDIR ${ROS_WS}
-RUN echo "Applying Python 3.8 compatibility patch to ros2topic..." && \
-    PATCH_FILE=${ROS_WS}/src/ros2cli/ros2topic/ros2topic/api/__init__.py && \
-    sed -i '1s/^/import typing\n/' ${PATCH_FILE} && \
-    sed -i 's/list\[str\]/typing.List[str]/g' ${PATCH_FILE} && \
-    echo "Patch applied successfully." && \
+RUN PY_MINOR=$(python3 -c "import sys; print(sys.version_info.minor)") && \
+    if [ "$PY_MINOR" -lt 9 ]; then \
+        PATCH_FILE=${ROS_WS}/src/ros2cli/ros2topic/ros2topic/api/__init__.py; \
+        if [ -f "${PATCH_FILE}" ]; then \
+            echo "Python 3.${PY_MINOR} detected — applying compatibility patch to ros2topic..." && \
+            sed -i '1s/^/import typing\n/' ${PATCH_FILE} && \
+            sed -i 's/list\[str\]/typing.List[str]/g' ${PATCH_FILE} && \
+            echo "Patch applied successfully."; \
+        fi; \
+    fi && \
     colcon build --merge-install --install-base ${ROS_ROOT} \
     --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_DEFAULT_CMP0148=OLD && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
     rm -rf ${ROS_WS} /root/.ros /tmp/*
 
-# --- Install Zenoh ---
+# --- Install Zenoh (from source — no apt packages for L4T) ---
 WORKDIR ${ROS_WS}
 RUN apt-get update && apt-get install -y \
     nlohmann-json3-dev \
@@ -114,15 +132,21 @@ RUN apt-get update && apt-get install -y \
 
 # --- Install Localization Packages ---
 WORKDIR ${ROS_WS}/src
-RUN apt-get update && apt-get install -y \
-    libgeographic-dev \
-    && rm -rf /var/lib/apt/lists/* && \
-    git clone --depth 1 -b ${ROS_DISTRO} https://github.com/ros-geographic-info/geographic_info.git && \
-    git clone --depth 1 -b ${ROS_DISTRO}-devel https://github.com/cra-ros-pkg/robot_localization.git && \
-    git clone --depth 1 -b ros2 https://github.com/ros/angles.git && \
-    rm -rf geographic_info/geographic_info geographic_info/geodesy
+# geographic_info: has 'jazzy' branch, all others use 'ros2'
+RUN apt-get update \
+    && (apt-get install -y libgeographiclib-dev \
+        || apt-get install -y libgeographic-dev) \
+    && rm -rf /var/lib/apt/lists/* \
+    && GEO_BRANCH=$(if [ "${ROS_DISTRO}" = "jazzy" ]; then echo jazzy; else echo ros2; fi) \
+    && git clone --depth 1 -b ${GEO_BRANCH} https://github.com/ros-geographic-info/geographic_info.git \
+    && git clone --depth 1 -b ${ROS_DISTRO}-devel https://github.com/cra-ros-pkg/robot_localization.git \
+    && git clone --depth 1 -b ros2 https://github.com/ros/angles.git \
+    && rm -rf geographic_info/geographic_info geographic_info/geodesy
 
 WORKDIR ${ROS_WS}
+RUN apt-get update \
+    && rosdep install -y --from-paths src --ignore-src --rosdistro ${ROS_DISTRO} \
+    && rm -rf /var/lib/apt/lists/*
 RUN /bin/bash -c "source ${ROS_ROOT}/setup.bash && \
     colcon build --merge-install --install-base ${ROS_ROOT} \
     --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_DEFAULT_CMP0148=OLD" && \
@@ -140,7 +164,13 @@ WORKDIR ${ROS_WS}/src
 RUN apt-get update && apt-get install -y portaudio19-dev jq && \
     pip install --no-cache-dir numpy opencv-python-headless 'attrs>=23.2.0' jinja2 httpx msgpack msgpack-numpy \
     setproctitle platformdirs tqdm pyyaml toml websockets && \
-    pip install --no-cache-dir ollama redis[hiredis] pyaudio soundfile fastapi[standard-no-fastapi-cloud-cli] && \
+    pip install --no-cache-dir ollama redis[hiredis] pyaudio soundfile && \
+    PY_MINOR=$(python3 -c "import sys; print(sys.version_info.minor)") && \
+    if [ "$PY_MINOR" -ge 10 ]; then \
+        pip install --no-cache-dir python-fasthtml monsterui; \
+    else \
+        echo "Skipping fasthtml/monsterui (requires Python >= 3.10, found 3.${PY_MINOR})"; \
+    fi && \
     rm -rf /root/.cache/pip && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 

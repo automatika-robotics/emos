@@ -53,7 +53,8 @@ RUN pip install --no-cache-dir --ignore-installed \
     monsterui
 
 # Install kompass-core with GPU support (also works on non-GPU machines)
-RUN curl -fsSL https://raw.githubusercontent.com/automatika-robotics/kompass-core/main/build_dependencies/install_gpu.sh | bash -s -- --quiet
+ADD https://raw.githubusercontent.com/automatika-robotics/kompass-core/main/build_dependencies/install_gpu.sh /tmp/install_gpu.sh
+RUN chmod +x /tmp/install_gpu.sh && /tmp/install_gpu.sh && rm /tmp/install_gpu.sh
 
 # --- Build localization packages from source ---
 WORKDIR ${ROS_WS}/src

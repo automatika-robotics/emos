@@ -27,13 +27,6 @@ detect_arch() {
     esac
 }
 
-check_docker() {
-    if ! command -v docker &> /dev/null; then
-        error "Docker is not installed. Please install Docker first: https://docs.docker.com/engine/install/"
-    fi
-    info "Docker installation found."
-}
-
 install_binary() {
     local arch
     arch=$(detect_arch)
@@ -64,7 +57,6 @@ install_binary() {
 # --- Main ---
 main() {
     check_root
-    check_docker
     install_binary
     info "Run 'emos --help' to get started."
 }

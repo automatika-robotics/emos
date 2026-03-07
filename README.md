@@ -117,10 +117,18 @@ events_actions = {
 
 ## Installation
 
-Install the EMOS CLI:
+Install the EMOS CLI from the latest [release](https://github.com/automatika-robotics/emos/releases):
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/automatika-robotics/emos/main/stack/emos-cli/scripts/install.sh | sudo bash
+```
+
+Or build from source (requires Go 1.23+):
+
+```bash
+git clone https://github.com/automatika-robotics/emos.git
+cd emos/stack/emos-cli
+make build && sudo make install
 ```
 
 Then choose your deployment mode:
@@ -131,9 +139,6 @@ emos install --mode container
 
 # Native mode (requires existing ROS 2 installation)
 emos install --mode native
-
-# Licensed mode (robot-specific deployment)
-emos install YOUR-LICENSE-KEY
 
 # Or run without arguments for an interactive menu
 emos install

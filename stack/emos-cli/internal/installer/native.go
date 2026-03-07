@@ -108,9 +108,12 @@ func InstallNativeWorkspace(wsPath, distro string) error {
 		return err
 	}
 
-	// System and pip dependencies
+	// System dependencies (matches Dockerfile)
 	ui.Info("Installing system dependencies...")
-	aptPkgs := []string{"portaudio19-dev", "jq", "python3-empy"}
+	aptPkgs := []string{
+		"portaudio19-dev", "jq", "python3-empy",
+		"ros-" + distro + "-rmw-zenoh-cpp",
+	}
 	cmd := exec.Command("sudo", append([]string{"apt-get", "install", "-y"}, aptPkgs...)...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -185,9 +188,11 @@ func UpdateNativeWorkspace(wsPath, distro string) error {
 	emosPackages := []string{"sugarcoat", "kompass", "embodied-agents"}
 
 	if _, err := os.Stat(filepath.Join(emosRepo, ".git")); err == nil {
-		ui.Spinner("Updating emos repository...", func() error {
+		if err := ui.Spinner("Fetching EMOS source...", func() error {
 			return runCmd(emosRepo, "git", "pull")
-		})
+		}); err != nil {
+			ui.Warn("Failed to update emos repo: " + err.Error())
+		}
 		for _, pkg := range emosPackages {
 			src := filepath.Join(emosRepo, "stack", pkg)
 			dest := filepath.Join(srcDir, pkg)
@@ -200,26 +205,19 @@ func UpdateNativeWorkspace(wsPath, distro string) error {
 	}
 
 	// Update localization dependency repos
-	for _, name := range []string{"angles", "geographic_info", "robot_localization"} {
-		repoPath := filepath.Join(srcDir, name)
-		if _, err := os.Stat(filepath.Join(repoPath, ".git")); err != nil {
-			continue
+	if err := ui.Spinner("Fetching dependencies...", func() error {
+		for _, name := range []string{"angles", "geographic_info", "robot_localization"} {
+			repoPath := filepath.Join(srcDir, name)
+			if _, err := os.Stat(filepath.Join(repoPath, ".git")); err != nil {
+				continue
+			}
+			if err := runCmd(repoPath, "git", "pull"); err != nil {
+				return fmt.Errorf("failed to update %s: %w", name, err)
+			}
 		}
-		ui.Spinner(fmt.Sprintf("Updating %s...", name), func() error {
-			return runCmd(repoPath, "git", "pull")
-		})
-	}
-
-	// Rebuild
-	rosSetup := filepath.Join("/opt/ros", distro, "setup.bash")
-	buildCmd := fmt.Sprintf("unset VIRTUAL_ENV && source %s && cd %s && colcon build --symlink-install", rosSetup, wsPath)
-	ui.Info("Rebuilding workspace...")
-	cmd := exec.Command("bash", "-c", buildCmd)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Env = cleanEnv()
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("colcon build failed: %w", err)
+		return nil
+	}); err != nil {
+		ui.Warn(err.Error())
 	}
 
 	// Update kompass-core via GPU install script
@@ -230,6 +228,25 @@ func UpdateNativeWorkspace(wsPath, distro string) error {
 	installGPUCmd.Stderr = os.Stderr
 	if err := installGPUCmd.Run(); err != nil {
 		ui.Warn("kompass-core update failed: " + err.Error())
+	}
+
+	// Rosdep install before rebuild
+	rosSetup := filepath.Join("/opt/ros", distro, "setup.bash")
+	rosdepCmd := fmt.Sprintf("source %s && rosdep install --from-paths %s --ignore-src -r -y", rosSetup, srcDir)
+	cmd := exec.Command("bash", "-c", rosdepCmd)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Run() // best-effort
+
+	// Rebuild
+	buildCmd := fmt.Sprintf("unset VIRTUAL_ENV && source %s && cd %s && colcon build --symlink-install", rosSetup, wsPath)
+	ui.Info("Rebuilding workspace...")
+	cmd = exec.Command("bash", "-c", buildCmd)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = cleanEnv()
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("colcon build failed: %w", err)
 	}
 
 	ui.Success("Native workspace updated.")

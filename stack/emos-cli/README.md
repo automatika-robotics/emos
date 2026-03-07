@@ -4,7 +4,7 @@ The command-line interface for [EMOS](https://github.com/automatika-robotics/emo
 
 ## Installation
 
-Download and install the latest release:
+Download and install the latest [release](https://github.com/automatika-robotics/emos/releases):
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/automatika-robotics/emos/main/stack/emos-cli/scripts/install.sh | sudo bash
@@ -17,9 +17,9 @@ This detects your architecture (amd64/arm64) and installs the `emos` binary to `
 Requires Go 1.23+.
 
 ```bash
-cd stack/emos-cli
-make build
-sudo make install
+git clone https://github.com/automatika-robotics/emos.git
+cd emos/stack/emos-cli
+make build && sudo make install
 ```
 
 ## Deployment Modes

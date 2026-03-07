@@ -12,7 +12,7 @@ build-all: clean
 	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/$(BINARY)-linux-amd64 .
 	GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o dist/$(BINARY)-linux-arm64 .
 
-install: build
+install:
 	sudo cp $(BINARY) /usr/local/bin/$(BINARY)
 	@echo "Installed to /usr/local/bin/$(BINARY)"
 

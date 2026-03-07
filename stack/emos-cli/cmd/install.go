@@ -276,8 +276,9 @@ func installLicensed(licenseKey string) error {
 		ui.Warn("Failed to save license file: " + err.Error())
 	}
 
-	// Ensure emos directory exists
-	os.MkdirAll(filepath.Join(config.HomeDir, "emos"), 0755)
+	// Create directories
+	os.MkdirAll(filepath.Join(config.HomeDir, "emos", "recipes"), 0755)
+	os.MkdirAll(filepath.Join(config.HomeDir, "emos", "logs"), 0755)
 
 	// Deploy robot files
 	if err := deployRobotFiles(creds); err != nil {

@@ -62,6 +62,7 @@ jobs:
           file: docker/emos/Dockerfile
           build-args: ROS_DISTRO=${{ matrix.ros_distro }}
           push: true
+          provenance: false
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.ros_distro }}-${{ steps.version.outputs.tag }}-${{ matrix.arch }}
           cache-from: type=gha,scope=${{ matrix.ros_distro }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.ros_distro }}-${{ matrix.arch }}

@@ -12,53 +12,40 @@ import (
 )
 
 // NativeStrategy handles recipe execution directly on the host (no container).
+// EMOS packages are installed directly into /opt/ros/{distro}/, so only the
+// ROS setup.bash needs to be sourced.
 type NativeStrategy struct {
-	workspacePath string
-	rosDistro     string
+	rosDistro string
 }
 
 func NewNativeStrategy() *NativeStrategy {
-	cfg := config.LoadConfig()
-	ws := filepath.Join(config.HomeDir, "emos", "ros_ws")
 	distro := "jazzy"
-	if cfg != nil {
-		if cfg.WorkspacePath != "" {
-			ws = cfg.WorkspacePath
-		}
-		if cfg.ROSDistro != "" {
-			distro = cfg.ROSDistro
-		}
+	if cfg := config.LoadConfig(); cfg != nil && cfg.ROSDistro != "" {
+		distro = cfg.ROSDistro
 	}
-	return &NativeStrategy{workspacePath: ws, rosDistro: distro}
+	return &NativeStrategy{rosDistro: distro}
 }
 
 func (s *NativeStrategy) sourceCmd() string {
-	rosSetup := filepath.Join("/opt/ros", s.rosDistro, "setup.bash")
-	wsSetup := filepath.Join(s.workspacePath, "install", "setup.bash")
-	cmd := "source " + rosSetup
-	if _, err := os.Stat(wsSetup); err == nil {
-		cmd += " && source " + wsSetup
-	}
-	return cmd
+	return "source " + filepath.Join("/opt/ros", s.rosDistro, "setup.bash")
 }
 
 func (s *NativeStrategy) PrepareEnvironment() error {
 	ui.Header("HOST ENVIRONMENT SETUP")
 
-	// Verify ros2 is available
-	if _, err := exec.LookPath("ros2"); err != nil {
-		return fmt.Errorf("ros2 not found in PATH — is ROS 2 installed and sourced?")
+	rosSetup := filepath.Join("/opt/ros", s.rosDistro, "setup.bash")
+	if _, err := os.Stat(rosSetup); err != nil {
+		return fmt.Errorf("ROS 2 %s not found at /opt/ros/%s — is it installed?", s.rosDistro, s.rosDistro)
 	}
-	ui.Success("ROS 2 available on host.")
+	ui.Success(fmt.Sprintf("ROS 2 %s found.", s.rosDistro))
 
-	// Verify workspace exists
-	wsSetup := filepath.Join(s.workspacePath, "install", "setup.bash")
-	if _, err := os.Stat(wsSetup); err != nil {
-		ui.Warn(fmt.Sprintf("EMOS workspace not found at %s", s.workspacePath))
-		ui.Faint("Run 'emos install --mode native' to set up the workspace.")
-		return fmt.Errorf("EMOS workspace not built")
+	// Quick check that EMOS packages are importable
+	checkCmd := exec.Command("bash", "-c", s.sourceCmd()+" && python3 -c 'import agents' 2>/dev/null")
+	if err := checkCmd.Run(); err != nil {
+		ui.Warn("EMOS packages may not be installed. Run 'emos install --mode native' first.")
+	} else {
+		ui.Success("EMOS packages available.")
 	}
-	ui.Success("EMOS workspace found at " + s.workspacePath)
 
 	return nil
 }

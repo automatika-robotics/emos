@@ -7,6 +7,10 @@ EMOS lets you describe complete robot behaviors as **recipes** -- pure Python sc
 In this quickstart you will build a simple Visual Question Answering recipe: a robot that sees through its camera and answers questions about what it observes.
 
 ```{important}
+This guide assumes you have already installed EMOS. If not, see the [Installation guide](installation.md) first.
+```
+
+```{important}
 Depending on the components and clients you use, EMOS will prompt you for extra Python packages. The script will throw an error and tell you exactly what to install.
 ```
 

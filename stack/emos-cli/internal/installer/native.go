@@ -45,8 +45,9 @@ func DetectROS() []ROSInstallation {
 	return installs
 }
 
-// InstallNativeWorkspace sets up the EMOS ROS 2 workspace at wsPath.
-func InstallNativeWorkspace(wsPath, distro string) error {
+// InstallNative builds EMOS packages and installs them into the ROS 2 installation.
+// The wsPath is used as a build cache; the final artifacts are merged into /opt/ros/{distro}/.
+func InstallNative(wsPath, distro string) error {
 	srcDir := filepath.Join(wsPath, "src")
 	os.MkdirAll(srcDir, 0755)
 
@@ -164,9 +165,10 @@ func InstallNativeWorkspace(wsPath, distro string) error {
 	cmd.Stderr = os.Stderr
 	cmd.Run() // best-effort
 
-	// Colcon build — sanitize environment to avoid venv contamination
-	ui.Info("Building workspace with colcon (this may take a while)...")
-	buildCmd := fmt.Sprintf("unset VIRTUAL_ENV && source %s && cd %s && colcon build --symlink-install", rosSetup, wsPath)
+	// Colcon build with --merge-install so the install/ directory has a flat
+	// layout matching /opt/ros/{distro}, ready to be copied in.
+	ui.Info("Building EMOS packages (this may take a while)...")
+	buildCmd := fmt.Sprintf("unset VIRTUAL_ENV && source %s && cd %s && colcon build --merge-install", rosSetup, wsPath)
 	cmd = exec.Command("bash", "-c", buildCmd)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -175,12 +177,19 @@ func InstallNativeWorkspace(wsPath, distro string) error {
 		return fmt.Errorf("colcon build failed: %w", err)
 	}
 
-	ui.Success("Workspace built successfully.")
+	// Merge built packages into the ROS 2 installation
+	rosPath := filepath.Join("/opt/ros", distro)
+	installDir := filepath.Join(wsPath, "install")
+	if err := mergeIntoROS(installDir, rosPath); err != nil {
+		return err
+	}
+
+	ui.Success("EMOS packages installed into " + rosPath)
 	return nil
 }
 
-// UpdateNativeWorkspace pulls latest sources and rebuilds.
-func UpdateNativeWorkspace(wsPath, distro string) error {
+// UpdateNative pulls latest sources, rebuilds, and re-installs into the ROS 2 installation.
+func UpdateNative(wsPath, distro string) error {
 	srcDir := filepath.Join(wsPath, "src")
 
 	// Pull latest emos repo and re-copy stack packages
@@ -238,9 +247,9 @@ func UpdateNativeWorkspace(wsPath, distro string) error {
 	cmd.Stderr = os.Stderr
 	cmd.Run() // best-effort
 
-	// Rebuild
-	buildCmd := fmt.Sprintf("unset VIRTUAL_ENV && source %s && cd %s && colcon build --symlink-install", rosSetup, wsPath)
-	ui.Info("Rebuilding workspace...")
+	// Rebuild with --merge-install
+	buildCmd := fmt.Sprintf("unset VIRTUAL_ENV && source %s && cd %s && colcon build --merge-install", rosSetup, wsPath)
+	ui.Info("Rebuilding EMOS packages...")
 	cmd = exec.Command("bash", "-c", buildCmd)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -249,7 +258,26 @@ func UpdateNativeWorkspace(wsPath, distro string) error {
 		return fmt.Errorf("colcon build failed: %w", err)
 	}
 
-	ui.Success("Native workspace updated.")
+	// Merge rebuilt packages into the ROS 2 installation
+	rosPath := filepath.Join("/opt/ros", distro)
+	installDir := filepath.Join(wsPath, "install")
+	if err := mergeIntoROS(installDir, rosPath); err != nil {
+		return err
+	}
+
+	ui.Success("EMOS packages updated in " + rosPath)
+	return nil
+}
+
+// mergeIntoROS copies the colcon merge-install output into /opt/ros/{distro}/.
+func mergeIntoROS(installDir, rosPath string) error {
+	ui.Info("Installing packages into " + rosPath + " (requires sudo)...")
+	cmd := exec.Command("sudo", "cp", "-r", "--no-preserve=ownership", installDir+"/.", rosPath+"/")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to install packages into %s: %w", rosPath, err)
+	}
 	return nil
 }
 

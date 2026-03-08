@@ -189,15 +189,8 @@ func runMappingNative(cfg *config.EMOSConfig) error {
 	ui.Header("EMOS - PRE-MAPPING SETUP (NATIVE)")
 
 	distro := cfg.ROSDistro
-	wsPath := cfg.WorkspacePath
 	rosSetup := filepath.Join("/opt/ros", distro, "setup.bash")
 	sourceCmd := "source " + rosSetup
-	if wsPath != "" {
-		wsSetup := filepath.Join(wsPath, "install", "setup.bash")
-		if _, err := os.Stat(wsSetup); err == nil {
-			sourceCmd += " && source " + wsSetup
-		}
-	}
 
 	ui.Info("Map Name: " + mapName)
 	ui.Info("ROS Distro: " + distro)

@@ -1,6 +1,6 @@
 # EMOS CLI
 
-The `emos` CLI is the main entry point for managing and running recipes on your robot. It handles installation, recipe discovery, download, and execution across container, native, and licensed deployment modes.
+The `emos` CLI is the main entry point for managing and running recipes on your robot. It handles installation, recipe discovery, download, and execution across container and native deployment modes.
 
 ## Quick Reference
 
@@ -40,20 +40,21 @@ emos run vision_follower
 
 When you run `emos run <name>`, the CLI adapts its behavior to your installation mode:
 
-**Container mode** (oss-container and licensed):
+**Container mode:**
 
 1. Starts the EMOS Docker container
 2. Configures the ROS 2 middleware (Zenoh by default)
-3. Launches robot hardware drivers and sensors (licensed mode only)
-4. Verifies sensor topics are publishing
-5. Executes the recipe inside the container
+3. Verifies sensor topics are publishing
+4. Executes the recipe inside the container
 
 **Native mode:**
 
-1. Verifies the ROS 2 environment and EMOS workspace
-2. Configures the ROS 2 middleware
+1. Verifies the ROS2 environment (EMOS packages are installed into `/opt/ros/{distro}/`)
+2. Configures the ROS2 middleware
 3. Verifies sensor topics are publishing
 4. Executes the recipe directly on the host
+
+In native mode, you can also run recipes directly without the CLI: `python3 ~/emos/recipes/<recipe>/recipe.py` (as long as you've sourced `/opt/ros/{distro}/setup.bash`).
 
 All output is streamed to your terminal and saved to `~/emos/logs/`.
 
@@ -65,8 +66,7 @@ A recipe is a directory under `~/emos/recipes/` with the following structure:
 ~/emos/recipes/
   my_recipe/
     recipe.py          # Main entry point (required)
-    manifest.json      # Optional Zenoh config and metadata
-    *_config.yaml      # Optional per-sensor configuration overrides
+    manifest.json      # Optional Zenoh config
 ```
 
 ### manifest.json
@@ -114,16 +114,13 @@ launcher.add_pkg(components=[vlm])
 launcher.bringup()
 ```
 
-### Sensor Configuration Overrides
-
-If a sensor needs non-default parameters, place a config file named `<sensor>_config.yaml` (or `.json` / `.toml`) in your recipe directory. EMOS will pass it to the sensor's launch file automatically.
-
 ### Running Your Custom Recipe
 
 Once your recipe directory is in place:
 
 ```bash
 emos ls              # Verify it appears
+emos info my_recipe  # Check sensor requirements
 emos run my_recipe   # Launch it
 ```
 
@@ -135,12 +132,11 @@ emos run my_recipe   # Launch it
 emos install                          # Interactive mode selection
 emos install --mode container         # Container mode (no ROS required)
 emos install --mode native            # Native mode (requires ROS 2)
-emos install YOUR-LICENSE-KEY         # Licensed mode
 ```
 
 Flags:
 
-- `--mode`: Installation mode (`container`, `native`, or `licensed`)
+- `--mode`: Installation mode (`container` or `native`)
 - `--distro`: ROS 2 distribution (`jazzy`, `humble`, or `kilted`)
 
 ### emos update
@@ -149,7 +145,7 @@ Flags:
 emos update
 ```
 
-Detects your installation mode and updates accordingly. Container modes pull the latest image and recreate the container. Native mode pulls the latest source and rebuilds the workspace.
+Detects your installation mode and updates accordingly. Container mode pulls the latest image and recreates the container. Native mode pulls the latest source, rebuilds, and re-installs into `/opt/ros/{distro}/`.
 
 ### emos status
 
@@ -157,7 +153,7 @@ Detects your installation mode and updates accordingly. Container modes pull the
 emos status
 ```
 
-Displays the current installation mode, ROS 2 distro, and status. For container modes, shows whether the container is running. For native mode, shows ROS 2 availability.
+Displays the current installation mode, ROS 2 distro, and status. For container mode, shows whether the container is running. For native mode, shows that EMOS packages are installed in `/opt/ros/{distro}/`.
 
 ### emos pull
 

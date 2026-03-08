@@ -214,7 +214,7 @@ func installNative() error {
 
 	ui.Header("INSTALLING EMOS PACKAGES")
 
-	if err := installer.InstallNativeWorkspace(wsPath, chosen.Distro); err != nil {
+	if err := installer.InstallNative(wsPath, chosen.Distro); err != nil {
 		return err
 	}
 
@@ -230,8 +230,9 @@ func installNative() error {
 
 	fmt.Println()
 	ui.SuccessBox("EMOS installed successfully (native mode)!")
-	ui.Faint("Run 'emos pull <recipe>' to download a recipe, then 'emos run <recipe>' to execute it.")
-	ui.Faint("Ensure your sensor drivers are running on the host before running recipes.")
+	ui.Faint("EMOS packages are now installed in /opt/ros/" + chosen.Distro + "/")
+	ui.Faint("You can run recipes directly: python3 ~/emos/recipes/<recipe>/recipe.py")
+	ui.Faint("Or use the CLI: emos pull <recipe> && emos run <recipe>")
 	return nil
 }
 

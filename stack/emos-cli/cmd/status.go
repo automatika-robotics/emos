@@ -45,14 +45,13 @@ var statusCmd = &cobra.Command{
 			}
 
 		case config.ModeNative:
+			rosPath := "/opt/ros/" + cfg.ROSDistro
 			if _, err := exec.LookPath("ros2"); err == nil {
 				ui.Success("ROS 2: Available")
 			} else {
 				ui.Error("ROS 2: Not found in PATH")
 			}
-			if cfg.WorkspacePath != "" {
-				ui.Info("Workspace: " + cfg.WorkspacePath)
-			}
+			ui.Info("EMOS packages installed in: " + rosPath)
 		}
 
 		if cfg.Mode == config.ModeLicensed {

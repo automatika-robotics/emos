@@ -134,11 +134,11 @@ func updateNative(cfg *config.EMOSConfig) error {
 	fmt.Println("  Updating EMOS native workspace...")
 	fmt.Println()
 
-	if err := installer.UpdateNativeWorkspace(wsPath, cfg.ROSDistro); err != nil {
+	if err := installer.UpdateNative(wsPath, cfg.ROSDistro); err != nil {
 		return err
 	}
 
 	fmt.Println()
-	ui.SuccessBox("EMOS native workspace updated successfully!")
+	ui.SuccessBox("EMOS packages updated successfully!")
 	return nil
 }

@@ -19,7 +19,7 @@ sudo make install
 
 ## Deployment Modes
 
-EMOS supports three deployment modes. Run `emos install` without arguments for an interactive menu, or use the `--mode` flag directly.
+EMOS supports two deployment modes. Run `emos install` without arguments for an interactive menu, or use the `--mode` flag directly.
 
 ::::{tab-set}
 
@@ -35,13 +35,11 @@ You will be prompted to select a ROS 2 distribution (Jazzy, Humble, or Kilted). 
 
 **Requirements:** Docker installed and running.
 
-**Sensors:** Must be running externally (on the host or in separate containers). The EMOS container uses `--network host` so it can see ROS 2 topics from the host network.
-
 :::
 
 :::{tab-item} Native
 
-Installs EMOS packages directly into a local ROS 2 workspace. No container needed.
+Builds EMOS packages from source and installs them directly into your ROS 2 installation at `/opt/ros/{distro}/`. No container needed.
 
 ```bash
 emos install --mode native
@@ -50,16 +48,20 @@ emos install --mode native
 The CLI will:
 
 1. Detect your ROS 2 installation
-2. Clone the EMOS source into `~/emos/ros_ws/src/`
-3. Fetch localization dependencies (angles, geographic_info, robot_localization)
-4. Install system packages (portaudio, GeographicLib, rmw-zenoh)
-5. Install Python dependencies
-6. Install kompass-core with GPU acceleration support
-7. Run `rosdep install` and `colcon build`
+2. Clone the EMOS source and dependencies into a build workspace (`~/emos/ros_ws/`)
+3. Install system packages (portaudio, GeographicLib, rmw-zenoh)
+4. Install Python dependencies
+5. Install kompass-core with GPU acceleration support
+6. Build all packages with colcon and install them into `/opt/ros/{distro}/`
 
-**Requirements:** A working ROS 2 installation (Humble, Jazzy, or Kilted).
+After installation, EMOS packages are available whenever you source ROS2. You can run recipes directly:
 
-**Sensors:** Must be running on the host before launching recipes.
+```bash
+source /opt/ros/jazzy/setup.bash
+python3 ~/emos/recipes/my_recipe/recipe.py
+```
+
+**Requirements:** A working ROS2 installation (Humble, Jazzy, or Kilted).
 
 :::
 
@@ -92,8 +94,7 @@ emos update
 The CLI detects your installation mode and updates accordingly:
 
 - **Container mode:** pulls the latest image and recreates the container.
-- **Native mode:** pulls the latest source, updates dependencies, and rebuilds the workspace.
-- **Licensed mode:** re-validates the license, redeploys configuration files, and pulls the latest image.
+- **Native mode:** pulls the latest source, rebuilds, and re-installs packages into `/opt/ros/{distro}/`.
 
 ## Installing from Source (Developer Setup)
 

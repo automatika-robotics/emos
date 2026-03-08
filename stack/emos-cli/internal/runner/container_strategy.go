@@ -73,67 +73,20 @@ func (s *ContainerStrategy) LaunchRobotHardware() error {
 	})
 }
 
-func (s *ContainerStrategy) LaunchSensor(recipeName, sensor, configFile string) error {
-	if !s.licensed {
-		ui.Info(fmt.Sprintf("OSS container mode: skipping sensor '%s' launch. Ensure it is running externally.", sensor))
-		return nil
-	}
-
-	title := "Launching sensor: " + sensor
-	return ui.Spinner(title, func() error {
-		cmd := "source ros_entrypoint.sh && ros2 launch " + emosRoot + "/robot/launch/bringup_" + sensor + ".py"
-		if configFile != "" {
-			cmd += " config_file:=" + configFile
-		}
-		return container.ExecDetached(config.ContainerName, cmd)
-	})
-}
-
-func (s *ContainerStrategy) VerifyNodes(sensors []string, manifest *recipeManifest) error {
-	ui.Header("VERIFYING ROS2 NODES")
+func (s *ContainerStrategy) VerifySensorTopics(sensors []ExtractedTopic, distro string) error {
+	ui.Header("VERIFYING SENSOR TOPICS")
 	time.Sleep(5 * time.Second)
 
-	if s.licensed {
-		return verifyNodes(sensors)
-	}
-
-	// OSS mode: verify by topic presence
 	checker := func() (string, error) {
 		return container.Exec(config.ContainerName,
 			"source ros_entrypoint.sh && ros2 topic list")
 	}
-	return verifySensorTopics(sensors, manifest, checker)
+	return verifySensorTopicsAST(sensors, checker, distro)
 }
 
 func (s *ContainerStrategy) ExecRecipe(recipeName string, manifest *recipeManifest, logFile string) error {
-	// Final configuration
-	ui.Header("FINAL CONFIGURATION")
-
-	if s.licensed {
-		if manifest.AutonomousMode {
-			ui.Spinner("Activating autonomous mode...", func() error {
-				return container.ExecDetached(config.ContainerName,
-					"source ros_entrypoint.sh && ./"+emosRoot+"/robot/scripts/activate_autonomous_mode.sh")
-			})
-			ui.Warn("ATTENTION: Autonomous Mode is now ON.")
-		} else {
-			ui.Spinner("Deactivating autonomous mode...", func() error {
-				return container.ExecDetached(config.ContainerName,
-					"source ros_entrypoint.sh && ./"+emosRoot+"/robot/scripts/deactivate_autonomous_mode.sh")
-			})
-		}
-	}
-
 	ui.Header("LAUNCHING RECIPE: " + recipeName)
 	ui.Info("All output will be saved to: " + logFile)
-
-	if manifest.WebClient {
-		ui.Spinner("Starting web client in background...", func() error {
-			return container.ExecDetached(config.ContainerName,
-				"source ros_entrypoint.sh && ros2 run automatika_embodied_agents tiny_web_client")
-		})
-		ui.Info("Web client should be available at http://<ROBOT_IP>:8080")
-	}
 
 	ui.Success("BEGIN RECIPE OUTPUT")
 	fmt.Println()
@@ -151,6 +104,7 @@ func (s *ContainerStrategy) Cleanup() error {
 }
 
 // verifyNodes checks for expected ROS nodes using the robot manifest (licensed mode).
+// Used by the mapping flow.
 func verifyNodes(sensors []string) error {
 	robotManifest := filepath.Join(config.HomeDir, "emos", "robot", "manifest.json")
 	data, err := os.ReadFile(robotManifest)

@@ -13,6 +13,7 @@ The `emos` CLI is the main entry point for managing and running recipes on your 
 | `emos pull <name>` | Download a recipe |
 | `emos ls` | List locally installed recipes |
 | `emos run <name>` | Run a recipe |
+| `emos info <name>` | Show sensor/topic requirements for a recipe |
 | `emos map <cmd>` | Mapping tools (record, edit) |
 | `emos version` | Show CLI version |
 
@@ -28,7 +29,10 @@ emos recipes
 # 3. Download one
 emos pull vision_follower
 
-# 4. Run it
+# 4. Check what sensors it needs
+emos info vision_follower
+
+# 5. Run it
 emos run vision_follower
 ```
 
@@ -61,33 +65,25 @@ A recipe is a directory under `~/emos/recipes/` with the following structure:
 ~/emos/recipes/
   my_recipe/
     recipe.py          # Main entry point (required)
-    manifest.json      # Declares sensors, modes, and metadata (required)
+    manifest.json      # Optional Zenoh config and metadata
     *_config.yaml      # Optional per-sensor configuration overrides
 ```
 
 ### manifest.json
 
-The manifest tells EMOS what hardware your recipe needs:
+The manifest provides optional configuration for your recipe:
 
 ```json
 {
-  "name": "My Custom Recipe",
-  "sensors": ["camera", "lidar"],
-  "sensor_topics": {
-    "camera": ["/camera/image_raw"],
-    "lidar": ["/scan"]
-  },
-  "autonomous_mode": false,
-  "web_client": true,
-  "rmw": "rmw_zenoh_cpp"
+  "zenoh_router_config_file": "my_recipe/zenoh_config.json5"
 }
 ```
 
-- {material-regular}`sensors;1.2em;sd-text-primary` **sensors**: List of sensor drivers to launch (e.g. `"camera"`, `"lidar"`). In licensed mode, EMOS looks for a matching `bringup_<sensor>.py` launch file. In container and native modes, sensors must be running externally.
-- {material-regular}`topic;1.2em;sd-text-primary` **sensor_topics**: Maps each sensor to its expected ROS 2 topics. Used for verification in container and native modes.
-- {material-regular}`gamepad;1.2em;sd-text-primary` **autonomous_mode**: Set to `true` if the recipe commands the robot to move.
-- {material-regular}`web;1.2em;sd-text-primary` **web_client**: Set to `true` to start the auto-generated web UI.
-- {material-regular}`settings;1.2em;sd-text-primary` **rmw**: ROS 2 middleware implementation to use.
+- {material-regular}`settings;1.2em;sd-text-primary` **zenoh_router_config_file**: Path (relative to `~/emos/recipes/`) to a Zenoh router `.json5` config file. Only needed when using `rmw_zenoh_cpp`.
+
+:::{note}
+Sensor requirements are automatically extracted from your `recipe.py` by analyzing `Topic(name=..., msg_type=...)` declarations. You don't need to list them in the manifest. Run `emos info <recipe>` to see what sensors your recipe needs.
+:::
 
 ### recipe.py
 
@@ -170,6 +166,24 @@ emos pull <recipe_short_name>
 ```
 
 Downloads a recipe from the Automatika recipe server and extracts it to `~/emos/recipes/<name>/`. Overwrites the existing version if present.
+
+### emos info
+
+```bash
+emos info <recipe_name_or_path>
+```
+
+Inspects a recipe's Python source code to show its sensor and topic requirements. Accepts either a recipe name (looked up in `~/emos/recipes/`) or a direct path to a `.py` file:
+
+```bash
+emos info vision_follower          # looks up ~/emos/recipes/vision_follower/recipe.py
+emos info ./my_recipe.py           # direct file path
+```
+
+The output shows:
+- **Required Sensors** — topics with hardware sensor types (Image, LaserScan, etc.) and what hardware they need
+- **Suggested packages** — apt packages for common sensor drivers, tailored to your ROS 2 distro
+- **Other Topics** — non-sensor topics used by the recipe (e.g. String, Bool)
 
 ### emos run
 

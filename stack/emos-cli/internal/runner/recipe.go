@@ -19,11 +19,7 @@ const (
 )
 
 type recipeManifest struct {
-	AutonomousMode    bool                `json:"autonomous_mode"`
-	WebClient         bool                `json:"web_client"`
-	Sensors           []string            `json:"sensors"`
-	ZenohRouterConfig string              `json:"zenoh_router_config_file"`
-	SensorTopics      map[string][]string `json:"sensor_topics,omitempty"`
+	ZenohRouterConfig string `json:"zenoh_router_config_file"`
 }
 
 func RunRecipe(recipeName, rmwImpl string, skipSensorCheck bool) error {
@@ -39,22 +35,26 @@ func RunRecipe(recipeName, rmwImpl string, skipSensorCheck bool) error {
 
 	// Check recipe exists
 	recipePath := filepath.Join(config.RecipesDir, recipeName)
-	manifestPath := filepath.Join(recipePath, "manifest.json")
-	if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
+	recipeFile := filepath.Join(recipePath, "recipe.py")
+	if _, err := os.Stat(recipeFile); os.IsNotExist(err) {
 		ui.Error(fmt.Sprintf("Recipe '%s' not found in '%s'", recipeName, config.RecipesDir))
 		ui.Faint("Run 'emos ls' to see available recipes.")
 		return fmt.Errorf("recipe not found")
 	}
 
-	// Parse manifest
-	data, err := os.ReadFile(manifestPath)
-	if err != nil {
-		return fmt.Errorf("failed to read manifest: %w", err)
-	}
+	// Parse manifest (optional — only needed for zenoh config)
 	var manifest recipeManifest
-	if err := json.Unmarshal(data, &manifest); err != nil {
-		return fmt.Errorf("failed to parse manifest: %w", err)
+	manifestPath := filepath.Join(recipePath, "manifest.json")
+	if data, err := os.ReadFile(manifestPath); err == nil {
+		json.Unmarshal(data, &manifest)
 	}
+
+	// Extract topics from recipe.py via AST
+	topics, err := ExtractTopics(recipeFile)
+	if err != nil {
+		ui.Warn(fmt.Sprintf("Could not extract topics: %v", err))
+	}
+	sensorTopics := SensorTopics(topics)
 
 	// Setup logging
 	os.MkdirAll(config.LogsDir, 0755)
@@ -67,13 +67,22 @@ func RunRecipe(recipeName, rmwImpl string, skipSensorCheck bool) error {
 		return fmt.Errorf("no EMOS installation found — run 'emos install' first")
 	}
 	mode := cfg.Mode
+	distro := cfg.ROSDistro
+	if distro == "" {
+		distro = "jazzy"
+	}
 
 	ui.Header("EMOS - PRE-RECIPE SETUP")
 	ui.Info("Recipe Name: " + recipeName)
 	ui.Info("Mode: " + string(mode))
 	ui.Info("RMW Implementation: " + rmwImpl)
-	ui.Info("Required sensors: " + strings.Join(manifest.Sensors, ", "))
-	ui.Info("Autonomous mode: " + fmt.Sprintf("%v", manifest.AutonomousMode))
+	if len(sensorTopics) > 0 {
+		names := make([]string, len(sensorTopics))
+		for i, t := range sensorTopics {
+			names[i] = topicName(t.Name)
+		}
+		ui.Info("Sensor topics: " + strings.Join(names, ", "))
+	}
 
 	var strategy RuntimeStrategy
 	switch mode {
@@ -106,15 +115,8 @@ func RunRecipe(recipeName, rmwImpl string, skipSensorCheck bool) error {
 		return err
 	}
 
-	for _, sensor := range manifest.Sensors {
-		configFile := findSensorConfig(recipeName, sensor, mode)
-		if err := strategy.LaunchSensor(recipeName, sensor, configFile); err != nil {
-			return err
-		}
-	}
-
 	if !skipSensorCheck {
-		if err := strategy.VerifyNodes(manifest.Sensors, &manifest); err != nil {
+		if err := strategy.VerifySensorTopics(sensorTopics, distro); err != nil {
 			strategy.Cleanup()
 			return err
 		}
@@ -133,27 +135,6 @@ func RunRecipe(recipeName, rmwImpl string, skipSensorCheck bool) error {
 
 	strategy.Cleanup()
 	return err
-}
-
-// findSensorConfig looks for a sensor-specific config file in the recipe directory.
-func findSensorConfig(recipeName, sensor string, mode config.InstallMode) string {
-	if mode == config.ModeNative {
-		for _, ext := range []string{"yaml", "json", "toml"} {
-			candidate := filepath.Join(config.RecipesDir, recipeName, sensor+"_config."+ext)
-			if _, err := os.Stat(candidate); err == nil {
-				return candidate
-			}
-		}
-		return ""
-	}
-	// Container modes: check inside container
-	for _, ext := range []string{"yaml", "json", "toml"} {
-		candidate := fmt.Sprintf("%s/%s/%s_config.%s", recipesRoot, recipeName, sensor, ext)
-		if container.FileExists(config.ContainerName, candidate) {
-			return candidate
-		}
-	}
-	return ""
 }
 
 func killROSProcesses() {
@@ -226,57 +207,3 @@ func runQuiet(name string, args ...string) {
 // topicChecker abstracts how to run `ros2 topic list` for different modes.
 type topicChecker func() (string, error)
 
-// expectedSensorTopics builds the map of sensor->topics from the manifest or defaults.
-func expectedSensorTopics(sensors []string, manifest *recipeManifest) map[string][]string {
-	topics := map[string][]string{}
-	for _, sensor := range sensors {
-		if t, ok := manifest.SensorTopics[sensor]; ok {
-			topics[sensor] = t
-		} else {
-			switch sensor {
-			case "camera":
-				topics[sensor] = []string{"/camera/image_raw"}
-			case "lidar":
-				topics[sensor] = []string{"/scan"}
-			default:
-				topics[sensor] = []string{"/" + sensor}
-			}
-		}
-	}
-	return topics
-}
-
-// verifySensorTopics checks that expected sensor topics are published.
-func verifySensorTopics(sensors []string, manifest *recipeManifest, check topicChecker) error {
-	if len(sensors) == 0 && len(manifest.SensorTopics) == 0 {
-		ui.Info("No sensor verification required.")
-		return nil
-	}
-
-	expected := expectedSensorTopics(sensors, manifest)
-	ui.Info("Verifying sensor topics are available...")
-	allPresent := true
-	for sensor, topics := range expected {
-		for _, topic := range topics {
-			found := false
-			for i := 0; i < 10; i++ {
-				out, err := check()
-				if err == nil && strings.Contains(out, topic) {
-					found = true
-					break
-				}
-				time.Sleep(time.Second)
-			}
-			if found {
-				ui.Success(fmt.Sprintf("Sensor '%s': topic '%s' found.", sensor, topic))
-			} else {
-				ui.Error(fmt.Sprintf("Sensor '%s': topic '%s' not found within 10s.", sensor, topic))
-				allPresent = false
-			}
-		}
-	}
-	if !allPresent {
-		return fmt.Errorf("required sensor topics are missing")
-	}
-	return nil
-}

@@ -6,8 +6,7 @@ type RuntimeStrategy interface {
 	SetRMWImpl(rmw string) error
 	ConfigureZenoh(recipeName string, manifest *recipeManifest) error
 	LaunchRobotHardware() error
-	LaunchSensor(recipeName, sensor, configFile string) error
-	VerifyNodes(sensors []string, manifest *recipeManifest) error
+	VerifySensorTopics(sensors []ExtractedTopic, distro string) error
 	ExecRecipe(recipeName string, manifest *recipeManifest, logFile string) error
 	Cleanup() error
 }

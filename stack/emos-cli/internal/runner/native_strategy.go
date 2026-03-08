@@ -104,13 +104,8 @@ func (s *NativeStrategy) LaunchRobotHardware() error {
 	})
 }
 
-func (s *NativeStrategy) LaunchSensor(recipeName, sensor, configFile string) error {
-	ui.Info(fmt.Sprintf("Native mode: skipping sensor '%s' launch. Ensure it is running on the host.", sensor))
-	return nil
-}
-
-func (s *NativeStrategy) VerifyNodes(sensors []string, manifest *recipeManifest) error {
-	ui.Header("VERIFYING ROS2 TOPICS")
+func (s *NativeStrategy) VerifySensorTopics(sensors []ExtractedTopic, distro string) error {
+	ui.Header("VERIFYING SENSOR TOPICS")
 	time.Sleep(5 * time.Second)
 
 	src := s.sourceCmd()
@@ -118,20 +113,12 @@ func (s *NativeStrategy) VerifyNodes(sensors []string, manifest *recipeManifest)
 		out, err := exec.Command("bash", "-c", src+" && ros2 topic list").CombinedOutput()
 		return string(out), err
 	}
-	return verifySensorTopics(sensors, manifest, checker)
+	return verifySensorTopicsAST(sensors, checker, distro)
 }
 
 func (s *NativeStrategy) ExecRecipe(recipeName string, manifest *recipeManifest, logFile string) error {
 	ui.Header("LAUNCHING RECIPE: " + recipeName)
 	ui.Info("All output will be saved to: " + logFile)
-
-	if manifest.WebClient {
-		ui.Spinner("Starting web client in background...", func() error {
-			cmd := exec.Command("bash", "-c", s.sourceCmd()+" && ros2 run automatika_embodied_agents tiny_web_client &")
-			return cmd.Start()
-		})
-		ui.Info("Web client should be available at http://<ROBOT_IP>:8080")
-	}
 
 	ui.Success("BEGIN RECIPE OUTPUT")
 	fmt.Println()
@@ -149,4 +136,3 @@ func (s *NativeStrategy) Cleanup() error {
 	ui.Info("Native mode: no container cleanup needed.")
 	return nil
 }
-

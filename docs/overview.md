@@ -21,8 +21,8 @@ Write a _Recipe_ once, deploy it on any robot -- from wheeled AMRs to humanoids 
 <br/>
 
 <p align="center">
-  <a href="./getting-started/installation.md">Get Started</a> •
-  <a href="./why-emos.md">Why EMOS?</a> •
+  <a href="./getting-started/installation.html">Get Started</a> •
+  <a href="./why-emos.html">Why EMOS?</a> •
   <a href="https://github.com/automatika-robotics/emos">View on GitHub</a>
 </p>
 

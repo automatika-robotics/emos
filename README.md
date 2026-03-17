@@ -112,7 +112,7 @@ events_actions = {
 **Auto-generated web UIs.** EMOS renders a fully functional web dashboard directly from your Recipe definition, real-time telemetry, video feeds, and configuration controls with zero frontend code.
 
 <p align="center">
-<img alt="Auto-generated Web UI" src="docs/_static/agents_ui.gif" width="60%">
+<img alt="Auto-generated Web UI" src="docs/_static/ui_navigation.gif" width="60%">
 </p>
 
 ## Installation

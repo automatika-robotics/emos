@@ -11,7 +11,7 @@
 
 <p>
 <a href="https://emos.automatikarobotics.com/"><img src="https://img.shields.io/badge/docs-online-blue?style=flat-square" alt="Documentation"></a>
-<a href="LICENSE"><img src="https://img.shields.io/badge/license-see%20LICENSE-green?style=flat-square" alt="License"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square" alt="License: MIT"></a>
 <a href="https://emos.automatikarobotics.com/getting-started/installation.html"><img src="https://img.shields.io/badge/ROS%202-Humble%20|%20Iron%20|%20Jazzy%20|%20Kilted%20|%20Rolling-orange?style=flat-square&logo=ros" alt="ROS 2"></a>
 </p>
 

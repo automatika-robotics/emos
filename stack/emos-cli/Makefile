@@ -1,4 +1,4 @@
-VERSION ?= 0.4.0
+VERSION ?= 0.5.0
 BINARY  := emos
 GO      ?= $(shell which go 2>/dev/null || echo /usr/local/go/bin/go)
 LDFLAGS := -ldflags "-s -w -X github.com/automatika-robotics/emos-cli/internal/config.Version=$(VERSION)"

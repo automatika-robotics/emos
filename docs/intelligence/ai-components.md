@@ -1,9 +1,9 @@
 # AI Components
 
-A **Component** is the primary execution unit in EmbodiedAgents, the EMOS intelligence framework. Components represent functional behaviors -- for example, the ability to process text, understand images, or synthesize speech. Components can be combined arbitrarily to create more complex systems such as multi-modal agents with perception-action loops. Conceptually, each component is a layer of syntactic sugar over a ROS2 Lifecycle Node, inheriting all its lifecycle behaviors while also offering allied functionality to manage inputs and outputs and simplify development. Components receive one or more ROS topics as inputs and produce outputs on designated topics. The specific types and formats of these topics depend on the component's function.
+A **Component** is the primary execution unit in EmbodiedAgents, the EMOS intelligence framework. Components represent functional behaviors -- for example, the ability to process text, understand images, or synthesize speech. Components can be combined arbitrarily to create more complex systems such as multi-modal agents with perception-action loops.
 
 ```{note}
-To learn more about the internal structure and lifecycle behavior of components, check out the documentation of [Sugarcoat](https://automatika-robotics.github.io/sugarcoat/design/component.html).
+To learn more about the internal structure and lifecycle behavior of components, check out the concept [here](../concepts/components.md).
 ```
 
 ## Available Components

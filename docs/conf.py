@@ -1,5 +1,6 @@
 # Configuration file for the Sphinx documentation builder.
 import os
+import re
 from datetime import date
 from pathlib import Path
 
@@ -10,7 +11,11 @@ os.environ["AGENTS_DOCS_BUILD"] = "1"
 project = "EMOS"
 copyright = f"{date.today().year}, Automatika Robotics"
 author = "Automatika Robotics"
-release = "1.0"
+
+# Read version from the CLI Makefile (single source of truth)
+_makefile = Path(__file__).resolve().parent.parent / "stack" / "emos-cli" / "Makefile"
+_match = re.search(r"^VERSION\s*\?=\s*(.+)$", _makefile.read_text(), re.MULTILINE)
+release = _match.group(1).strip() if _match else "0.0.0"
 
 extensions = [
     "sphinx.ext.viewcode",

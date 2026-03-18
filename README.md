@@ -199,6 +199,27 @@ Custom recipes go in `~/emos/recipes/<name>/` with a `recipe.py` and `manifest.j
 
 EMOS has been developed in collaboration between [Automatika Robotics](https://automatikarobotics.com/) and [Inria](https://inria.fr/). Contributions from the community are welcome.
 
+### Where to open issues
+
+EMOS is a monorepo that integrates three independently developed packages. You can open issues here or directly in the relevant repository:
+
+| Area | Repository | What belongs there |
+| :--- | :--- | :--- |
+| CLI, installation, recipes, docs | [**emos**](https://github.com/automatika-robotics/emos/issues) | CLI bugs, recipe issues, deployment, documentation |
+| AI components, model clients | [**embodied-agents**](https://github.com/automatika-robotics/embodied-agents/issues) | LLM/VLM/VLA components, model clients, speech, vision |
+| Navigation, planning, control | [**kompass**](https://github.com/automatika-robotics/kompass/issues) | Planner, controller, drive manager, mapping, algorithms |
+| Core framework, events, launcher | [**sugarcoat**](https://github.com/automatika-robotics/sugarcoat/issues) | Components, events/actions, fallbacks, lifecycle, web UI |
+
+If you're unsure, just open it on [emos](https://github.com/automatika-robotics/emos/issues) and we'll route it to the right place.
+
+### Getting started with development
+
+Each package has developer documentation with guides for extending the framework:
+
+- [EmbodiedAgents developer docs](https://agents.automatikarobotics.com) — custom components, clients, models
+- [Kompass developer docs](https://kompass.automatikarobotics.com) — algorithms, navigation components, data types
+- [Sugarcoat developer docs](https://sugarcoat.automatikarobotics.com) — type system, event internals, testing
+
 ## License
 
-Copyright 2024-2026 [Automatika Robotics](https://automatikarobotics.com/). See the [LICENSE](LICENSE) file for details.
+MIT. See the [LICENSE](LICENSE) file for details.

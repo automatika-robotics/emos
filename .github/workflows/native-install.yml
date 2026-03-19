@@ -43,7 +43,7 @@ jobs:
 
       - name: Build CLI
         working-directory: stack/emos-cli
-        run: /usr/local/go/bin/go build -ldflags "-s -w" -o emos .
+        run: /usr/local/go/bin/go build -buildvcs=false -ldflags "-s -w" -o emos .
 
       - name: Install CLI
         working-directory: stack/emos-cli

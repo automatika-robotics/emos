@@ -1,0 +1,56 @@
+name: Native Install Test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "stack/emos-cli/**"
+      - "stack/sugarcoat/**"
+      - "stack/embodied-agents/**"
+      - "stack/kompass/**"
+  pull_request:
+    paths:
+      - "stack/emos-cli/**"
+      - "stack/sugarcoat/**"
+      - "stack/embodied-agents/**"
+      - "stack/kompass/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-install:
+    strategy:
+      fail-fast: false
+      matrix:
+        ros_distro: [humble, jazzy, kilted]
+
+    runs-on: ubuntu-latest
+    container:
+      image: ros:${{ matrix.ros_distro }}-ros-base
+
+    name: Native Install / ${{ matrix.ros_distro }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Go
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends curl git sudo
+          curl -fsSL https://go.dev/dl/go1.22.10.linux-amd64.tar.gz | tar -C /usr/local -xzf -
+          echo "/usr/local/go/bin" >> "$GITHUB_PATH"
+
+      - name: Build CLI
+        working-directory: stack/emos-cli
+        run: /usr/local/go/bin/go build -ldflags "-s -w" -o emos .
+
+      - name: Install CLI
+        working-directory: stack/emos-cli
+        run: cp emos /usr/local/bin/emos
+
+      - name: Run native install
+        run: emos install --mode native --distro ${{ matrix.ros_distro }}
+
+      - name: Verify with emos status
+        run: emos status

@@ -43,7 +43,9 @@ jobs:
 
       - name: Build CLI
         working-directory: stack/emos-cli
-        run: /usr/local/go/bin/go build -buildvcs=false -ldflags "-s -w" -o emos .
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          /usr/local/go/bin/go build -buildvcs=false -ldflags "-s -w" -o emos .
 
       - name: Install CLI
         working-directory: stack/emos-cli

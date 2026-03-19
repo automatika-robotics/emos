@@ -2,7 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/container"
@@ -45,13 +48,7 @@ var statusCmd = &cobra.Command{
 			}
 
 		case config.ModeNative:
-			rosPath := "/opt/ros/" + cfg.ROSDistro
-			if _, err := exec.LookPath("ros2"); err == nil {
-				ui.Success("ROS 2: Available")
-			} else {
-				ui.Error("ROS 2: Not found in PATH")
-			}
-			ui.Info("EMOS packages installed in: " + rosPath)
+			nativeStatus(cfg)
 		}
 
 		if cfg.Mode == config.ModeLicensed {
@@ -62,4 +59,68 @@ var statusCmd = &cobra.Command{
 			}
 		}
 	},
+}
+
+func nativeStatus(cfg *config.EMOSConfig) {
+	rosPath := filepath.Join("/opt/ros", cfg.ROSDistro)
+	rosSetup := filepath.Join(rosPath, "setup.bash")
+
+	// ROS 2 availability
+	if _, err := os.Stat(rosSetup); err == nil {
+		ui.Success(fmt.Sprintf("ROS 2 %s: Installed at %s", capitalize(cfg.ROSDistro), rosPath))
+	} else {
+		ui.Error(fmt.Sprintf("ROS 2 %s: Not found at %s", capitalize(cfg.ROSDistro), rosPath))
+		return
+	}
+
+	// Python package checks
+	fmt.Println()
+	ui.Info("Python Packages:")
+	pyModules := []struct {
+		module  string
+		display string
+	}{
+		{"ros_sugar", "ros_sugar (Sugarcoat)"},
+		{"agents", "agents (Embodied Agents)"},
+		{"kompass", "kompass"},
+		{"kompass_core", "kompass_core"},
+	}
+
+	for _, m := range pyModules {
+		importCmd := fmt.Sprintf("source %s && python3 -c 'import %s' 2>&1", rosSetup, m.module)
+		if err := exec.Command("bash", "-c", importCmd).Run(); err != nil {
+			ui.Error(fmt.Sprintf("  %s: Not installed", m.display))
+		} else {
+			ui.Success(fmt.Sprintf("  %s: OK", m.display))
+		}
+	}
+
+	// ROS package checks
+	fmt.Println()
+	ui.Info("ROS Packages:")
+	listCmd := fmt.Sprintf("source %s && ros2 pkg list 2>/dev/null", rosSetup)
+	out, err := exec.Command("bash", "-c", listCmd).Output()
+	if err != nil {
+		ui.Warn("  Could not list ROS packages")
+		return
+	}
+
+	pkgList := string(out)
+	rosPkgs := []struct {
+		name    string
+		display string
+	}{
+		{"automatika_ros_sugar", "automatika_ros_sugar"},
+		{"automatika_embodied_agents", "automatika_embodied_agents"},
+		{"kompass", "kompass"},
+		{"kompass_interfaces", "kompass_interfaces"},
+	}
+
+	for _, p := range rosPkgs {
+		if strings.Contains(pkgList, p.name) {
+			ui.Success(fmt.Sprintf("  %s: OK", p.display))
+		} else {
+			ui.Error(fmt.Sprintf("  %s: Not found", p.display))
+		}
+	}
 }

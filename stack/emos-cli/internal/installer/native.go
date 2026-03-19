@@ -46,31 +46,45 @@ func DetectROS() []ROSInstallation {
 }
 
 // InstallNative builds EMOS packages and installs them into the ROS 2 installation.
-// The wsPath is used as a build cache; the final artifacts are merged into /opt/ros/{distro}/.
+// Uses two separate colcon builds (matching the Dockerfile pattern):
+//  1. Localization dependencies (angles, geographic_info, robot_localization)
+//  2. EMOS packages (sugarcoat, kompass, embodied-agents)
 func InstallNative(wsPath, distro string) error {
+	rosPath := filepath.Join("/opt/ros", distro)
+	rosSetup := filepath.Join(rosPath, "setup.bash")
+
+	// -- Fetch sources --
 	srcDir := filepath.Join(wsPath, "src")
 	os.MkdirAll(srcDir, 0755)
 
-	// Fetch EMOS source
 	emosRepoURL := "https://github.com/" + config.GitHubOrg + "/" + config.GitHubRepo + ".git"
 	emosPackages := []string{"sugarcoat", "kompass", "embodied-agents"}
 	emosRepo := filepath.Join(srcDir, ".emos-repo")
 
 	if err := ui.Spinner("Fetching EMOS source...", func() error {
 		if _, err := os.Stat(emosRepo); err == nil {
-			return runCmd(emosRepo, "git", "pull")
+			if err := runCmd(emosRepo, "git", "pull"); err != nil {
+				return err
+			}
+			// Update submodules (stack packages are submodules)
+			return runCmd(emosRepo, "git", "submodule", "update", "--init", "--depth", "1")
 		}
-		return runCmd(srcDir, "git", "clone", "--depth", "1", emosRepoURL, ".emos-repo")
+		return runCmd(srcDir, "git", "clone", "--depth", "1", "--recurse-submodules", "--shallow-submodules", emosRepoURL, ".emos-repo")
 	}); err != nil {
 		return fmt.Errorf("failed to fetch emos source: %w", err)
 	}
 
-	// Copy stack packages from the monorepo into the workspace src
+	// Copy stack packages from the monorepo
 	for _, pkg := range emosPackages {
 		dest := filepath.Join(srcDir, pkg)
 		src := filepath.Join(emosRepo, "stack", pkg)
-		if _, err := os.Stat(src); err != nil {
-			continue
+		// Check that the submodule was actually populated (has files, not just empty dir)
+		if _, err := os.Stat(filepath.Join(src, "package.xml")); err != nil {
+			// kompass has nested package.xml
+			if _, err := os.Stat(filepath.Join(src, "kompass", "package.xml")); err != nil {
+				ui.Warn(fmt.Sprintf("Package %s not found in source — skipping", pkg))
+				continue
+			}
 		}
 		os.RemoveAll(dest)
 		if err := runCmd("", "cp", "-r", src, dest); err != nil {
@@ -109,7 +123,7 @@ func InstallNative(wsPath, distro string) error {
 		return err
 	}
 
-	// System dependencies (matches Dockerfile)
+	// -- System dependencies --
 	ui.Info("Installing system dependencies...")
 	aptPkgs := []string{
 		"portaudio19-dev", "jq", "python3-empy",
@@ -125,6 +139,21 @@ func InstallNative(wsPath, distro string) error {
 		ui.Warn("Failed to install GeographicLib: " + err.Error())
 	}
 
+	// -- Install kompass-core with GPU support --
+	// This also installs python3-pip, so it must run before the pip step.
+	// Download to a temp file instead of curl|bash to avoid stdin corruption.
+	ui.Info("Installing kompass-core (this may take a while)...")
+	installGPUCmd := exec.Command("bash", "-c",
+		`tmpf=$(mktemp /tmp/install_gpu_XXXXXX.sh) && `+
+			`curl -fsSL https://raw.githubusercontent.com/automatika-robotics/kompass-core/main/build_dependencies/install_gpu.sh -o "$tmpf" && `+
+			`chmod +x "$tmpf" && bash "$tmpf" && rm -f "$tmpf"`)
+	installGPUCmd.Stdout = os.Stdout
+	installGPUCmd.Stderr = os.Stderr
+	if err := installGPUCmd.Run(); err != nil {
+		return fmt.Errorf("kompass-core GPU install failed: %w", err)
+	}
+
+	// -- Python dependencies (python3-pip now available from install_gpu.sh) --
 	if err := ui.Spinner("Fetching Python dependencies...", func() error {
 		pipPkgs := []string{
 			"numpy", "opencv-python-headless", "attrs>=23.2.0",
@@ -134,8 +163,8 @@ func InstallNative(wsPath, distro string) error {
 			"ollama", "redis[hiredis]", "pyaudio",
 			"soundfile", "python-fasthtml", "monsterui",
 		}
-		args := append([]string{"install", "--no-cache-dir"}, pipPkgs...)
-		cmd := exec.Command("pip3", args...)
+		args := append([]string{"-m", "pip", "install", "--no-cache-dir"}, pipPkgs...)
+		cmd := exec.Command("python3", args...)
 		cmd.Env = append(os.Environ(), "PIP_BREAK_SYSTEM_PACKAGES=1")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -146,41 +175,69 @@ func InstallNative(wsPath, distro string) error {
 		ui.Warn("Some pip packages may have failed: " + err.Error())
 	}
 
-	// Install kompass-core with GPU support (also works on non-GPU machines)
-	ui.Info("Installing kompass-core (this may take a while)...")
-	installGPUCmd := exec.Command("bash", "-c",
-		"curl -fsSL https://raw.githubusercontent.com/automatika-robotics/kompass-core/main/build_dependencies/install_gpu.sh | bash")
-	installGPUCmd.Stdout = os.Stdout
-	installGPUCmd.Stderr = os.Stderr
-	if err := installGPUCmd.Run(); err != nil {
-		return fmt.Errorf("kompass-core GPU install failed: %w", err)
+	// -- Ensure rosdep is initialized --
+	if _, err := os.Stat("/etc/ros/rosdep/sources.list.d/20-default.list"); os.IsNotExist(err) {
+		ui.Info("Initializing rosdep...")
+		initCmd := exec.Command("sudo", "rosdep", "init")
+		initCmd.Stdout = os.Stdout
+		initCmd.Stderr = os.Stderr
+		initCmd.Run()
+		updateCmd := exec.Command("bash", "-c", "rosdep update")
+		updateCmd.Stdout = os.Stdout
+		updateCmd.Stderr = os.Stderr
+		updateCmd.Run()
 	}
 
-	// Rosdep
-	ui.Info("Running rosdep install...")
-	rosSetup := filepath.Join("/opt/ros", distro, "setup.bash")
+	// -- Stage 1: Build localization dependencies --
+	// Build only the localization packages first, then install them into
+	// /opt/ros/{distro} so they're available as an underlay for EMOS packages.
+	ui.Info("Running rosdep install for localization packages...")
 	rosdepCmd := fmt.Sprintf("source %s && rosdep install --from-paths %s --ignore-src -r -y", rosSetup, srcDir)
 	cmd = exec.Command("bash", "-c", rosdepCmd)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Run() // best-effort
+	cmd.Run()
 
-	// Colcon build with --merge-install so the install/ directory has a flat
-	// layout matching /opt/ros/{distro}, ready to be copied in.
-	ui.Info("Building EMOS packages (this may take a while)...")
-	buildCmd := fmt.Sprintf("unset VIRTUAL_ENV && source %s && cd %s && colcon build --merge-install", rosSetup, wsPath)
+	locPkgs := "angles geographic_msgs robot_localization"
+	ui.Info("Building localization packages...")
+	buildCmd := fmt.Sprintf(
+		"source %s && cd %s && colcon build --merge-install --packages-select %s --cmake-args -DCMAKE_BUILD_TYPE=Release",
+		rosSetup, wsPath, locPkgs)
 	cmd = exec.Command("bash", "-c", buildCmd)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Env = cleanEnv()
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("colcon build failed: %w", err)
+		return fmt.Errorf("localization build failed: %w", err)
 	}
 
-	// Merge built packages into the ROS 2 installation
-	rosPath := filepath.Join("/opt/ros", distro)
-	installDir := filepath.Join(wsPath, "install")
-	if err := mergeIntoROS(installDir, rosPath); err != nil {
+	if err := mergeIntoROS(filepath.Join(wsPath, "install"), rosPath); err != nil {
+		return err
+	}
+
+	// -- Stage 2: Build EMOS packages --
+	// Re-source /opt/ros/{distro} which now includes localization packages,
+	// then build only the EMOS packages.
+	emosPkgs := "automatika_ros_sugar automatika_embodied_agents kompass kompass_interfaces"
+	ui.Info("Building EMOS packages (this may take a while)...")
+	buildCmd = fmt.Sprintf(
+		"unset VIRTUAL_ENV && source %s && cd %s && colcon build --merge-install --packages-select %s --cmake-args -DCMAKE_BUILD_TYPE=Release",
+		rosSetup, wsPath, emosPkgs)
+	cmd = exec.Command("bash", "-c", buildCmd)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = cleanEnv()
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("EMOS build failed: %w", err)
+	}
+
+	if err := mergeIntoROS(filepath.Join(wsPath, "install"), rosPath); err != nil {
+		return err
+	}
+
+	// -- Verify installation --
+	ui.Info("Verifying installation...")
+	if err := VerifyNativeInstall(rosSetup); err != nil {
 		return err
 	}
 
@@ -188,8 +245,66 @@ func InstallNative(wsPath, distro string) error {
 	return nil
 }
 
+// VerifyNativeInstall checks that EMOS packages are correctly installed and importable.
+func VerifyNativeInstall(rosSetup string) error {
+	// Check Python imports
+	pyChecks := []struct {
+		module  string
+		display string
+	}{
+		{"ros_sugar", "Sugarcoat (ros_sugar)"},
+		{"agents", "Embodied Agents"},
+		{"kompass", "Kompass"},
+		{"kompass_core", "Kompass Core"},
+	}
+
+	allOK := true
+	for _, check := range pyChecks {
+		importCmd := fmt.Sprintf("source %s && python3 -c 'import %s'", rosSetup, check.module)
+		cmd := exec.Command("bash", "-c", importCmd)
+		cmd.Env = cleanEnv()
+		if out, err := cmd.CombinedOutput(); err != nil {
+			ui.Error(fmt.Sprintf("  %s: FAILED (%s)", check.display, strings.TrimSpace(string(out))))
+			allOK = false
+		} else {
+			ui.Success(fmt.Sprintf("  %s: OK", check.display))
+		}
+	}
+
+	// Check ROS packages are registered
+	rosChecks := []string{
+		"automatika_ros_sugar",
+		"automatika_embodied_agents",
+		"kompass",
+		"kompass_interfaces",
+	}
+
+	listCmd := fmt.Sprintf("source %s && ros2 pkg list", rosSetup)
+	out, err := exec.Command("bash", "-c", listCmd).CombinedOutput()
+	if err == nil {
+		pkgList := string(out)
+		for _, pkg := range rosChecks {
+			if strings.Contains(pkgList, pkg) {
+				ui.Success(fmt.Sprintf("  ROS package %s: OK", pkg))
+			} else {
+				ui.Error(fmt.Sprintf("  ROS package %s: NOT FOUND", pkg))
+				allOK = false
+			}
+		}
+	} else {
+		ui.Warn("Could not list ROS packages (ros2 command not available in this shell)")
+	}
+
+	if !allOK {
+		return fmt.Errorf("some packages failed verification — check the errors above")
+	}
+	return nil
+}
+
 // UpdateNative pulls latest sources, rebuilds, and re-installs into the ROS 2 installation.
 func UpdateNative(wsPath, distro string) error {
+	rosPath := filepath.Join("/opt/ros", distro)
+	rosSetup := filepath.Join(rosPath, "setup.bash")
 	srcDir := filepath.Join(wsPath, "src")
 
 	// Pull latest emos repo and re-copy stack packages
@@ -198,18 +313,20 @@ func UpdateNative(wsPath, distro string) error {
 
 	if _, err := os.Stat(filepath.Join(emosRepo, ".git")); err == nil {
 		if err := ui.Spinner("Fetching EMOS source...", func() error {
-			return runCmd(emosRepo, "git", "pull")
+			if err := runCmd(emosRepo, "git", "pull"); err != nil {
+				return err
+			}
+			return runCmd(emosRepo, "git", "submodule", "update", "--init", "--depth", "1")
 		}); err != nil {
 			ui.Warn("Failed to update emos repo: " + err.Error())
 		}
 		for _, pkg := range emosPackages {
 			src := filepath.Join(emosRepo, "stack", pkg)
 			dest := filepath.Join(srcDir, pkg)
-			if _, err := os.Stat(src); err != nil {
-				continue
-			}
 			os.RemoveAll(dest)
-			runCmd("", "cp", "-r", src, dest)
+			if err := runCmd("", "cp", "-r", src, dest); err != nil {
+				ui.Warn(fmt.Sprintf("Failed to copy %s: %v", pkg, err))
+			}
 		}
 	}
 
@@ -229,39 +346,68 @@ func UpdateNative(wsPath, distro string) error {
 		ui.Warn(err.Error())
 	}
 
-	// Update kompass-core via GPU install script
+	// Update kompass-core via GPU install script (download to file, not curl|bash)
 	ui.Info("Updating kompass-core...")
 	installGPUCmd := exec.Command("bash", "-c",
-		"curl -fsSL https://raw.githubusercontent.com/automatika-robotics/kompass-core/main/build_dependencies/install_gpu.sh | bash")
+		`tmpf=$(mktemp /tmp/install_gpu_XXXXXX.sh) && `+
+			`curl -fsSL https://raw.githubusercontent.com/automatika-robotics/kompass-core/main/build_dependencies/install_gpu.sh -o "$tmpf" && `+
+			`chmod +x "$tmpf" && bash "$tmpf" && rm -f "$tmpf"`)
 	installGPUCmd.Stdout = os.Stdout
 	installGPUCmd.Stderr = os.Stderr
 	if err := installGPUCmd.Run(); err != nil {
 		ui.Warn("kompass-core update failed: " + err.Error())
 	}
 
-	// Rosdep install before rebuild
-	rosSetup := filepath.Join("/opt/ros", distro, "setup.bash")
+	// Ensure rosdep is initialized
+	if _, err := os.Stat("/etc/ros/rosdep/sources.list.d/20-default.list"); os.IsNotExist(err) {
+		ui.Info("Initializing rosdep...")
+		initCmd := exec.Command("sudo", "rosdep", "init")
+		initCmd.Stdout = os.Stdout
+		initCmd.Stderr = os.Stderr
+		initCmd.Run()
+		updateCmd := exec.Command("bash", "-c", "rosdep update")
+		updateCmd.Stdout = os.Stdout
+		updateCmd.Stderr = os.Stderr
+		updateCmd.Run()
+	}
+
+	// -- Stage 1: Rebuild localization packages --
 	rosdepCmd := fmt.Sprintf("source %s && rosdep install --from-paths %s --ignore-src -r -y", rosSetup, srcDir)
 	cmd := exec.Command("bash", "-c", rosdepCmd)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Run() // best-effort
+	cmd.Run()
 
-	// Rebuild with --merge-install
-	buildCmd := fmt.Sprintf("unset VIRTUAL_ENV && source %s && cd %s && colcon build --merge-install", rosSetup, wsPath)
-	ui.Info("Rebuilding EMOS packages...")
+	locPkgs := "angles geographic_msgs robot_localization"
+	ui.Info("Rebuilding localization packages...")
+	buildCmd := fmt.Sprintf(
+		"source %s && cd %s && colcon build --merge-install --packages-select %s --cmake-args -DCMAKE_BUILD_TYPE=Release",
+		rosSetup, wsPath, locPkgs)
 	cmd = exec.Command("bash", "-c", buildCmd)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Env = cleanEnv()
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("colcon build failed: %w", err)
+		return fmt.Errorf("localization build failed: %w", err)
+	}
+	if err := mergeIntoROS(filepath.Join(wsPath, "install"), rosPath); err != nil {
+		return err
 	}
 
-	// Merge rebuilt packages into the ROS 2 installation
-	rosPath := filepath.Join("/opt/ros", distro)
-	installDir := filepath.Join(wsPath, "install")
-	if err := mergeIntoROS(installDir, rosPath); err != nil {
+	// -- Stage 2: Rebuild EMOS packages --
+	emosPkgs := "automatika_ros_sugar automatika_embodied_agents kompass kompass_interfaces"
+	ui.Info("Rebuilding EMOS packages...")
+	buildCmd = fmt.Sprintf(
+		"unset VIRTUAL_ENV && source %s && cd %s && colcon build --merge-install --packages-select %s --cmake-args -DCMAKE_BUILD_TYPE=Release",
+		rosSetup, wsPath, emosPkgs)
+	cmd = exec.Command("bash", "-c", buildCmd)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = cleanEnv()
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("EMOS build failed: %w", err)
+	}
+	if err := mergeIntoROS(filepath.Join(wsPath, "install"), rosPath); err != nil {
 		return err
 	}
 

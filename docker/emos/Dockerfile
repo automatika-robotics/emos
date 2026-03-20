@@ -50,7 +50,13 @@ RUN pip install --no-cache-dir --ignore-installed \
     pyaudio \
     soundfile \
     python-fasthtml \
-    monsterui
+    monsterui \
+    huggingface-hub \
+    sherpa-onnx \
+    onnxruntime \
+    llama-cpp-python \
+    grpcio \
+    protobuf
 
 # Install kompass-core with GPU support (also works on non-GPU machines)
 ADD https://raw.githubusercontent.com/automatika-robotics/kompass-core/main/build_dependencies/install_gpu.sh /tmp/install_gpu.sh

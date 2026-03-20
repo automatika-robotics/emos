@@ -163,7 +163,8 @@ RUN curl -sSL https://raw.githubusercontent.com/automatika-robotics/kompass-core
 WORKDIR ${ROS_WS}/src
 RUN apt-get update && apt-get install -y portaudio19-dev jq && \
     pip install --no-cache-dir numpy opencv-python-headless 'attrs>=23.2.0' jinja2 httpx msgpack msgpack-numpy \
-    setproctitle platformdirs tqdm pyyaml toml websockets && \
+    setproctitle platformdirs tqdm pyyaml toml websockets \
+    huggingface-hub sherpa-onnx grpcio protobuf && \
     pip install --no-cache-dir ollama redis[hiredis] pyaudio soundfile && \
     PY_MINOR=$(python3 -c "import sys; print(sys.version_info.minor)") && \
     if [ "$PY_MINOR" -ge 10 ]; then \
@@ -173,6 +174,11 @@ RUN apt-get update && apt-get install -y portaudio19-dev jq && \
     fi && \
     rm -rf /root/.cache/pip && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install llama-cpp-python with CUDA support for Jetson Orin (SM 87)
+RUN CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=87" \
+    FORCE_CMAKE=1 \
+    pip install llama-cpp-python --no-cache-dir
 
 COPY stack/sugarcoat sugarcoat
 COPY stack/kompass kompass

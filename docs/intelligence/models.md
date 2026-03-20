@@ -53,6 +53,58 @@ Clients in EmbodiedAgents take as input a **model** or **vector database (DB)** 
   - A generic wrapper for object detection and tracking models available on [MMDetection](https://github.com/open-mmlab/mmdetection). Supports optional tracking, configurable thresholds, and deployment with TensorRT. Available on the [RoboML](https://github.com/automatika-robotics/roboml) platform and can be used with any RoboML client. Recommended: **RoboMLRESPClient**.
 ```
 
+## Built-in Local Models
+
+EmbodiedAgents includes lightweight models that run directly on the robot without needing an external model server (Ollama, RoboML, etc.). These are ideal for offline operation, edge deployment, or as automatic fallbacks when a remote server becomes unavailable.
+
+```{list-table}
+:widths: 15 15 15 30 25
+:header-rows: 1
+
+* - Local Model
+  - Component
+  - Framework
+  - Default Checkpoint
+  - Dependency
+
+* - **LocalLLM**
+  - LLM
+  - llama-cpp-python
+  - Qwen/Qwen3-0.6B-GGUF
+  - `pip install llama-cpp-python`
+
+* - **LocalVLM**
+  - VLM
+  - llama-cpp-python
+  - ggml-org/moondream2-20250414-GGUF
+  - `pip install llama-cpp-python`
+
+* - **LocalSTT**
+  - SpeechToText
+  - sherpa-onnx
+  - csukuangfj/sherpa-onnx-whisper-tiny.en
+  - `pip install sherpa-onnx`
+
+* - **LocalTTS**
+  - TextToSpeech
+  - sherpa-onnx
+  - csukuangfj/kokoro-en-v0_19
+  - `pip install sherpa-onnx`
+
+* - **LocalVision**
+  - Vision
+  - onnxruntime
+  - DEIM detector
+  - `pip install onnxruntime`
+```
+
+```{note}
+- Local models can be activated via `enable_local_model=True` in the component config or `fallback_to_local()` action.
+- Model weights are auto-downloaded from HuggingFace on first use. To use a custom model, set `local_model_path` in the component config.
+- GPU-accelerated variants are available for `llama-cpp-python` (CUDA/Metal builds) and `onnxruntime` (`onnxruntime-gpu`).
+- Dependencies are pre-installed in EMOS Docker containers. For native installations, install them manually as shown above.
+```
+
 ## Available Vector Databases
 
 ```{list-table}

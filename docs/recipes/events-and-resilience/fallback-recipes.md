@@ -13,10 +13,81 @@ We build an agent that uses a high-intelligence model (hosted remotely) as its p
 ### The Strategy: Plan A and Plan B
 
 1. **Plan A (Primary):** Use a powerful model hosted via RoboML (or a cloud provider) for high-quality reasoning.
-2. **Plan B (Backup):** Keep a smaller, quantized model (like Llama 3.2 3B) loaded locally via Ollama.
-3. **The Trigger:** If the Primary model fails to respond (latency, disconnection, or server error), automatically swap the component's internal client to the Backup.
+2. **Plan B (Backup):** Keep a smaller model available locally as a safety net.
+3. **The Trigger:** If the Primary model fails to respond (latency, disconnection, or server error), automatically swap to the Backup.
 
-### 1. Defining the Models
+EMOS offers two approaches for implementing this strategy — a zero-config local fallback and a manual model client swap.
+
+### Approach 1: Built-in Local Fallback (Zero-Config)
+
+The simplest way to add resilience is `fallback_to_local()`. This one-liner tells the component to switch to a built-in local model on failure — no Ollama server, no additional clients, no extra configuration.
+
+Built-in local models are available for **LLM**, **VLM**, **SpeechToText**, and **TextToSpeech** components. Default models are lightweight and designed for on-device inference:
+
+- **LLM** — Qwen3 0.6B (via `llama-cpp-python`)
+- **VLM** — Moondream2 (via `llama-cpp-python`)
+- **STT** — Whisper tiny (via `sherpa-onnx`)
+- **TTS** — Kokoro (via `sherpa-onnx`)
+
+```{note}
+Install the required dependency for your component: `pip install llama-cpp-python` for LLM/VLM, or `pip install sherpa-onnx` for STT/TTS. These are pre-installed in EMOS Docker containers.
+```
+
+```python
+from agents.components import LLM
+from agents.models import TransformersLLM
+from agents.clients import RoboMLHTTPClient
+from agents.ros import Launcher, Topic, Action
+
+# Primary: A powerful model hosted remotely (e.g., via RoboML)
+# NOTE: This is illustrative for the sake of executing on the local machine.
+# For a more realistic scenario, replace this with a GenericHTTPClient
+# pointing to a cloud model.
+primary_model = TransformersLLM(
+    name="qwen_heavy", checkpoint="Qwen/Qwen2.5-1.5B-Instruct"
+)
+primary_client = RoboMLHTTPClient(model=primary_model)
+
+# Define Topics
+user_query = Topic(name="user_query", msg_type="String")
+llm_response = Topic(name="llm_response", msg_type="String")
+
+# Configure the LLM Component with the primary client
+llm_component = LLM(
+    inputs=[user_query],
+    outputs=[llm_response],
+    model_client=primary_client,
+    trigger=user_query,
+    component_name="brain",
+)
+
+# One-liner fallback: switch to built-in local model on failure.
+# No additional model clients, no Ollama server — just a single Action.
+switch_to_local = Action(method=llm_component.fallback_to_local)
+llm_component.on_component_fail(action=switch_to_local, max_retries=3)
+llm_component.on_algorithm_fail(action=switch_to_local, max_retries=3)
+
+# Launch
+launcher = Launcher()
+launcher.add_pkg(
+    components=[llm_component],
+    multiprocessing=True,
+    package_name="automatika_embodied_agents",
+)
+launcher.bringup()
+```
+
+To test this, shut down your RoboML server (or disconnect the internet) while the agent is running, and watch it seamlessly switch to the local model.
+
+```{seealso}
+For the full list of built-in local models and configuration options, see [Built-in Local Models](../../intelligence/models.md#built-in-local-models).
+```
+
+### Approach 2: Model Client Hot-Swap
+
+When you want explicit control over which backup model and client to use, the `change_model_client` + `additional_model_clients` pattern lets you define exactly what runs as the fallback.
+
+#### 1. Defining the Models
 
 First, we need to define our two distinct model clients.
 
@@ -44,7 +115,7 @@ backup_model = OllamaModel(name="llama_local", checkpoint="llama3.2:3b")
 backup_client = OllamaClient(model=backup_model)
 ```
 
-### 2. Configuring the Component
+#### 2. Configuring the Component
 
 Next, we set up the standard `LLM` component. We initialize it using the `primary_client`.
 
@@ -70,7 +141,7 @@ llm_component = LLM(
 llm_component.additional_model_clients = {"local_backup_client": backup_client}
 ```
 
-### 3. Creating the Fallback Action
+#### 3. Creating the Fallback Action
 
 Now we need an **Action**. In EMOS, components have built-in methods to reconfigure themselves. The `LLM` component (like all other components that take a model client) has a method called `change_model_client`.
 
@@ -94,7 +165,7 @@ switch_to_backup = Action(
 )
 ```
 
-### 4. Wiring Failure to Action
+#### 4. Wiring Failure to Action
 
 Finally, we tell the component _when_ to execute this action. We don't need to write complex `try/except` blocks in our business logic. Instead, we attach the action to the component's lifecycle hooks:
 
@@ -113,9 +184,9 @@ llm_component.on_algorithm_fail(action=switch_to_backup, max_retries=3)
 **Why `max_retries`?** Sometimes a fallback can temporarily fail as well. The system will attempt to restart the component or algorithm up to 3 times while applying the action (switching the client) to resolve the error. This is an _optional_ parameter.
 ```
 
-### The Complete Intelligence Fallback Recipe
+#### The Complete Client Hot-Swap Recipe
 
-Here is the full code. To test this, you can try shutting down your RoboML server (or disconnecting the internet) while the agent is running, and watch it seamlessly switch to the local Llama model.
+Here is the full code. To test this, try shutting down your RoboML server (or disconnecting the internet) while the agent is running, and watch it seamlessly switch to the local Ollama model.
 
 ```python
 from agents.components import LLM

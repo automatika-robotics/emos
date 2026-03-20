@@ -38,14 +38,16 @@ jobs:
       - name: Install Go
         run: |
           apt-get update && apt-get install -y --no-install-recommends curl git sudo
-          curl -fsSL https://go.dev/dl/go1.22.10.linux-amd64.tar.gz | tar -C /usr/local -xzf -
+          curl -fsSL https://go.dev/dl/go1.23.4.linux-amd64.tar.gz | tar -C /usr/local -xzf -
           echo "/usr/local/go/bin" >> "$GITHUB_PATH"
 
       - name: Build CLI
         working-directory: stack/emos-cli
+        env:
+          GOFLAGS: -buildvcs=false
         run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          /usr/local/go/bin/go build -buildvcs=false -ldflags "-s -w" -o emos .
+          git config --global --add safe.directory '*'
+          /usr/local/go/bin/go build -ldflags "-s -w" -o emos .
 
       - name: Install CLI
         working-directory: stack/emos-cli

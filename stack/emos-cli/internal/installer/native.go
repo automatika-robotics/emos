@@ -127,6 +127,7 @@ func InstallNative(wsPath, distro string) error {
 	ui.Info("Installing system dependencies...")
 	aptPkgs := []string{
 		"portaudio19-dev", "jq", "python3-empy",
+		"python3-ament-package", "ros-" + distro + "-rpyutils",
 		"ros-" + distro + "-rmw-zenoh-cpp",
 	}
 	cmd := exec.Command("sudo", append([]string{"apt-get", "install", "-y"}, aptPkgs...)...)
@@ -175,28 +176,31 @@ func InstallNative(wsPath, distro string) error {
 		ui.Warn("Some pip packages may have failed: " + err.Error())
 	}
 
-	// -- Ensure rosdep is initialized --
+	// -- Ensure rosdep is initialized and up to date --
 	if _, err := os.Stat("/etc/ros/rosdep/sources.list.d/20-default.list"); os.IsNotExist(err) {
 		ui.Info("Initializing rosdep...")
 		initCmd := exec.Command("sudo", "rosdep", "init")
 		initCmd.Stdout = os.Stdout
 		initCmd.Stderr = os.Stderr
 		initCmd.Run()
-		updateCmd := exec.Command("bash", "-c", "rosdep update")
-		updateCmd.Stdout = os.Stdout
-		updateCmd.Stderr = os.Stderr
-		updateCmd.Run()
 	}
+	ui.Info("Updating rosdep...")
+	updateCmd := exec.Command("bash", "-c", "rosdep update")
+	updateCmd.Stdout = os.Stdout
+	updateCmd.Stderr = os.Stderr
+	updateCmd.Run()
 
 	// -- Stage 1: Build localization dependencies --
 	// Build only the localization packages first, then install them into
 	// /opt/ros/{distro} so they're available as an underlay for EMOS packages.
-	ui.Info("Running rosdep install for localization packages...")
-	rosdepCmd := fmt.Sprintf("source %s && rosdep install --from-paths %s --ignore-src -r -y", rosSetup, srcDir)
+	ui.Info("Installing dependencies for localization packages...")
+	rosdepCmd := fmt.Sprintf("source %s && sudo apt-get update && rosdep install --from-paths %s --ignore-src -y", rosSetup, srcDir)
 	cmd = exec.Command("bash", "-c", rosdepCmd)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Run()
+	if err := cmd.Run(); err != nil {
+		ui.Warn("Some rosdep dependencies may have failed: " + err.Error())
+	}
 
 	locPkgs := "angles geographic_msgs robot_localization"
 	ui.Info("Building localization packages...")
@@ -358,25 +362,27 @@ func UpdateNative(wsPath, distro string) error {
 		ui.Warn("kompass-core update failed: " + err.Error())
 	}
 
-	// Ensure rosdep is initialized
+	// Ensure rosdep is initialized and up to date
 	if _, err := os.Stat("/etc/ros/rosdep/sources.list.d/20-default.list"); os.IsNotExist(err) {
 		ui.Info("Initializing rosdep...")
 		initCmd := exec.Command("sudo", "rosdep", "init")
 		initCmd.Stdout = os.Stdout
 		initCmd.Stderr = os.Stderr
 		initCmd.Run()
-		updateCmd := exec.Command("bash", "-c", "rosdep update")
-		updateCmd.Stdout = os.Stdout
-		updateCmd.Stderr = os.Stderr
-		updateCmd.Run()
 	}
+	updateCmd := exec.Command("bash", "-c", "rosdep update")
+	updateCmd.Stdout = os.Stdout
+	updateCmd.Stderr = os.Stderr
+	updateCmd.Run()
 
 	// -- Stage 1: Rebuild localization packages --
-	rosdepCmd := fmt.Sprintf("source %s && rosdep install --from-paths %s --ignore-src -r -y", rosSetup, srcDir)
+	rosdepCmd := fmt.Sprintf("source %s && sudo apt-get update && rosdep install --from-paths %s --ignore-src -y", rosSetup, srcDir)
 	cmd := exec.Command("bash", "-c", rosdepCmd)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Run()
+	if err := cmd.Run(); err != nil {
+		ui.Warn("Some rosdep dependencies may have failed: " + err.Error())
+	}
 
 	locPkgs := "angles geographic_msgs robot_localization"
 	ui.Info("Rebuilding localization packages...")
@@ -416,8 +422,26 @@ func UpdateNative(wsPath, distro string) error {
 }
 
 // mergeIntoROS copies the colcon merge-install output into /opt/ros/{distro}/.
+// It preserves the original ROS setup files (setup.bash, setup.sh, etc.) because
+// colcon's generated versions have different PYTHONPATH behavior that can break
+// imports of packages installed in /opt/ros/{distro}/lib/python3.X/site-packages/.
 func mergeIntoROS(installDir, rosPath string) error {
 	ui.Info("Installing packages into " + rosPath + " (requires sudo)...")
+
+	// Remove colcon-generated setup files from the install dir before copying
+	// so they don't overwrite the originals in /opt/ros/{distro}/.
+	setupFiles := []string{
+		"setup.bash", "setup.sh", "setup.zsh",
+		"local_setup.bash", "local_setup.sh", "local_setup.zsh",
+		"setup.ps1", "local_setup.ps1",
+		"_local_setup_util.py",
+		".colcon_install_layout",
+		"COLCON_IGNORE",
+	}
+	for _, f := range setupFiles {
+		os.Remove(filepath.Join(installDir, f))
+	}
+
 	cmd := exec.Command("sudo", "cp", "-r", "--no-preserve=ownership", installDir+"/.", rosPath+"/")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

@@ -191,8 +191,11 @@ func installNative() error {
 	if len(installs) == 1 {
 		chosen = installs[0]
 		ui.Success(fmt.Sprintf("ROS 2 %s detected at %s", capitalize(chosen.Distro), chosen.Path))
-		if !ui.Confirm(fmt.Sprintf("Proceed with native EMOS installation for %s?", capitalize(chosen.Distro))) {
-			return fmt.Errorf("aborted by user")
+		// Skip confirmation if distro was explicitly provided (e.g. CI / non-interactive)
+		if installDistroFlag == "" {
+			if !ui.Confirm(fmt.Sprintf("Proceed with native EMOS installation for %s?", capitalize(chosen.Distro))) {
+				return fmt.Errorf("aborted by user")
+			}
 		}
 	} else {
 		fmt.Println()

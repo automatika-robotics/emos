@@ -23,15 +23,15 @@ EMOS supports two deployment modes. Run `emos install` without arguments for an 
 
 ::::{tab-set}
 
-:::{tab-item} Container (Recommended)
+:::{tab-item} Container
 
-No ROS 2 installation required. Runs EMOS inside a Docker container using the public image.
+No ROS2 installation required. Runs EMOS inside a Docker container using the public image.
 
 ```bash
 emos install --mode container
 ```
 
-You will be prompted to select a ROS 2 distribution (Jazzy, Humble, or Kilted). The CLI pulls the image, creates the container, and sets up the `~/emos/` directory structure.
+You will be prompted to select a ROS2 distribution (Jazzy, Humble, or Kilted). The CLI pulls the image, creates the container, and sets up the `~/emos/` directory structure.
 
 **Requirements:** Docker installed and running.
 
@@ -39,7 +39,7 @@ You will be prompted to select a ROS 2 distribution (Jazzy, Humble, or Kilted). 
 
 :::{tab-item} Native
 
-Builds EMOS packages from source and installs them directly into your ROS 2 installation at `/opt/ros/{distro}/`. No container needed.
+Builds EMOS packages from source and installs them directly into your ROS2 installation at `/opt/ros/{distro}/`. No container needed.
 
 ```bash
 emos install --mode native
@@ -47,7 +47,7 @@ emos install --mode native
 
 The CLI will:
 
-1. Detect your ROS 2 installation
+1. Detect your ROS2 installation
 2. Clone the EMOS source and dependencies into a build workspace (`~/emos/ros_ws/`)
 3. Install system packages (portaudio, GeographicLib, rmw-zenoh)
 4. Install Python dependencies

@@ -175,10 +175,13 @@ RUN apt-get update && apt-get install -y portaudio19-dev jq && \
     rm -rf /root/.cache/pip && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install llama-cpp-python with CUDA support for Jetson Orin (SM 87)
-RUN CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=87" \
+# Install llama-cpp-python with CUDA support for Jetson Orin (SM 87).
+# Pre-install build deps with --no-build-isolation to avoid packaging version
+# conflicts on older pip (Ubuntu 20.04/22.04).
+RUN pip install --no-cache-dir 'scikit-build-core>=0.8' 'packaging>=22.0' && \
+    CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=87" \
     FORCE_CMAKE=1 \
-    pip install llama-cpp-python --no-cache-dir
+    pip install --no-cache-dir --no-build-isolation llama-cpp-python
 
 COPY stack/sugarcoat sugarcoat
 COPY stack/kompass kompass

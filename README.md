@@ -7,7 +7,7 @@
 <h2>The Embodied Operating System</h2>
 
 <p><strong>The open-source unified orchestration layer for Physical AI.</strong><br>
-<sub>面向具身智能的开源统一编排层</sub></p>
+<sub><strong>意默</strong> — 隐入代码，御机有神</sub></p>
 
 <p>
 <a href="https://emos.automatikarobotics.com/"><img src="https://img.shields.io/badge/docs-online-blue?style=flat-square" alt="Documentation"></a>

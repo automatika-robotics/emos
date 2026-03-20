@@ -1,8 +1,14 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
+	"os/exec"
+	"runtime"
+	"strings"
 
 	"github.com/automatika-robotics/emos-cli/internal/api"
 	"github.com/automatika-robotics/emos-cli/internal/config"
@@ -20,6 +26,19 @@ var updateCmd = &cobra.Command{
 
 func runUpdate(cmd *cobra.Command, args []string) error {
 	ui.Banner(config.Version)
+
+	// Self-update the CLI binary first
+	updated, err := selfUpdateCLI()
+	if err != nil {
+		ui.Warn("CLI self-update failed: " + err.Error())
+		ui.Info("Continuing with current version...")
+		fmt.Println()
+	}
+	if updated {
+		fmt.Println()
+		ui.Info("Please run 'emos update' again to update your installation.")
+		return nil
+	}
 
 	cfg := config.LoadConfig()
 	if cfg == nil {
@@ -41,6 +60,103 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	default:
 		return fmt.Errorf("unknown mode: %s", cfg.Mode)
 	}
+}
+
+// selfUpdateCLI checks for a newer CLI release and replaces the current binary.
+// Returns true if the binary was updated and the caller should exit.
+func selfUpdateCLI() (bool, error) {
+	if config.Version == "dev" {
+		ui.Info("Development build, skipping CLI update check.")
+		return false, nil
+	}
+
+	ui.Info("Checking for CLI updates...")
+
+	// Fetch latest release info
+	resp, err := http.Get(config.ReleasesURL())
+	if err != nil {
+		return false, fmt.Errorf("failed to check releases: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return false, fmt.Errorf("GitHub API returned %d", resp.StatusCode)
+	}
+
+	var release struct {
+		TagName string `json:"tag_name"`
+		Assets  []struct {
+			Name               string `json:"name"`
+			BrowserDownloadURL string `json:"browser_download_url"`
+		} `json:"assets"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return false, fmt.Errorf("failed to parse release: %w", err)
+	}
+
+	latestVersion := strings.TrimPrefix(release.TagName, "v")
+	if latestVersion == config.Version {
+		ui.Success("CLI is already up to date (v" + config.Version + ")")
+		return false, nil
+	}
+
+	// Find the binary for current architecture
+	arch := runtime.GOARCH
+	binaryName := fmt.Sprintf("emos-linux-%s", arch)
+	var downloadURL string
+	for _, a := range release.Assets {
+		if a.Name == binaryName {
+			downloadURL = a.BrowserDownloadURL
+			break
+		}
+	}
+	if downloadURL == "" {
+		return false, fmt.Errorf("no binary found for linux-%s in release %s", arch, release.TagName)
+	}
+
+	ui.Info(fmt.Sprintf("Updating CLI: v%s -> v%s", config.Version, latestVersion))
+
+	// Download to temp file
+	tmpFile, err := os.CreateTemp("", "emos-update-*")
+	if err != nil {
+		return false, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	dlResp, err := http.Get(downloadURL)
+	if err != nil {
+		tmpFile.Close()
+		return false, fmt.Errorf("failed to download: %w", err)
+	}
+	defer dlResp.Body.Close()
+
+	if _, err := io.Copy(tmpFile, dlResp.Body); err != nil {
+		tmpFile.Close()
+		return false, fmt.Errorf("failed to write binary: %w", err)
+	}
+	tmpFile.Close()
+
+	if err := os.Chmod(tmpFile.Name(), 0755); err != nil {
+		return false, fmt.Errorf("failed to chmod: %w", err)
+	}
+
+	// Find where the current binary lives
+	selfPath, err := os.Executable()
+	if err != nil {
+		return false, fmt.Errorf("cannot determine binary path: %w", err)
+	}
+
+	// Replace binary (may need sudo)
+	if err := os.Rename(tmpFile.Name(), selfPath); err != nil {
+		// Rename failed (cross-device or permissions), try sudo cp
+		cpCmd := exec.Command("sudo", "cp", tmpFile.Name(), selfPath)
+		if err := cpCmd.Run(); err != nil {
+			return false, fmt.Errorf("failed to replace binary (try running with sudo): %w", err)
+		}
+	}
+
+	ui.Success("CLI updated to v" + latestVersion)
+	return true, nil
 }
 
 func updateOSSContainer(cfg *config.EMOSConfig) error {

@@ -12,6 +12,7 @@ python = ">=3.11"
 # Build tools
 cmake = "*"
 compilers = "*"
+make = "*"
 colcon-common-extensions = "*"
 pip = "*"
 
@@ -52,6 +53,11 @@ ros-jazzy-python-orocos-kdl-vendor = "*"
 portaudio = "*"
 jq = "*"
 geographiclib = "*"
+
+# kompass-core build dependencies
+ompl = "*"
+fcl = "*"
+eigen = ">=3.4,<4"
 
 [target.linux-64.dependencies]
 pyaudio = "*"
@@ -102,15 +108,16 @@ gpu = { features = ["gpu"], solve-group = "default" }
 
 # --- Tasks ---
 [tasks]
-# Install kompass-core GPU support (remote script)
-install-kompass-core = "curl -fsSL https://raw.githubusercontent.com/automatika-robotics/kompass-core/main/build_dependencies/install_gpu.sh | bash"
+# Install kompass-core with GPU support (SYCL via AdaptiveCpp).
+# Uses apt for LLVM/Clang only; OMPL and FCL come from pixi (conda-forge).
+install-kompass-core = "bash stack/emos-cli/scripts/install_kompass_core_pixi.sh"
 
 # Build EMOS ROS packages (sugarcoat, kompass, embodied-agents, kompass_interfaces)
-build = { cmd = """colcon build \
+build = """colcon build \
   --merge-install \
   --symlink-install \
   --base-paths stack/sugarcoat stack/kompass stack/embodied-agents \
-  --cmake-args -DCMAKE_BUILD_TYPE=Release""", depends-on = ["install-kompass-core"] }
+  --cmake-args -DCMAKE_BUILD_TYPE=Release"""
 
 # Register pixi installation with EMOS CLI config
 register = """python3 -c "
@@ -127,4 +134,4 @@ print('EMOS config written to', config_dir / 'config.json')
 " """
 
 # Full setup: install kompass-core, build packages, register with CLI
-setup = { depends-on = ["build", "register"] }
+setup = { depends-on = ["install-kompass-core", "build", "register"] }

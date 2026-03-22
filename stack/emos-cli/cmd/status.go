@@ -49,6 +49,9 @@ var statusCmd = &cobra.Command{
 
 		case config.ModeNative:
 			nativeStatus(cfg)
+
+		case config.ModePixi:
+			pixiStatus(cfg)
 		}
 
 		if cfg.Mode == config.ModeLicensed {
@@ -59,6 +62,47 @@ var statusCmd = &cobra.Command{
 			}
 		}
 	},
+}
+
+func pixiStatus(cfg *config.EMOSConfig) {
+	projectDir := cfg.PixiProjectDir
+	if projectDir == "" {
+		ui.Error("No pixi project directory configured.")
+		return
+	}
+
+	// pixi binary
+	if _, err := exec.LookPath("pixi"); err != nil {
+		ui.Error("pixi: Not found in PATH")
+	} else {
+		ui.Success("pixi: Available")
+	}
+
+	// Project dir
+	pixiToml := filepath.Join(projectDir, "pixi.toml")
+	if _, err := os.Stat(pixiToml); err != nil {
+		ui.Error("pixi project: Not found at " + projectDir)
+		return
+	}
+	ui.Success("pixi project: " + projectDir)
+
+	// Helper to run a shell command inside the pixi environment
+	setupSh := filepath.Join(projectDir, "install", "setup.sh")
+	pixiShell := func(shellCmd string) *exec.Cmd {
+		cmd := exec.Command("pixi", "run", "--manifest-path", pixiToml, "bash", "-c", shellCmd)
+		cmd.Dir = projectDir
+		return cmd
+	}
+
+	checkPackages(
+		func(module string) error {
+			return pixiShell(fmt.Sprintf("source %s && python3 -c 'import %s' 2>&1", setupSh, module)).Run()
+		},
+		func() (string, error) {
+			out, err := pixiShell(fmt.Sprintf("source %s && ros2 pkg list 2>/dev/null", setupSh)).Output()
+			return string(out), err
+		},
+	)
 }
 
 func nativeStatus(cfg *config.EMOSConfig) {
@@ -73,7 +117,20 @@ func nativeStatus(cfg *config.EMOSConfig) {
 		return
 	}
 
-	// Python package checks
+	checkPackages(
+		func(module string) error {
+			return exec.Command("bash", "-c", fmt.Sprintf("source %s && python3 -c 'import %s' 2>&1", rosSetup, module)).Run()
+		},
+		func() (string, error) {
+			out, err := exec.Command("bash", "-c", fmt.Sprintf("source %s && ros2 pkg list 2>/dev/null", rosSetup)).Output()
+			return string(out), err
+		},
+	)
+}
+
+// checkPackages verifies EMOS Python and ROS packages using the provided
+// import checker and package lister functions.
+func checkPackages(tryImport func(module string) error, listROSPkgs func() (string, error)) {
 	fmt.Println()
 	ui.Info("Python Packages:")
 	pyModules := []struct {
@@ -87,40 +144,33 @@ func nativeStatus(cfg *config.EMOSConfig) {
 	}
 
 	for _, m := range pyModules {
-		importCmd := fmt.Sprintf("source %s && python3 -c 'import %s' 2>&1", rosSetup, m.module)
-		if err := exec.Command("bash", "-c", importCmd).Run(); err != nil {
+		if err := tryImport(m.module); err != nil {
 			ui.Error(fmt.Sprintf("  %s: Not installed", m.display))
 		} else {
 			ui.Success(fmt.Sprintf("  %s: OK", m.display))
 		}
 	}
 
-	// ROS package checks
 	fmt.Println()
 	ui.Info("ROS Packages:")
-	listCmd := fmt.Sprintf("source %s && ros2 pkg list 2>/dev/null", rosSetup)
-	out, err := exec.Command("bash", "-c", listCmd).Output()
+	out, err := listROSPkgs()
 	if err != nil {
 		ui.Warn("  Could not list ROS packages")
 		return
 	}
 
-	pkgList := string(out)
-	rosPkgs := []struct {
-		name    string
-		display string
-	}{
-		{"automatika_ros_sugar", "automatika_ros_sugar"},
-		{"automatika_embodied_agents", "automatika_embodied_agents"},
-		{"kompass", "kompass"},
-		{"kompass_interfaces", "kompass_interfaces"},
+	rosPkgs := []string{
+		"automatika_ros_sugar",
+		"automatika_embodied_agents",
+		"kompass",
+		"kompass_interfaces",
 	}
 
-	for _, p := range rosPkgs {
-		if strings.Contains(pkgList, p.name) {
-			ui.Success(fmt.Sprintf("  %s: OK", p.display))
+	for _, name := range rosPkgs {
+		if strings.Contains(out, name) {
+			ui.Success(fmt.Sprintf("  %s: OK", name))
 		} else {
-			ui.Error(fmt.Sprintf("  %s: Not found", p.display))
+			ui.Error(fmt.Sprintf("  %s: Not found", name))
 		}
 	}
 }

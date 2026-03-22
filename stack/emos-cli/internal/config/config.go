@@ -16,14 +16,16 @@ const (
 	ModeOSSContainer InstallMode = "oss-container"
 	ModeLicensed     InstallMode = "licensed"
 	ModeNative       InstallMode = "native"
+	ModePixi         InstallMode = "pixi"
 )
 
 type EMOSConfig struct {
-	Mode          InstallMode `json:"mode"`
-	LicenseKey    string      `json:"license_key,omitempty"`
-	ROSDistro     string      `json:"ros_distro"`
-	ImageTag      string      `json:"image_tag,omitempty"`
-	WorkspacePath string      `json:"workspace_path,omitempty"`
+	Mode           InstallMode `json:"mode"`
+	LicenseKey     string      `json:"license_key,omitempty"`
+	ROSDistro      string      `json:"ros_distro"`
+	ImageTag       string      `json:"image_tag,omitempty"`
+	WorkspacePath  string      `json:"workspace_path,omitempty"`
+	PixiProjectDir string      `json:"pixi_project_dir,omitempty"`
 }
 
 const (

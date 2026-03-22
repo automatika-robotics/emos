@@ -1,0 +1,130 @@
+[workspace]
+name = "emos"
+description = "The Embodied Operating System — unified orchestration layer for Physical AI"
+channels = ["https://prefix.dev/robostack-jazzy", "conda-forge"]
+platforms = ["linux-64", "linux-aarch64"]
+
+# --- Conda Dependencies ---
+[dependencies]
+# Python
+python = ">=3.11"
+
+# Build tools
+cmake = "*"
+compilers = "*"
+colcon-common-extensions = "*"
+pip = "*"
+
+# ROS 2 Jazzy — base
+ros-jazzy-ros-base = "*"
+
+# ROS 2 Jazzy — middleware
+ros-jazzy-rmw-zenoh-cpp = "*"
+
+# ROS 2 Jazzy — build system
+ros-jazzy-ament-cmake = "*"
+ros-jazzy-ament-cmake-python = "*"
+ros-jazzy-rosidl-default-generators = "*"
+ros-jazzy-rosidl-default-runtime = "*"
+
+# ROS 2 Jazzy — core libraries needed by EMOS packages
+ros-jazzy-rclpy = "*"
+ros-jazzy-rclcpp = "*"
+ros-jazzy-tf2-ros = "*"
+ros-jazzy-lifecycle-msgs = "*"
+ros-jazzy-std-msgs = "*"
+ros-jazzy-sensor-msgs = "*"
+ros-jazzy-nav-msgs = "*"
+ros-jazzy-geometry-msgs = "*"
+ros-jazzy-builtin-interfaces = "*"
+ros-jazzy-action-msgs = "*"
+ros-jazzy-rpyutils = "*"
+
+# ROS 2 Jazzy — localization (pre-built, replaces colcon Stage 1)
+ros-jazzy-robot-localization = "*"
+ros-jazzy-geographic-msgs = "*"
+ros-jazzy-angles = "*"
+
+# ROS 2 Jazzy — kinematics (for kompass)
+ros-jazzy-python-orocos-kdl-vendor = "*"
+
+# System libraries
+portaudio = "*"
+jq = "*"
+geographiclib = "*"
+
+[target.linux-64.dependencies]
+pyaudio = "*"
+
+# Python packages (from conda-forge)
+numpy = "*"
+opencv = "*"
+attrs = ">=23.2.0"
+jinja2 = "*"
+httpx = "*"
+setproctitle = "*"
+msgpack-python = "*"
+msgpack-numpy = "*"
+platformdirs = "*"
+tqdm = "*"
+pyyaml = "*"
+toml = "*"
+websockets = "*"
+redis-py = "*"
+python-fasthtml = "*"
+grpcio = "*"
+protobuf = "*"
+huggingface_hub = "*"
+
+# --- PyPI Dependencies (not on conda-forge or missing for aarch64) ---
+[pypi-dependencies]
+monsterui = "*"
+sherpa-onnx = "*"
+ollama = "*"
+soundfile = "*"
+llama-cpp-python = "*"
+onnxruntime = "*"
+
+[target.linux-aarch64.pypi-dependencies]
+PyAudio = "*"
+
+# --- GPU Feature (optional) ---
+[feature.gpu.system-requirements]
+cuda = "12"
+
+[feature.gpu.dependencies]
+cuda-version = "12.*"
+
+# --- Environments ---
+[environments]
+default = { solve-group = "default" }
+gpu = { features = ["gpu"], solve-group = "default" }
+
+# --- Tasks ---
+[tasks]
+# Install kompass-core GPU support (remote script)
+install-kompass-core = "curl -fsSL https://raw.githubusercontent.com/automatika-robotics/kompass-core/main/build_dependencies/install_gpu.sh | bash"
+
+# Build EMOS ROS packages (sugarcoat, kompass, embodied-agents, kompass_interfaces)
+build = { cmd = """colcon build \
+  --merge-install \
+  --symlink-install \
+  --base-paths stack/sugarcoat stack/kompass stack/embodied-agents \
+  --cmake-args -DCMAKE_BUILD_TYPE=Release""", depends-on = ["install-kompass-core"] }
+
+# Register pixi installation with EMOS CLI config
+register = """python3 -c "
+import json, os, pathlib
+config_dir = pathlib.Path.home() / '.config' / 'emos'
+config_dir.mkdir(parents=True, exist_ok=True)
+config = {
+    'mode': 'pixi',
+    'ros_distro': 'jazzy',
+    'pixi_project_dir': os.getcwd()
+}
+(config_dir / 'config.json').write_text(json.dumps(config, indent=2))
+print('EMOS config written to', config_dir / 'config.json')
+" """
+
+# Full setup: install kompass-core, build packages, register with CLI
+setup = { depends-on = ["build", "register"] }

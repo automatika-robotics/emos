@@ -19,7 +19,7 @@ sudo make install
 
 ## Deployment Modes
 
-EMOS supports two deployment modes. Run `emos install` without arguments for an interactive menu, or use the `--mode` flag directly.
+EMOS supports three deployment modes. Run `emos install` without arguments for an interactive menu, or use the `--mode` flag directly.
 
 ::::{tab-set}
 
@@ -62,6 +62,39 @@ python3 ~/emos/recipes/my_recipe/recipe.py
 ```
 
 **Requirements:** A working ROS2 installation (Humble, Jazzy, or Kilted).
+
+:::
+
+:::{tab-item} pixi (Experimental)
+
+```{note}
+Currently available only with **ROS2 Jazzy**.
+```
+
+Installs ROS2 and all EMOS dependencies into an isolated userspace environment using [pixi](https://pixi.sh). No root privileges, no Docker, no pre-installed ROS2 required. Works on any Linux distribution.
+
+```bash
+# Install pixi
+curl -fsSL https://pixi.sh/install.sh | bash
+
+# Clone EMOS and install
+git clone --recurse-submodules https://github.com/automatika-robotics/emos.git
+cd emos
+pixi install
+pixi run setup
+```
+
+This pulls ROS2 Jazzy and all dependencies as pre-built packages from [RoboStack](https://robostack.github.io/) and conda-forge, installs kompass-core with GPU acceleration, then builds the EMOS packages with colcon.
+
+To enter the environment and run recipes:
+
+```bash
+pixi shell
+source install/setup.sh
+python3 ~/emos/recipes/my_recipe/recipe.py
+```
+
+**Requirements:** Linux (amd64 or arm64). No root, Docker, or ROS2 needed.
 
 :::
 

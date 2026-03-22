@@ -148,6 +148,20 @@ emos install
 
 **Native mode** detects your ROS 2 installation, fetches the EMOS source, installs all dependencies (including GPU-accelerated kompass-core), and builds a workspace at `~/emos/ros_ws`.
 
+### pixi (Experimental)
+
+Install ROS2 and all EMOS dependencies in userspace with no root and no Docker, on any Linux distro:
+
+```bash
+curl -fsSL https://pixi.sh/install.sh | bash
+git clone --recurse-submodules https://github.com/automatika-robotics/emos.git
+cd emos && pixi install && pixi run setup
+```
+
+Then enter the environment with `pixi shell` and `source install/setup.sh`. See the [installation docs](https://emos.automatikarobotics.com/getting-started/installation.html) for details.
+
+### Model Serving
+
 You also need a model serving platform. EMOS supports [Ollama](https://ollama.com), [RoboML](https://github.com/automatika-robotics/robo-ml), [vLLM](https://github.com/vllm-project/vllm), [LeRobot](https://github.com/huggingface/lerobot), and any OpenAI-compatible endpoint.
 
 See the [CLI documentation](stack/emos-cli/README.md) for the full command reference.

@@ -5,16 +5,19 @@ on:
     branches: [main]
     paths:
       - "pixi.toml"
+      - "stack/emos-cli/**"
       - "stack/sugarcoat/**"
       - "stack/embodied-agents/**"
       - "stack/kompass/**"
   pull_request:
     paths:
       - "pixi.toml"
+      - "stack/emos-cli/**"
       - "stack/sugarcoat/**"
       - "stack/embodied-agents/**"
       - "stack/kompass/**"
   workflow_dispatch:
+    inputs: {}
 
 permissions:
   contents: read

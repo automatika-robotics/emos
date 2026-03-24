@@ -31,6 +31,7 @@ recipes/overview
 
 recipes/foundation/index
 recipes/foundation/conversational-agent
+recipes/foundation/local-models
 recipes/foundation/prompt-engineering
 recipes/foundation/semantic-map
 recipes/foundation/goto-navigation

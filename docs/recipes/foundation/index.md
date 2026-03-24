@@ -16,6 +16,13 @@ Every capability -- hearing, speaking, seeing, thinking -- is a component you wi
 Your first agent -- wire STT, VLM, and TTS into a multimodal dialogue system.
 :::
 
+:::{grid-item-card} {material-regular}`offline_bolt;1.2em;sd-text-primary` Local Models
+:link: local-models
+:link-type: doc
+
+Run LLMs, VLMs, STT, and TTS entirely on-device — no server required.
+:::
+
 :::{grid-item-card} {material-regular}`edit_note;1.2em;sd-text-primary` Prompt Engineering
 :link: prompt-engineering
 :link-type: doc

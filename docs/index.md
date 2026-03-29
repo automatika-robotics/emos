@@ -22,6 +22,7 @@ why-emos
 getting-started/installation
 getting-started/quickstart
 getting-started/cli
+getting-started/troubleshooting
 recipes/overview
 ```
 

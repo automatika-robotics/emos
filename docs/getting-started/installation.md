@@ -102,6 +102,93 @@ python3 ~/emos/recipes/my_recipe/recipe.py
 
 See the [CLI Reference](cli.md) for the full list of commands.
 
+## Which Mode Should I Choose?
+
+| Scenario | Recommended Mode |
+| :--- | :--- |
+| No ROS 2 on host, quick evaluation | **Container** |
+| ROS 2 already installed, system-level integration | **Native** |
+| No root, no Docker, any Linux distro | **Pixi** |
+
+## Preparing Your Hardware
+
+Before running recipes, you need sensor drivers publishing data on ROS 2 topics. EMOS recipes declare the topics they expect (e.g. `Image` from a camera, `LaserScan` from a lidar). Run `emos info <recipe>` to see what a recipe needs.
+
+### Installing Sensor Drivers
+
+::::{tab-set}
+
+:::{tab-item} Container
+
+The EMOS container runs with `--privileged` and has access to all USB devices on the host. You can install and run sensor drivers directly **inside the container** — no ROS 2 installation on the host is needed.
+
+```bash
+# Install a sensor driver inside the container:
+docker exec -it emos bash -c "apt-get update && apt-get install -y ros-jazzy-usb-cam"
+
+# Launch the driver inside the container (in a separate terminal):
+docker exec -it emos bash -c "source /ros_entrypoint.sh && ros2 run usb_cam usb_cam_node_exe"
+```
+
+The driver's topics are immediately visible to recipes running in the same container.
+
+```{tip}
+If you have sensor drivers already running on the host with ROS 2, they can bridge into the container automatically via Zenoh (the default RMW). Start the host driver with `export RMW_IMPLEMENTATION=rmw_zenoh_cpp`.
+```
+
+:::
+
+:::{tab-item} Native
+
+Install the driver package and launch it directly:
+
+```bash
+sudo apt install ros-jazzy-usb-cam
+source /opt/ros/jazzy/setup.bash
+ros2 run usb_cam usb_cam_node_exe
+```
+
+If you place a launch file at `~/emos/robot/launch/bringup_robot.py`, the CLI will start it automatically when you run `emos run`.
+
+:::
+
+:::{tab-item} pixi
+
+Sensor drivers must be installed on the **host** (outside the pixi environment), since pixi manages only EMOS and ROS 2 packages in userspace. The pixi environment uses Zenoh by default, so host-side drivers bridge in automatically:
+
+```bash
+# On the host:
+sudo apt install ros-jazzy-usb-cam
+source /opt/ros/jazzy/setup.bash
+export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+ros2 run usb_cam usb_cam_node_exe
+```
+
+:::
+
+::::
+
+### Verifying Sensors
+
+Before running a recipe, confirm your sensors are publishing:
+
+```bash
+# 1. See what the recipe needs
+emos info vision_follower
+
+# 2. Check topics exist
+ros2 topic list
+
+# 3. Confirm data is flowing
+ros2 topic hz /image_raw
+```
+
+If `ros2 topic hz` shows a non-zero rate, the sensor is ready.
+
+```{seealso}
+If sensor verification fails during `emos run`, see [Troubleshooting](troubleshooting.md).
+```
+
 ## Model Serving Platform
 
 EMOS is agnostic to model serving platforms. You need at least one of the following available on your network:

@@ -19,7 +19,7 @@ sudo make install
 
 ## Deployment Modes
 
-EMOS supports two deployment modes. Run `emos install` without arguments for an interactive menu, or use the `--mode` flag directly.
+EMOS supports three deployment modes. Run `emos install` without arguments for an interactive menu, or use the `--mode` flag directly.
 
 ::::{tab-set}
 
@@ -65,9 +65,129 @@ python3 ~/emos/recipes/my_recipe/recipe.py
 
 :::
 
+:::{tab-item} pixi (Experimental)
+
+```{note}
+Currently available only with **ROS2 Jazzy**.
+```
+
+Installs ROS2 and all EMOS dependencies into an isolated userspace environment using [pixi](https://pixi.sh). No root privileges, no Docker, no pre-installed ROS2 required. Works on any Linux distribution.
+
+```bash
+# Install pixi
+curl -fsSL https://pixi.sh/install.sh | bash
+
+# Clone EMOS and install
+git clone --recurse-submodules https://github.com/automatika-robotics/emos.git
+cd emos
+pixi install
+pixi run setup
+```
+
+This pulls ROS2 Jazzy and all dependencies as pre-built packages from [RoboStack](https://robostack.github.io/) and conda-forge, installs kompass-core with GPU acceleration, then builds the EMOS packages with colcon.
+
+To enter the environment and run recipes:
+
+```bash
+pixi shell
+source install/setup.sh
+python3 ~/emos/recipes/my_recipe/recipe.py
+```
+
+**Requirements:** Linux (amd64 or arm64). No root, Docker, or ROS2 needed.
+
+:::
+
 ::::
 
 See the [CLI Reference](cli.md) for the full list of commands.
+
+## Which Mode Should I Choose?
+
+| Scenario                                         | Recommended Mode |
+| :----------------------------------------------- | :--------------- |
+| No ROS2 on host, quick evaluation                | **Container**    |
+| ROS2 already installed, system-level integration | **Native**       |
+| No root, no Docker, any Linux distro             | **Pixi**         |
+
+## Preparing Your Hardware
+
+Before running recipes, you need sensor drivers publishing data on ROS2 topics. EMOS recipes declare the topics they expect (e.g. `Image` from a camera, `LaserScan` from a lidar). Run `emos info <recipe>` to see what a recipe needs.
+
+### Installing Sensor Drivers
+
+::::{tab-set}
+
+:::{tab-item} Container
+
+The EMOS container runs with `--privileged` and has access to all USB devices on the host. You can install and run sensor drivers directly **inside the container** — no ROS2 installation on the host is needed.
+
+```bash
+# Install a sensor driver inside the container:
+docker exec -it emos bash -c "apt-get update && apt-get install -y ros-jazzy-usb-cam"
+
+# Launch the driver inside the container (in a separate terminal):
+docker exec -it emos bash -c "source /ros_entrypoint.sh && ros2 run usb_cam usb_cam_node_exe"
+```
+
+The driver's topics are immediately visible to recipes running in the same container.
+
+```{tip}
+If you have sensor drivers already running on the host with ROS2, they can bridge into the container automatically via Zenoh (the default RMW). Start the host driver with `export RMW_IMPLEMENTATION=rmw_zenoh_cpp`.
+```
+
+:::
+
+:::{tab-item} Native
+
+Install the driver package and launch it directly:
+
+```bash
+sudo apt install ros-jazzy-usb-cam
+source /opt/ros/jazzy/setup.bash
+ros2 run usb_cam usb_cam_node_exe
+```
+
+If you place a launch file at `~/emos/robot/launch/bringup_robot.py`, the CLI will start it automatically when you run `emos run`.
+
+:::
+
+:::{tab-item} pixi
+
+Sensor drivers must be installed on the **host** (outside the pixi environment), since pixi manages only EMOS and ROS2 packages in userspace. The pixi environment uses Zenoh by default, so host-side drivers bridge in automatically:
+
+```bash
+# On the host:
+sudo apt install ros-jazzy-usb-cam
+source /opt/ros/jazzy/setup.bash
+export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+ros2 run usb_cam usb_cam_node_exe
+```
+
+:::
+
+::::
+
+### Verifying Sensors
+
+Before running a recipe, confirm your sensors are publishing:
+
+```bash
+# 1. See what the recipe needs
+emos info vision_follower
+
+# 2. Check topics exist
+ros2 topic list
+
+# 3. Confirm data is flowing
+ros2 topic hz /image_raw
+```
+
+If `ros2 topic hz` shows a non-zero rate, the sensor is ready.
+
+```{seealso}
+If sensor verification fails during `emos run`, see [Troubleshooting](troubleshooting.md).
+```
 
 ## Model Serving Platform
 

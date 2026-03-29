@@ -4,18 +4,18 @@ The `emos` CLI is the main entry point for managing and running recipes on your 
 
 ## Quick Reference
 
-| Command | Description |
-| :--- | :--- |
-| `emos install` | Install EMOS (interactive mode selection) |
-| `emos update` | Update EMOS to the latest version |
-| `emos status` | Show installation status |
-| `emos recipes` | List recipes available for download |
-| `emos pull <name>` | Download a recipe |
-| `emos ls` | List locally installed recipes |
-| `emos run <name>` | Run a recipe |
+| Command            | Description                                 |
+| :----------------- | :------------------------------------------ |
+| `emos install`     | Install EMOS (interactive mode selection)   |
+| `emos update`      | Update EMOS to the latest version           |
+| `emos status`      | Show installation status                    |
+| `emos recipes`     | List recipes available for download         |
+| `emos pull <name>` | Download a recipe                           |
+| `emos ls`          | List locally installed recipes              |
+| `emos run <name>`  | Run a recipe                                |
 | `emos info <name>` | Show sensor/topic requirements for a recipe |
-| `emos map <cmd>` | Mapping tools (record, edit) |
-| `emos version` | Show CLI version |
+| `emos map <cmd>`   | Mapping tools (record, edit)                |
+| `emos version`     | Show CLI version                            |
 
 ## Typical Workflow
 
@@ -177,6 +177,7 @@ emos info ./my_recipe.py           # direct file path
 ```
 
 The output shows:
+
 - **Required Sensors** — topics with hardware sensor types (Image, LaserScan, etc.) and what hardware they need
 - **Suggested packages** — apt packages for common sensor drivers, tailored to your ROS 2 distro
 - **Other Topics** — non-sensor topics used by the recipe (e.g. String, Bool)
@@ -195,6 +196,31 @@ emos run my_recipe --skip-sensor-check         # Skip sensor topic verification
 ```
 
 Supported RMW values: `rmw_zenoh_cpp` (default), `rmw_fastrtps_cpp`, `rmw_cyclonedds_cpp`.
+
+#### What happens during `emos run`
+
+1. Reads `recipe.py` and extracts `Topic(...)` declarations via AST parsing
+2. Identifies sensor topics (Image, LaserScan, Odometry, etc.)
+3. Starts the Zenoh router (if using `rmw_zenoh_cpp`)
+4. Launches `~/emos/robot/launch/bringup_robot.py` if it exists (native/pixi only; skipped in container mode)
+5. Verifies each sensor topic is publishing (polls `ros2 topic list` for up to 10 seconds)
+6. Executes the recipe — output streams to the terminal and is saved to `~/emos/logs/`
+
+#### Using `--skip-sensor-check`
+
+Skip the sensor verification step when:
+
+- **Sensors publish on-demand** — e.g. a service-based camera that only starts publishing when triggered
+- **Testing with rosbag replay** — topic names may differ from what the recipe declares
+- **Pure AI recipes** — LLM chat or TTS recipes that don't use sensor hardware
+
+```{warning}
+If you skip the check and a sensor topic never arrives, the recipe may hang silently waiting for data. Use `ros2 topic hz /topic_name` to diagnose.
+```
+
+```{seealso}
+See [Troubleshooting](troubleshooting.md) for common errors during recipe execution.
+```
 
 ### emos map
 

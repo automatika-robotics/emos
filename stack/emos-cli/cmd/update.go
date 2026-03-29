@@ -57,6 +57,8 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return updateLicensed(cfg)
 	case config.ModeNative:
 		return updateNative(cfg)
+	case config.ModePixi:
+		return updatePixi(cfg)
 	default:
 		return fmt.Errorf("unknown mode: %s", cfg.Mode)
 	}
@@ -237,6 +239,59 @@ func updateLicensed(cfg *config.EMOSConfig) error {
 
 	fmt.Println()
 	ui.SuccessBox("EmbodiedOS container updated successfully!")
+	return nil
+}
+
+func updatePixi(cfg *config.EMOSConfig) error {
+	projectDir := cfg.PixiProjectDir
+	if projectDir == "" {
+		ui.Error("No pixi project directory configured.")
+		return fmt.Errorf("pixi project dir not set")
+	}
+
+	fmt.Println("  Updating EMOS pixi workspace...")
+	fmt.Println()
+
+	// Pull latest source
+	if err := ui.Spinner("Pulling latest source...", func() error {
+		cmd := exec.Command("git", "pull")
+		cmd.Dir = projectDir
+		return cmd.Run()
+	}); err != nil {
+		return fmt.Errorf("git pull failed: %w", err)
+	}
+
+	// Update submodules
+	if err := ui.Spinner("Updating submodules...", func() error {
+		cmd := exec.Command("git", "submodule", "update", "--init", "--depth", "1")
+		cmd.Dir = projectDir
+		return cmd.Run()
+	}); err != nil {
+		return fmt.Errorf("submodule update failed: %w", err)
+	}
+
+	// Reinstall dependencies
+	ui.Info("Updating pixi environment...")
+	pixiInstall := exec.Command("pixi", "install")
+	pixiInstall.Dir = projectDir
+	pixiInstall.Stdout = os.Stdout
+	pixiInstall.Stderr = os.Stderr
+	if err := pixiInstall.Run(); err != nil {
+		return fmt.Errorf("pixi install failed: %w", err)
+	}
+
+	// Rebuild
+	ui.Info("Rebuilding EMOS packages...")
+	pixiSetup := exec.Command("pixi", "run", "setup")
+	pixiSetup.Dir = projectDir
+	pixiSetup.Stdout = os.Stdout
+	pixiSetup.Stderr = os.Stderr
+	if err := pixiSetup.Run(); err != nil {
+		return fmt.Errorf("pixi run setup failed: %w", err)
+	}
+
+	fmt.Println()
+	ui.SuccessBox("EMOS pixi workspace updated successfully!")
 	return nil
 }
 

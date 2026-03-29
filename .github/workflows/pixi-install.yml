@@ -1,0 +1,64 @@
+name: Pixi Install Test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pixi.toml"
+      - "stack/emos-cli/**"
+      - "stack/sugarcoat/**"
+      - "stack/embodied-agents/**"
+      - "stack/kompass/**"
+  pull_request:
+    paths:
+      - "pixi.toml"
+      - "stack/emos-cli/**"
+      - "stack/sugarcoat/**"
+      - "stack/embodied-agents/**"
+      - "stack/kompass/**"
+  workflow_dispatch:
+    inputs: {}
+
+permissions:
+  contents: read
+
+jobs:
+  pixi-install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+
+    runs-on: ${{ matrix.os }}
+    name: Pixi Install / ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+
+      - name: Install dependencies
+        run: pixi install
+
+      - name: Build EMOS packages
+        run: pixi run build
+
+      - name: Install kompass-core (CPU only, for import verification)
+        run: pixi run pip install kompass-core
+
+      - name: Verify Python imports
+        run: |
+          pixi run bash -c "source install/setup.sh && python3 -c '
+          import ros_sugar; import agents; import kompass
+          print(\"All EMOS imports: OK\")
+          '"
+
+      - name: Verify ROS packages
+        run: |
+          pixi run bash -c "source install/setup.sh && ros2 pkg list" | grep -E "automatika_ros_sugar|automatika_embodied_agents|kompass"
+
+      - name: Verify ROS 2 tools
+        run: pixi run ros2 --help

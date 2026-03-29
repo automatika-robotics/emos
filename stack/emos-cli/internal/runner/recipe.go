@@ -92,6 +92,8 @@ func RunRecipe(recipeName, rmwImpl string, skipSensorCheck bool) error {
 		strategy = NewContainerStrategy(true)
 	case config.ModeNative:
 		strategy = NewNativeStrategy()
+	case config.ModePixi:
+		strategy = NewPixiStrategy(cfg.PixiProjectDir)
 	default:
 		return fmt.Errorf("unknown install mode: %s", mode)
 	}

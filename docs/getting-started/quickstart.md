@@ -130,7 +130,7 @@ launcher.bringup()
 
 ## Verify It Is Running
 
-From a new terminal, use standard ROS 2 commands to confirm the node and its topics are active:
+From a new terminal, use standard ROS2 commands to confirm the node and its topics are active:
 
 ```shell
 ros2 node list

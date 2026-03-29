@@ -10,11 +10,11 @@ The most common error. `emos run` checks that every sensor topic declared in the
 
 **Possible causes:**
 
-| Cause | Fix |
-| :--- | :--- |
-| Driver not installed | Run `emos info <recipe>` for suggested packages, then `sudo apt install <package>` |
-| Driver installed but not running | Start the driver node in a separate terminal before running the recipe |
-| Topic name mismatch | Compare `ros2 topic list` output with `Topic(name=...)` in your recipe and correct the name |
+| Cause                                                 | Fix                                                                                                                                            |
+| :---------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------- |
+| Driver not installed                                  | Run `emos info <recipe>` for suggested packages, then `sudo apt install <package>`                                                             |
+| Driver installed but not running                      | Start the driver node in a separate terminal before running the recipe                                                                         |
+| Topic name mismatch                                   | Compare `ros2 topic list` output with `Topic(name=...)` in your recipe and correct the name                                                    |
 | **Container mode**: driver not installed in container | Install the driver inside the container: `docker exec -it emos bash -c "apt-get update && apt-get install -y ros-jazzy-usb-cam"` and launch it |
 
 **Diagnosis:**
@@ -37,11 +37,11 @@ To temporarily bypass this check while debugging, use `emos run <recipe> --skip-
 
 EMOS Python packages are not on the Python path. The fix depends on your install mode:
 
-| Mode | Fix |
-| :--- | :--- |
+| Mode          | Fix                                                                                                                             |
+| :------------ | :------------------------------------------------------------------------------------------------------------------------------ |
 | **Container** | Run the recipe via `emos run`, not directly with `python3`. The CLI executes inside the container where packages are installed. |
-| **Native** | Source the ROS 2 environment first: `source /opt/ros/jazzy/setup.bash` |
-| **Pixi** | Enter the pixi shell first: `pixi shell`, then `source install/setup.sh` |
+| **Native**    | Source the ROS2 environment first: `source /opt/ros/jazzy/setup.bash`                                                           |
+| **Pixi**      | Enter the pixi shell first: `pixi shell`, then `source install/setup.sh`                                                        |
 
 ---
 
@@ -52,7 +52,7 @@ A recipe uses `Launcher(robot_plugin="some_plugin")` but the plugin package is n
 **Fix:**
 
 1. Check if the plugin is available: `ros2 pkg list | grep some_plugin`
-2. If missing, build and install the plugin package into your ROS 2 workspace:
+2. If missing, build and install the plugin package into your ROS2 workspace:
    ```bash
    cd ~/ros2_ws/src
    git clone <plugin_repo_url>

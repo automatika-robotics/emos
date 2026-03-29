@@ -104,15 +104,15 @@ See the [CLI Reference](cli.md) for the full list of commands.
 
 ## Which Mode Should I Choose?
 
-| Scenario | Recommended Mode |
-| :--- | :--- |
-| No ROS 2 on host, quick evaluation | **Container** |
-| ROS 2 already installed, system-level integration | **Native** |
-| No root, no Docker, any Linux distro | **Pixi** |
+| Scenario                                         | Recommended Mode |
+| :----------------------------------------------- | :--------------- |
+| No ROS2 on host, quick evaluation                | **Container**    |
+| ROS2 already installed, system-level integration | **Native**       |
+| No root, no Docker, any Linux distro             | **Pixi**         |
 
 ## Preparing Your Hardware
 
-Before running recipes, you need sensor drivers publishing data on ROS 2 topics. EMOS recipes declare the topics they expect (e.g. `Image` from a camera, `LaserScan` from a lidar). Run `emos info <recipe>` to see what a recipe needs.
+Before running recipes, you need sensor drivers publishing data on ROS2 topics. EMOS recipes declare the topics they expect (e.g. `Image` from a camera, `LaserScan` from a lidar). Run `emos info <recipe>` to see what a recipe needs.
 
 ### Installing Sensor Drivers
 
@@ -120,7 +120,7 @@ Before running recipes, you need sensor drivers publishing data on ROS 2 topics.
 
 :::{tab-item} Container
 
-The EMOS container runs with `--privileged` and has access to all USB devices on the host. You can install and run sensor drivers directly **inside the container** — no ROS 2 installation on the host is needed.
+The EMOS container runs with `--privileged` and has access to all USB devices on the host. You can install and run sensor drivers directly **inside the container** — no ROS2 installation on the host is needed.
 
 ```bash
 # Install a sensor driver inside the container:
@@ -133,7 +133,7 @@ docker exec -it emos bash -c "source /ros_entrypoint.sh && ros2 run usb_cam usb_
 The driver's topics are immediately visible to recipes running in the same container.
 
 ```{tip}
-If you have sensor drivers already running on the host with ROS 2, they can bridge into the container automatically via Zenoh (the default RMW). Start the host driver with `export RMW_IMPLEMENTATION=rmw_zenoh_cpp`.
+If you have sensor drivers already running on the host with ROS2, they can bridge into the container automatically via Zenoh (the default RMW). Start the host driver with `export RMW_IMPLEMENTATION=rmw_zenoh_cpp`.
 ```
 
 :::
@@ -154,7 +154,7 @@ If you place a launch file at `~/emos/robot/launch/bringup_robot.py`, the CLI wi
 
 :::{tab-item} pixi
 
-Sensor drivers must be installed on the **host** (outside the pixi environment), since pixi manages only EMOS and ROS 2 packages in userspace. The pixi environment uses Zenoh by default, so host-side drivers bridge in automatically:
+Sensor drivers must be installed on the **host** (outside the pixi environment), since pixi manages only EMOS and ROS2 packages in userspace. The pixi environment uses Zenoh by default, so host-side drivers bridge in automatically:
 
 ```bash
 # On the host:

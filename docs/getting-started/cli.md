@@ -4,18 +4,18 @@ The `emos` CLI is the main entry point for managing and running recipes on your 
 
 ## Quick Reference
 
-| Command | Description |
-| :--- | :--- |
-| `emos install` | Install EMOS (interactive mode selection) |
-| `emos update` | Update EMOS to the latest version |
-| `emos status` | Show installation status |
-| `emos recipes` | List recipes available for download |
-| `emos pull <name>` | Download a recipe |
-| `emos ls` | List locally installed recipes |
-| `emos run <name>` | Run a recipe |
+| Command            | Description                                 |
+| :----------------- | :------------------------------------------ |
+| `emos install`     | Install EMOS (interactive mode selection)   |
+| `emos update`      | Update EMOS to the latest version           |
+| `emos status`      | Show installation status                    |
+| `emos recipes`     | List recipes available for download         |
+| `emos pull <name>` | Download a recipe                           |
+| `emos ls`          | List locally installed recipes              |
+| `emos run <name>`  | Run a recipe                                |
 | `emos info <name>` | Show sensor/topic requirements for a recipe |
-| `emos map <cmd>` | Mapping tools (record, edit) |
-| `emos version` | Show CLI version |
+| `emos map <cmd>`   | Mapping tools (record, edit)                |
+| `emos version`     | Show CLI version                            |
 
 ## Typical Workflow
 
@@ -177,6 +177,7 @@ emos info ./my_recipe.py           # direct file path
 ```
 
 The output shows:
+
 - **Required Sensors** — topics with hardware sensor types (Image, LaserScan, etc.) and what hardware they need
 - **Suggested packages** — apt packages for common sensor drivers, tailored to your ROS 2 distro
 - **Other Topics** — non-sensor topics used by the recipe (e.g. String, Bool)

@@ -154,14 +154,36 @@ If you place a launch file at `~/emos/robot/launch/bringup_robot.py`, the CLI wi
 
 :::{tab-item} pixi
 
-Sensor drivers must be installed on the **host** (outside the pixi environment), since pixi manages only EMOS and ROS2 packages in userspace. The pixi environment uses Zenoh by default, so host-side drivers bridge in automatically:
+Pixi mode assumes you have **no system ROS2 installation**, so sensor drivers are installed into a pixi environment as well — either your EMOS environment or a separate one dedicated to the driver. Packages are pulled from [RoboStack](https://robostack.github.io/) and conda-forge.
+
+**Option A: install the driver into your EMOS pixi environment**
+
+From the same `emos` directory you cloned during installation:
 
 ```bash
-# On the host:
-sudo apt install ros-jazzy-usb-cam
-source /opt/ros/jazzy/setup.bash
+pixi add ros-jazzy-usb-cam
+pixi shell
+ros2 run usb_cam usb_cam_node_exe
+```
+
+**Option B: run the driver in a separate pixi environment**
+
+Useful if you want to keep the driver isolated or run it on a different machine:
+
+```bash
+mkdir ~/sensors && cd ~/sensors
+pixi init
+pixi project channel add https://prefix.dev/robostack-jazzy
+pixi add ros-jazzy-ros-base ros-jazzy-usb-cam ros-jazzy-rmw-zenoh-cpp
+pixi shell
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 run usb_cam usb_cam_node_exe
+```
+
+Either way, because both EMOS and the driver use Zenoh as the default RMW, the driver's topics are visible to recipes running in the EMOS pixi environment automatically; no host-side ROS2 installation required.
+
+```{tip}
+If a specific driver package isn't available on RoboStack, you can still install it from source into the pixi environment using `colcon`, or fall back to Native mode for that driver only.
 ```
 
 :::

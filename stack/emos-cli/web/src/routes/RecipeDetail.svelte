@@ -16,7 +16,9 @@
   const startRun = useStartRun();
   const remove = useDeleteRecipe();
 
-  let activeRun = $derived(($runs.data ?? []).find((r) => r.status === 'running'));
+  let activeRun = $derived(
+    ($runs.data ?? []).find((r) => r.status === 'running' || r.status === 'preparing')
+  );
   let canRun = $derived(!activeRun);
 
   async function run() {

@@ -309,10 +309,13 @@ func installLicensed(licenseKey string) error {
 		ui.Warn("Failed to save config: " + err.Error())
 	}
 
-	// Create systemd service
+	// Create systemd service for the EMOS container (auto-restart on boot).
 	if ui.Confirm("Create systemd service for auto-restart?") {
-		if err := createSystemdService(); err != nil {
+		unit := installer.ContainerUnit(config.ContainerName)
+		if err := unit.Install(true, true); err != nil {
 			ui.Warn("Failed to create systemd service: " + err.Error())
+		} else {
+			ui.Success("Systemd service created and started.")
 		}
 	}
 
@@ -413,37 +416,6 @@ func offerDashboardAutoStart() {
 	// checks immediately after this returns.
 	time.Sleep(400 * time.Millisecond)
 	PrintDashboardAccessSummary(":8765", "install", freshCode)
-}
-
-func createSystemdService() error {
-	serviceContent := fmt.Sprintf(`[Unit]
-Description=EmbodiedOS Container
-After=docker.service
-Requires=docker.service
-[Service]
-Restart=always
-ExecStart=/usr/bin/docker start -a %s
-ExecStop=/usr/bin/docker stop -t 2 %s
-[Install]
-WantedBy=multi-user.target
-`, config.ContainerName, config.ContainerName)
-
-	servicePath := "/etc/systemd/system/" + config.ServiceName
-
-	// Write service file
-	cmd := exec.Command("sudo", "tee", servicePath)
-	cmd.Stdin = strings.NewReader(serviceContent)
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-
-	// Reload and enable
-	exec.Command("sudo", "systemctl", "daemon-reload").Run()
-	exec.Command("sudo", "systemctl", "enable", config.ServiceName).Run()
-	exec.Command("sudo", "systemctl", "start", config.ServiceName).Run()
-
-	ui.Success("Systemd service created and started.")
-	return nil
 }
 
 func capitalize(s string) string {

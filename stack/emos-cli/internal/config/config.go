@@ -7,7 +7,7 @@ import (
 )
 
 // Version is set at build time via -ldflags from the Makefile.
-// The "dev" fallback only appears when built with plain `go build` (without make).
+// The "dev" fallback only appears when built with plain `go build`
 var Version = "dev"
 
 type InstallMode string

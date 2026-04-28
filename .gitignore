@@ -16,6 +16,18 @@ build/
 stack/emos-cli/emos
 stack/emos-cli/dist/
 
+# Dashboard SPA: source dependencies and build outputs.
+stack/emos-cli/web/node_modules/
+stack/emos-cli/web/dist/
+stack/emos-cli/web/.svelte-kit/
+
+# Re-include the embed target dir (the broader `dist/` rule above would
+# hide it), then exclude only its build outputs so placeholder.html stays
+# tracked for fresh-clone fallback.
+!stack/emos-cli/internal/webui/dist/
+stack/emos-cli/internal/webui/dist/index.html
+stack/emos-cli/internal/webui/dist/assets/
+
 # OS
 .DS_Store
 Thumbs.db

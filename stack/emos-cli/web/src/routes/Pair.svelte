@@ -13,7 +13,7 @@
   let inputs: HTMLInputElement[] = $state([]);
 
   // QR-flow auto-pair: if the URL is /#/pair?code=NNNNNN, pre-fill and submit.
-  // Triggered on mount only (not on every keystroke) so a stale ?code= in
+  // Triggered on mount (not on every keystroke) so a stale ?code= in
   // history doesn't replay after the user manually edits a digit.
   onMount(() => {
     const q = get(query);

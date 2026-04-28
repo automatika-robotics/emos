@@ -6,8 +6,7 @@
     <meta name="theme-color" content="#0a0a0b" />
     <meta name="description" content="EMOS — the Embodied Operating System onboarding console." />
     <title>EMOS</title>
-    <!-- Inline SVG favicon: red Automatika square with a stylised "E" mark.
-         Matches the wordmark's red E and works on every browser tab background. -->
+    <!-- Inline SVG favicon: red square with a "E" mark -->
     <link
       rel="icon"
       href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23E83F3F'/><path d='M11 8h12v4h-8v3h7v4h-7v3h8v4H11z' fill='white'/></svg>"
@@ -15,7 +14,7 @@
     <!--
       Inline pre-mount theme bootstrap. Reads the persisted theme choice and
       sets data-theme on <html> BEFORE the Svelte bundle parses, so the very
-      first paint matches the user's preference. Tiny script, no deps.
+      first paint matches the user's preference.
     -->
     <script>
       (function () {

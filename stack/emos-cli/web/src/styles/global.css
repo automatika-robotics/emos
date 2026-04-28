@@ -1,22 +1,5 @@
 @import "tailwindcss";
 
-/* ---------------------------------------------------------------
-   EMOS design tokens.
-
-   Brand: Automatika red (#E83F3F) and Automatika blue (#447AE5),
-   pulled from automatikarobotics.com. Red is the primary accent;
-   blue is reserved for secondary affordances (links, info pills).
-
-   Both themes reuse the same accent so the brand stays consistent
-   between light/dark. Surfaces, text, and lines flip; accent
-   shifts only slightly to keep contrast on white backgrounds.
-
-   The :root block holds the dark theme. [data-theme='light'] on
-   <html> overrides every token. Tailwind v4 reads @theme so any
-   token here is also available as a utility class
-   (text-emos-accent, bg-emos-surface, etc.).
-   --------------------------------------------------------------- */
-
 @theme {
   /* Dark theme defaults — flipped by [data-theme='light'] below. */
   --color-emos-bg: oklch(0.155 0.005 280);
@@ -28,7 +11,7 @@
   --color-emos-text-2: oklch(0.795 0.008 280);
   --color-emos-text-3: oklch(0.625 0.010 280);
 
-  /* Brand accents — same in both themes, primary red dominates. */
+  /* Brand accents */
   --color-emos-accent: oklch(0.660 0.225 25);     /* Automatika red */
   --color-emos-accent-2: oklch(0.610 0.176 256);  /* Automatika blue */
 
@@ -44,11 +27,7 @@
   --radius-card: 1rem;
   --radius-button: 0.625rem;
 
-  /* Background wash — both stops drawn from the brand BLUE so the dark
-     dashboard reads as calm/technical rather than alarmed. Different
-     intensities at the two anchor points keep the gradient feeling
-     volumetric instead of a flat tint. The brand red still dominates
-     CTAs and the EMOS wordmark, where attention is intentional. */
+  /* Background glow */
   --emos-glow-1: color-mix(in oklab, var(--color-emos-accent-2) 18%, transparent);
   --emos-glow-2: color-mix(in oklab, var(--color-emos-accent-2) 9%, transparent);
   --emos-glow-bg: var(--color-emos-bg);
@@ -65,7 +44,6 @@
   --color-emos-text-2: oklch(0.395 0.008 280);
   --color-emos-text-3: oklch(0.580 0.010 280);
 
-  /* Slightly deeper accent on white for AA contrast on body text. */
   --color-emos-accent: oklch(0.605 0.230 25);
   --color-emos-accent-2: oklch(0.530 0.190 256);
 
@@ -95,7 +73,7 @@ body.emos-shell {
   text-rendering: optimizeLegibility;
 }
 
-/* component-y primitives that are easier as classes than utility chains */
+/* component-y primitives */
 @layer components {
   .surface {
     background: color-mix(in oklab, var(--color-emos-surface) 92%, transparent);
@@ -123,9 +101,7 @@ body.emos-shell {
   .btn:active { transform: translateY(1px); }
   .btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
-  /* Primary CTA — solid Automatika red with a gentle red→blue gradient
-     toward the bottom-right so the button feels "branded" without
-     becoming a rainbow. */
+  /* Primary CTA */
   .btn-primary {
     color: white;
     background:
@@ -250,8 +226,7 @@ body.emos-shell {
   }
   .md-content hr { border: 0; border-top: 1px solid var(--color-emos-line); margin: 1em 0; }
 
-  /* Compact mode — used inside recipe cards where a 3-line clamp is
-     still in effect, so headings and list bullets need to feel inline. */
+  /* Compact mode — used inside recipe cards */
   .md-content.md-compact { font-size: 0.85rem; line-height: 1.4; }
   .md-content.md-compact p { margin: 0 0 0.25em; }
   .md-content.md-compact h1, .md-content.md-compact h2,
@@ -266,8 +241,7 @@ body.emos-shell {
   .md-content.md-compact li { margin: 0; }
 }
 
-/* Animations: a small library of effects used as the "magic". One place,
-   one inspectable spot. */
+/* Animations */
 @keyframes emos-pulse {
   0%, 100% { opacity: 0.85; transform: scale(1); }
   50%      { opacity: 1;    transform: scale(1.08); }
@@ -294,19 +268,17 @@ body.emos-shell {
   animation: emos-shimmer 1.6s linear infinite;
 }
 
-/* Scrollbar polish — long-lived single page so a custom scrollbar is part
-   of the feel; honors theme by reading the line color. */
+/* Scrollbar polish */
 * { scrollbar-width: thin; scrollbar-color: var(--color-emos-line) transparent; }
 *::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb { background: var(--color-emos-line); border-radius: 4px; }
 
-/* Theme transition — flipping themes shouldn't be a hard cut. */
+/* Theme transition */
 html, body, .surface, .surface-2, .btn, .pill, .input, .kbd {
   transition: background-color 200ms ease, border-color 200ms ease, color 150ms ease;
 }
 
-/* respect reduce motion */
 @media (prefers-reduced-motion: reduce) {
   .animate-rise, .animate-pulse-dot, .shimmer { animation: none; }
   html, body, .surface, .surface-2, .btn, .pill, .input, .kbd { transition: none; }

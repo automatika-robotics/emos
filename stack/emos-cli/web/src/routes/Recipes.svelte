@@ -57,7 +57,7 @@
   async function runRecipe(name: string) {
     try {
       const res = await $startRun.mutateAsync({ recipe: name });
-      // Drop straight into the live console — pre-flight progress streams
+      // Drop straight into the live console, pre-flight progress streams
       // there as "[setup] ..." log lines.
       navigate('/runs/' + res.id);
     } catch (err) {
@@ -98,7 +98,7 @@
   // Watch the polled jobs list. As soon as a recipe_pull transitions to
   // "finished", refresh the local recipes list so the just-installed recipe
   // appears in the Installed tab. Use a Set so each job triggers exactly
-  // one invalidation no matter how many times the query refetches.
+  // one invalidation no matter how many times the query re-fetches.
   let invalidatedJobIds = new Set<string>();
   $effect(() => {
     for (const j of $jobs.data ?? []) {
@@ -182,9 +182,6 @@
         <input bind:value={q} placeholder="search" class="input pl-8 py-2 text-sm w-56" />
       </div>
       {#if tab === 'catalog'}
-        <!-- Cloud-reachability hint, scoped to this tab. Sub-pill style so it
-             doesn't compete with the primary controls; just an at-a-glance
-             yes/no for "can we hit the catalog right now". -->
         {#if $conn.data}
           {#if $conn.data.online}
             <span class="pill pill-good" title="Connected to the Automatika catalog">

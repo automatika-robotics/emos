@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Wifi, WifiOff, RefreshCw, KeyRound, Loader2 } from 'lucide-svelte';
+  import { Wifi, WifiOff, RefreshCw, KeyRound } from 'lucide-svelte';
   import { useInfo, useCapabilities, useConnectivity, useRobot } from '$lib/queries';
   import { api } from '$lib/api';
   import { clearToken } from '$lib/auth';

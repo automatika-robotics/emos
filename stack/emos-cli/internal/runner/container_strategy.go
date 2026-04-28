@@ -87,13 +87,24 @@ func (s *ContainerStrategy) VerifySensorTopics(sensors []ExtractedTopic, distro 
 func (s *ContainerStrategy) ExecRecipe(recipeName string, manifest *recipeManifest, logFile string) error {
 	ui.Header("LAUNCHING RECIPE: " + recipeName)
 	ui.Info("All output will be saved to: " + logFile)
-
 	ui.Success("BEGIN RECIPE OUTPUT")
 	fmt.Println()
 
-	recipeCmd := fmt.Sprintf("source ros_entrypoint.sh && python3 %s/%s/recipe.py | tee %s",
+	recipeCmd := fmt.Sprintf("source ros_entrypoint.sh && python3 -u %s/%s/recipe.py | tee %s",
 		recipesRoot, recipeName, logFile)
 	return container.ExecInteractive(config.ContainerName, recipeCmd)
+}
+
+// StartRecipe runs the recipe inside the container non-blocking. The bash
+// process we spawn here is host-side (`docker exec`); its captured stdout
+// goes to the host log file so the SSE log tail works without bind mounts.
+func (s *ContainerStrategy) StartRecipe(recipeName string, manifest *recipeManifest, logFile string) (*RunHandle, error) {
+	recipeCmd := fmt.Sprintf("source ros_entrypoint.sh && exec python3 -u %s/%s/recipe.py",
+		recipesRoot, recipeName)
+	if err := os.MkdirAll(parentDir(logFile), 0755); err != nil {
+		return nil, err
+	}
+	return startContainerExec(config.ContainerName, recipeCmd, logFile)
 }
 
 func (s *ContainerStrategy) Cleanup() error {

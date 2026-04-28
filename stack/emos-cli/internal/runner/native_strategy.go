@@ -106,17 +106,29 @@ func (s *NativeStrategy) VerifySensorTopics(sensors []ExtractedTopic, distro str
 func (s *NativeStrategy) ExecRecipe(recipeName string, manifest *recipeManifest, logFile string) error {
 	ui.Header("LAUNCHING RECIPE: " + recipeName)
 	ui.Info("All output will be saved to: " + logFile)
-
 	ui.Success("BEGIN RECIPE OUTPUT")
 	fmt.Println()
 
 	recipePath := filepath.Join(config.RecipesDir, recipeName, "recipe.py")
-	shellCmd := fmt.Sprintf("%s && python3 %s 2>&1 | tee %s", s.sourceCmd(), recipePath, logFile)
+	shellCmd := fmt.Sprintf("%s && python3 -u %s 2>&1 | tee %s", s.sourceCmd(), recipePath, logFile)
 	cmd := exec.Command("bash", "-c", shellCmd)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// StartRecipe launches the recipe non-blocking and writes output only to the
+// log file (no terminal binding). The returned handle is what the daemon
+// stores to track + cancel the run.
+func (s *NativeStrategy) StartRecipe(recipeName string, manifest *recipeManifest, logFile string) (*RunHandle, error) {
+	recipePath := filepath.Join(config.RecipesDir, recipeName, "recipe.py")
+	shellCmd := fmt.Sprintf("%s && exec python3 -u %s >> %s 2>&1", s.sourceCmd(), recipePath, logFile)
+	cmd := exec.Command("bash", "-c", shellCmd)
+	if err := os.MkdirAll(parentDir(logFile), 0755); err != nil {
+		return nil, err
+	}
+	return startCmd(cmd, logFile)
 }
 
 func (s *NativeStrategy) Cleanup() error {

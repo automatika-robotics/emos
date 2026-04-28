@@ -4,6 +4,7 @@
   import { api } from '$lib/api';
   import { clearToken } from '$lib/auth';
   import { navigate } from '$lib/router';
+  import { confirm as confirmDialog } from '$lib/dialog';
   import { onMount } from 'svelte';
 
   const info = useInfo();
@@ -20,8 +21,14 @@
     dashUrl = window.location.origin || '';
   });
 
-  function unpair() {
-    if (!confirm('Sign this browser out of the dashboard?')) return;
+  async function unpair() {
+    const ok = await confirmDialog({
+      title: 'Sign this browser out?',
+      message: 'You\'ll need the device pairing code to sign back in.',
+      confirmLabel: 'Sign out',
+      intent: 'destructive',
+    });
+    if (!ok) return;
     clearToken();
     navigate('/pair');
   }

@@ -163,7 +163,7 @@
               class:bg-good={r.status === 'finished'}
               class:bg-bad={r.status === 'failed'}
               class:bg-warn={r.status === 'canceled'}
-              class:bg-accent={r.status === 'running'}
+              class:bg-accent={r.status === 'running' || r.status === 'preparing'}
             ></span>
             <div class="min-w-0 flex-1">
               <div class="text-sm truncate">{r.recipe}</div>

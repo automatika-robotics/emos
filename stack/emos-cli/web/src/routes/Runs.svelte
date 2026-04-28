@@ -36,7 +36,7 @@
             class:bg-good={r.status === 'finished'}
             class:bg-bad={r.status === 'failed'}
             class:bg-warn={r.status === 'canceled'}
-            class:bg-accent={r.status === 'running'}
+            class:bg-accent={r.status === 'running' || r.status === 'preparing'}
             aria-hidden="true"
           ></span>
           <div class="col-span-5 min-w-0">

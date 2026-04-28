@@ -73,8 +73,8 @@
   }
 </script>
 
-<div class="min-h-screen flex items-center justify-center px-6 py-12">
-  <div class="surface w-full max-w-md p-8 animate-rise">
+<div class="min-h-screen flex items-center justify-center px-4 sm:px-6 py-12">
+  <div class="surface w-full max-w-md p-6 sm:p-8 animate-rise">
     <div class="flex items-center gap-3 mb-6">
       <Logo size={36} />
       <div>
@@ -89,7 +89,7 @@
       <code class="kbd">~/.config/emos/pairing.txt</code>.
     </p>
 
-    <div class="flex justify-between gap-2 mb-4" onpaste={onPaste}>
+    <div class="flex justify-between gap-1.5 sm:gap-2 mb-4" onpaste={onPaste}>
       {#each digits as d, i}
         <input
           bind:this={inputs[i]}
@@ -99,7 +99,7 @@
           value={d}
           oninput={(e) => onInput(i, e)}
           onkeydown={(e) => onKey(i, e)}
-          class="w-12 h-14 text-center text-2xl font-mono tracking-tight rounded-xl bg-emos-bg-2 border border-emos-line focus:outline-2 focus:outline-emos-accent transition"
+          class="w-10 h-12 sm:w-12 sm:h-14 min-w-0 text-center text-xl sm:text-2xl font-mono tracking-tight rounded-xl bg-emos-bg-2 border border-emos-line focus:outline-2 focus:outline-emos-accent transition"
           aria-label={`Digit ${i + 1}`}
         />
       {/each}

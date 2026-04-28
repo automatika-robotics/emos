@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/automatika-robotics/emos-cli/internal/config"
 )
 
 // SystemdUnit captures everything we need to write a service file. The
@@ -126,7 +128,7 @@ func DashboardUnit(binaryPath, user string, port int) SystemdUnit {
 		port = 8765
 	}
 	return SystemdUnit{
-		Name:        "emos-dashboard.service",
+		Name:        config.DashboardServiceName,
 		Description: "EMOS onboarding dashboard",
 		After:       []string{"network-online.target"},
 		Wants:       []string{"network-online.target"},
@@ -136,11 +138,11 @@ func DashboardUnit(binaryPath, user string, port int) SystemdUnit {
 	}
 }
 
-// ContainerUnit is the legacy auto-restart unit (was `emos.service`). Kept
-// here so install.go has one place to look for systemd presets.
+// ContainerUnit auto-restarts the EMOS Docker container at boot. Used by
+// the licensed install flow.
 func ContainerUnit(containerName string) SystemdUnit {
 	return SystemdUnit{
-		Name:        "emos.service",
+		Name:        config.ServiceName,
 		Description: "EmbodiedOS Container",
 		After:       []string{"docker.service"},
 		Requires:    []string{"docker.service"},

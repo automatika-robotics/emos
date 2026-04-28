@@ -48,11 +48,6 @@ func init() {
 	rootCmd.AddCommand(serveCmd)
 }
 
-// NOTE: DashboardServiceUnit is the canonical systemd unit name for the daemon.
-// Hardcoded here (and in installer.DashboardUnit) because both call sites
-// need to agree on it.
-const DashboardServiceUnit = "emos-dashboard.service"
-
 func runServe(cmd *cobra.Command, args []string) {
 	ui.Banner(config.Version)
 
@@ -65,7 +60,7 @@ func runServe(cmd *cobra.Command, args []string) {
 
 	// If the dashboard is already running as a systemd service, don't try to
 	// print a friendly summary
-	if installer.IsActive(DashboardServiceUnit) {
+	if installer.IsActive(config.DashboardServiceName) {
 		PrintDashboardAccessSummary(serveAddr, "service", "")
 		return
 	}
@@ -164,9 +159,9 @@ func PrintDashboardAccessSummary(addr, origin, freshCode string) {
 
 	fmt.Println()
 	ui.Faint("Manage the service:")
-	ui.Faint("  systemctl status " + DashboardServiceUnit)
-	ui.Faint("  systemctl restart " + DashboardServiceUnit)
-	ui.Faint("  journalctl -u " + DashboardServiceUnit + " -f")
+	ui.Faint("  systemctl status " + config.DashboardServiceName)
+	ui.Faint("  systemctl restart " + config.DashboardServiceName)
+	ui.Faint("  journalctl -u " + config.DashboardServiceName + " -f")
 }
 
 // qrURL picks the best URL to encode in the QR code: a phone-reachable LAN

@@ -29,11 +29,12 @@ type EMOSConfig struct {
 }
 
 const (
-	ContainerName = "emos"
-	ServiceName   = "emos.service"
-	GitHubOrg     = "automatika-robotics"
-	GitHubRepo    = "emos"
-	PublicImage   = "ghcr.io/automatika-robotics/emos"
+	ContainerName        = "emos"
+	ServiceName          = "emos.service"           // container auto-restart unit
+	DashboardServiceName = "emos-dashboard.service" // `emos serve` daemon unit
+	GitHubOrg            = "automatika-robotics"
+	GitHubRepo           = "emos"
+	PublicImage          = "ghcr.io/automatika-robotics/emos"
 
 	// API endpoints
 	APIBaseURL          = "https://support-api.automatikarobotics.com/api"

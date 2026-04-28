@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/grandcat/zeroconf"
@@ -141,12 +140,6 @@ func portFromAddr(addr string) (int, error) {
 	_, p, err := net.SplitHostPort(addr)
 	if err != nil {
 		return 0, err
-	}
-	if p == "" {
-		return 80, nil
-	}
-	if strings.HasPrefix(p, ":") {
-		p = p[1:]
 	}
 	return strconv.Atoi(p)
 }

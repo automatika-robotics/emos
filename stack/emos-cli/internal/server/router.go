@@ -2,6 +2,7 @@ package server
 
 import (
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -131,14 +132,14 @@ func (s *Server) requestLogger() func(http.Handler) http.Handler {
 			next.ServeHTTP(ww, r)
 
 			status := ww.Status()
-			level := slogDebug
+			level := slog.LevelDebug
 			switch {
 			case status >= 500:
-				level = slogError
+				level = slog.LevelError
 			case status >= 400:
-				level = slogWarn
+				level = slog.LevelWarn
 			case r.Method != http.MethodGet && r.Method != http.MethodHead:
-				level = slogInfo
+				level = slog.LevelInfo
 			}
 			s.log.Log(r.Context(), level,
 				"http",

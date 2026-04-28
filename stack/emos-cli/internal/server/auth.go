@@ -25,12 +25,11 @@ const (
 )
 
 // authState is the JSON shape persisted to ~/.config/emos/serve.json. Both the
-// pairing code and the issued tokens are stored as SHA-256 hashes
+// pairing code and the issued tokens are stored as SHA-256 hashes.
 type authState struct {
-	PairingCodeHash string         `json:"pairing_code_hash"`
-	PairingCreated  time.Time      `json:"pairing_created"`
-	Tokens          []storedToken  `json:"tokens"`
-	UnauthOK        bool           `json:"unauth_ok,omitempty"` // dev-only opt-out
+	PairingCodeHash string        `json:"pairing_code_hash"`
+	PairingCreated  time.Time     `json:"pairing_created"`
+	Tokens          []storedToken `json:"tokens"`
 }
 
 type storedToken struct {

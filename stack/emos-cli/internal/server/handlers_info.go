@@ -3,7 +3,7 @@ package server
 import (
 	"net/http"
 	"os"
-	"path/filepath"
+	"os/exec"
 	"runtime"
 	"time"
 
@@ -54,17 +54,20 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 
 // handleCapabilities exposes feature flags the UI uses to gate buttons
 func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
-	caps := map[string]any{
+	_, hasRobot := DiscoverRobot()
+	writeJSON(w, http.StatusOK, map[string]any{
 		"can_run_recipes":    s.cfg != nil,
 		"can_pull_recipes":   true, // UI; backend will return offline if needed
-		"has_robot_identity": false,
-		"docker_available":   commandExists("docker"),
-		"pixi_available":     commandExists("pixi"),
-	}
-	if _, ok := DiscoverRobot(); ok {
-		caps["has_robot_identity"] = true
-	}
-	writeJSON(w, http.StatusOK, caps)
+		"has_robot_identity": hasRobot,
+		"docker_available":   onPath("docker"),
+		"pixi_available":     onPath("pixi"),
+	})
+}
+
+// onPath reports whether the named binary is reachable via $PATH.
+func onPath(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
 }
 
 // handleConnectivity reports the cached online/offline state
@@ -95,16 +98,4 @@ func (s *Server) handleRobot(w http.ResponseWriter, r *http.Request) {
 func hostname() string {
 	h, _ := os.Hostname()
 	return h
-}
-
-func commandExists(name string) bool {
-	// cheap PATH probe
-	if v := os.Getenv("PATH"); v != "" {
-		for _, dir := range filepath.SplitList(v) {
-			if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
-				return true
-			}
-		}
-	}
-	return false
 }

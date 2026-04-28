@@ -17,13 +17,16 @@ import (
 )
 
 // LocalRecipe is the per-recipe wire shape returned by /recipes/local
+// and (with `Topics`/`SensorTopics` populated) by /recipes/{name}.
 type LocalRecipe struct {
-	Name        string `json:"name"`
-	DisplayName string `json:"display_name,omitempty"`
-	Description string `json:"description,omitempty"`
-	Path        string `json:"path"`
-	HasRecipePy bool   `json:"has_recipe_py"`
-	Manifest    map[string]any `json:"manifest,omitempty"`
+	Name         string                 `json:"name"`
+	DisplayName  string                 `json:"display_name,omitempty"`
+	Description  string                 `json:"description,omitempty"`
+	Path         string                 `json:"path"`
+	HasRecipePy  bool                   `json:"has_recipe_py"`
+	Manifest     map[string]any         `json:"manifest,omitempty"`
+	Topics       []runner.ExtractedTopic `json:"topics,omitempty"`
+	SensorTopics []runner.ExtractedTopic `json:"sensor_topics,omitempty"`
 }
 
 // handleRecipesLocal lists everything in ~/emos/recipes/
@@ -99,7 +102,7 @@ func (s *Server) handleRecipesRemote(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// handleRecipeDetail returns recipe metadata + extracted topics
+// handleRecipeDetail returns recipe metadata + extracted topics.
 func (s *Server) handleRecipeDetail(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	if !validRecipeName(name) {
@@ -112,22 +115,13 @@ func (s *Server) handleRecipeDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rec := readLocalRecipe(name)
-	resp := map[string]any{
-		"name":          rec.Name,
-		"display_name":  rec.DisplayName,
-		"description":   rec.Description,
-		"path":          rec.Path,
-		"has_recipe_py": rec.HasRecipePy,
-		"manifest":      rec.Manifest,
-	}
 	if rec.HasRecipePy {
-		topics, err := runner.ExtractTopics(filepath.Join(dir, "recipe.py"))
-		if err == nil {
-			resp["topics"] = topics
-			resp["sensor_topics"] = runner.SensorTopics(topics)
+		if topics, err := runner.ExtractTopics(filepath.Join(dir, "recipe.py")); err == nil {
+			rec.Topics = topics
+			rec.SensorTopics = runner.SensorTopics(topics)
 		}
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, rec)
 }
 
 // handleRecipeDelete removes a recipe directory. No-op if it doesn't exist.

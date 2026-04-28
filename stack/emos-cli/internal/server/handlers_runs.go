@@ -55,7 +55,7 @@ func (s *Server) handleRunsStart(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, codeBadRequest, "invalid rmw implementation")
 		return
 	}
-	if s.cfg == nil {
+	if !s.cfg.IsInstalled() {
 		writeErr(w, http.StatusFailedDependency, codeBadRequest,
 			"no EMOS installation found — run `emos install` first")
 		return
@@ -329,7 +329,7 @@ func validRMW(rmw string) bool {
 // --- strategy factory (mirrors runner.RunRecipe's switch) ---
 
 func (s *Server) buildStrategy() (runner.RuntimeStrategy, error) {
-	if s.cfg == nil {
+	if !s.cfg.IsInstalled() {
 		return nil, errors.New("no install config")
 	}
 	switch s.cfg.Mode {

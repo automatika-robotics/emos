@@ -32,9 +32,10 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 		"home_dir":    config.HomeDir,
 		"recipes_dir": config.RecipesDir,
 		"logs_dir":    config.LogsDir,
-		"installed":   s.cfg != nil,
+		"installed":   s.cfg.IsInstalled(),
 	}
-	if s.cfg != nil {
+	// Only emit install-info fields once a real install has happened.
+	if s.cfg.IsInstalled() {
 		resp["mode"] = s.cfg.Mode
 		resp["ros_distro"] = s.cfg.ROSDistro
 		if s.cfg.ImageTag != "" {
@@ -57,7 +58,7 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 	_, hasRobot := DiscoverRobot()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"can_run_recipes":    s.cfg != nil,
+		"can_run_recipes":    s.cfg.IsInstalled(),
 		"can_pull_recipes":   true, // UI; backend will return offline if needed
 		"has_robot_identity": hasRobot,
 		"docker_available":   onPath("docker"),

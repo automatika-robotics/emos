@@ -31,9 +31,12 @@ var configShowCmd = &cobra.Command{
 		cfg := config.LoadConfig()
 		ui.Header("EMOS DEVICE STATE")
 
-		if cfg == nil {
-			ui.Warn("No EMOS config found at " + config.ConfigFile)
+		if !cfg.IsInstalled() {
+			ui.Warn("No EMOS installation found.")
 			ui.Faint("Run 'emos install' to create one.")
+			if cfg != nil && cfg.Name != "" {
+				ui.Faint("(A pre-install stub exists at " + config.ConfigFile + " with device name '" + cfg.Name + "'.)")
+			}
 			return
 		}
 

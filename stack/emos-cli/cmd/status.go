@@ -21,7 +21,7 @@ var statusCmd = &cobra.Command{
 		ui.StatusCard(config.Version)
 
 		cfg := config.LoadConfig()
-		if cfg == nil {
+		if !cfg.IsInstalled() {
 			fmt.Println()
 			ui.Error("No EMOS installation found.")
 			ui.Faint("Run 'emos install' to get started.")

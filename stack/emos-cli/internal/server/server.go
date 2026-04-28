@@ -169,10 +169,10 @@ func (s *Server) Run(ctx context.Context) error {
 // for the CLI to display, or "" if pairing was already configured.
 func (s *Server) PairingCode() string { return s.auth.FreshPairingCode() }
 
-// modeOrUnknown returns the install mode for diagnostics, or "unknown" when
-// no config is on disk
+// modeOrUnknown returns the install mode for diagnostics, or "unknown"
+// when there's no install (no config or a pre-install stub).
 func (s *Server) modeOrUnknown() config.InstallMode {
-	if s.cfg == nil {
+	if !s.cfg.IsInstalled() {
 		return "unknown"
 	}
 	return s.cfg.Mode

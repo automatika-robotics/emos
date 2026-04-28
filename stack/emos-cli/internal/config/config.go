@@ -76,6 +76,13 @@ func (c *EMOSConfig) PairedDeviceCount() int {
 	return len(c.Auth.Tokens)
 }
 
+// IsInstalled reports whether this config represents a finished EMOS
+// install. Mode is set by every install flow; an empty Mode means
+// `emos install` has not run.
+func (c *EMOSConfig) IsInstalled() bool {
+	return c != nil && c.Mode != ""
+}
+
 const (
 	ContainerName        = "emos"
 	ServiceName          = "emos.service"           // container auto-restart unit

@@ -71,7 +71,7 @@
       icon={Box}
       label="Install mode"
       value={$info.data?.mode ?? '—'}
-      sub={$info.data?.installed ? 'configured' : 'fresh device'}
+      sub={$info.data?.installed ? 'configured' : 'not installed'}
     />
     <StatusTile icon={Cpu} label="ROS" value={$info.data?.ros_distro ?? '—'} sub={$info.data?.platform ?? ''} />
     <StatusTile

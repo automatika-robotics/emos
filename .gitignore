@@ -11,6 +11,8 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+install/
+log/
 
 # Go CLI build artifacts
 stack/emos-cli/emos

@@ -125,7 +125,7 @@ func IsActive(unitName string) bool {
 // or whatever os.Executable resolves to in dev).
 func DashboardUnit(binaryPath, user string, port int) SystemdUnit {
 	if port == 0 {
-		port = 8765
+		port = config.DefaultDashboardPort
 	}
 	return SystemdUnit{
 		Name:        config.DashboardServiceName,

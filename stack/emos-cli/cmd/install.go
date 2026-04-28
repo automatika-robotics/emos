@@ -385,7 +385,8 @@ func offerDashboardAutoStart() {
 	if _, err := os.Stat(bin); err != nil {
 		return
 	}
-	probe := installer.DashboardUnit(bin, "", 8765)
+	port := config.DashboardPort()
+	probe := installer.DashboardUnit(bin, "", port)
 	if !probe.IsSupported() {
 		return
 	}
@@ -406,7 +407,7 @@ func offerDashboardAutoStart() {
 	if user == "" {
 		user = os.Getenv("USER")
 	}
-	unit := installer.DashboardUnit(bin, user, 8765)
+	unit := installer.DashboardUnit(bin, user, port)
 	if err := unit.Install(true, true); err != nil {
 		ui.Warn("Could not enable dashboard service: " + err.Error())
 		return
@@ -415,7 +416,7 @@ func offerDashboardAutoStart() {
 	// Tiny grace period so `systemctl is-active` won't be racy if anyone
 	// checks immediately after this returns.
 	time.Sleep(400 * time.Millisecond)
-	PrintDashboardAccessSummary(":8765", "install", freshCode)
+	PrintDashboardAccessSummary(fmt.Sprintf(":%d", port), "install", freshCode)
 }
 
 func capitalize(s string) string {

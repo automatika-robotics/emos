@@ -150,10 +150,11 @@ func RunRecipe(recipeName, rmwImpl string, skipSensorCheck bool) error {
 	return err
 }
 
+// killROSProcesses pkills any ROS processes the current user owns.
 func killROSProcesses() {
 	ui.Info("Killing host ROS processes...")
 	for _, proc := range []string{"roslaunch", "roscore", "ros2"} {
-		runQuiet("sudo", "pkill", "-f", proc)
+		runQuiet("pkill", "-f", proc)
 	}
 	time.Sleep(time.Second)
 	ui.Success("Terminated host ROS processes.")

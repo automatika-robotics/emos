@@ -104,6 +104,13 @@ Build intelligent robot behaviors with step-by-step guides.
 Understand the architecture, components, events, and fallbacks.
 :::
 
+:::{grid-item-card} {material-regular}`dashboard;1.2em;sd-text-primary` Dashboard
+:link: getting-started/dashboard
+:link-type: doc
+
+Zero-touch web console on the robot for browsing and running recipes
+:::
+
 :::{grid-item-card} {material-regular}`terminal;1.2em;sd-text-primary` CLI & Deployment
 :link: getting-started/cli
 :link-type: doc

@@ -186,3 +186,11 @@ ros2 topic hz /image_raw               # Should show non-zero Hz
 ```
 
 If all four pass, `emos run <recipe>` should work. If sensor verification fails, see [Troubleshooting](troubleshooting.md).
+
+## Prefer a Browser?
+
+Everything in this guide also works from the **EMOS Dashboard** — point a browser at `http://emos.local:8765` (or scan the QR printed by `emos serve`), pair once, and you can pull, run, and watch logs without a terminal.
+
+```{seealso}
+[Dashboard](dashboard.md) — the zero-touch web console that ships with the CLI.
+```

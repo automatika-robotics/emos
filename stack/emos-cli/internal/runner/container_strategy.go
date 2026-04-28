@@ -99,12 +99,12 @@ func (s *ContainerStrategy) ExecRecipe(recipeName string, manifest *recipeManife
 // process we spawn here is host-side (`docker exec`); its captured stdout
 // goes to the host log file so the SSE log tail works without bind mounts.
 func (s *ContainerStrategy) StartRecipe(recipeName string, manifest *recipeManifest, logFile string) (*RunHandle, error) {
-	recipeCmd := fmt.Sprintf("source ros_entrypoint.sh && exec python3 -u %s/%s/recipe.py",
-		recipesRoot, recipeName)
+	recipePath := fmt.Sprintf("%s/%s/recipe.py", recipesRoot, recipeName)
+	recipeCmd := fmt.Sprintf("source ros_entrypoint.sh && exec python3 -u %s", recipePath)
 	if err := os.MkdirAll(parentDir(logFile), 0755); err != nil {
 		return nil, err
 	}
-	return startContainerExec(config.ContainerName, recipeCmd, logFile)
+	return startContainerExec(config.ContainerName, recipeCmd, logFile, recipePath)
 }
 
 func (s *ContainerStrategy) Cleanup() error {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -22,6 +23,9 @@ type RunHandle struct {
 
 	cmd       *exec.Cmd
 	container string
+	// killTarget is the exact full-path string the recipe's python process
+	// was invoked with. Used by Cancel to scope `pkill -f` to recipe
+	killTarget string
 
 	once     sync.Once
 	done     chan struct{}
@@ -59,7 +63,7 @@ func (h *RunHandle) ExitCode() int {
 }
 
 // Cancel sends SIGTERM to the recipe process group (native/pixi) or kills the
-// in-container processes (container mode), then SIGKILLs after grace.
+// in-container recipe process (container mode), then SIGKILLs after grace.
 // Returns immediately if the process is already done.
 func (h *RunHandle) Cancel(grace time.Duration) error {
 	if !h.Running() {
@@ -69,26 +73,35 @@ func (h *RunHandle) Cancel(grace time.Duration) error {
 		// Negative pid = signal the entire process group (set up via Setpgid).
 		_ = syscall.Kill(-h.cmd.Process.Pid, syscall.SIGTERM)
 	}
-	if h.container != "" {
-		// docker exec doesn't propagate signals; kill recipe processes inside.
-		// Worst-case fallback (full container stop) lives one level up in the daemon.
-		_, _ = container.Exec(h.container, "pkill -TERM -f 'python3.*recipe.py' || true")
+	if h.container != "" && h.killTarget != "" {
+		_, _ = container.Exec(h.container, fmt.Sprintf(
+			"pkill -TERM -f %s || true", shellQuote(h.killTarget)))
 	}
 	if grace <= 0 {
-		grace = 5 * time.Second
+		// Caller asked for "no grace" — honour it and SIGKILL immediately.
+		grace = 0
 	}
-	select {
-	case <-h.done:
-		return nil
-	case <-time.After(grace):
+	if grace > 0 {
+		select {
+		case <-h.done:
+			return nil
+		case <-time.After(grace):
+		}
 	}
 	if h.cmd != nil && h.cmd.Process != nil {
 		_ = syscall.Kill(-h.cmd.Process.Pid, syscall.SIGKILL)
 	}
-	if h.container != "" {
-		_, _ = container.Exec(h.container, "pkill -KILL -f 'python3.*recipe.py' || true")
+	if h.container != "" && h.killTarget != "" {
+		_, _ = container.Exec(h.container, fmt.Sprintf(
+			"pkill -KILL -f %s || true", shellQuote(h.killTarget)))
 	}
 	return nil
+}
+
+// shellQuote wraps `s` in single quotes for safe inclusion in a shell command,
+// escaping any embedded single quotes via the standard '\'' trick.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // finish marks the handle as done with the given exit code/error. Idempotent.
@@ -134,15 +147,12 @@ func startCmd(cmd *exec.Cmd, logPath string) (*RunHandle, error) {
 }
 
 // startContainerExec starts a `docker exec` in detached-but-tracked form.
-// The tee inside the container writes to a host-bind-mounted log file
-// (~/emos/logs is mounted into the container) so we can tail it from here.
-func startContainerExec(containerName, shellCmd, logPath string) (*RunHandle, error) {
+// `killTarget` is the in-container recipe.py absolute path
+func startContainerExec(containerName, shellCmd, logPath, killTarget string) (*RunHandle, error) {
 	// We use `docker exec` (not detached) but capture its stdout/stderr to a
-	// host-side `tee` that writes to logPath. This works regardless of how the
-	// container mounts its filesystem.
+	// host-side log file. This works regardless of how the container mounts.
 	full := fmt.Sprintf("%s 2>&1", shellCmd)
 	cmd := exec.Command("docker", "exec", containerName, "bash", "-c", full)
-	// Pipe to a host-side log file so daemon SSE can tail it.
 	logF, err := openLogFile(logPath)
 	if err != nil {
 		return nil, err
@@ -155,12 +165,13 @@ func startContainerExec(containerName, shellCmd, logPath string) (*RunHandle, er
 		return nil, fmt.Errorf("start container exec: %w", err)
 	}
 	h := &RunHandle{
-		Pid:       cmd.Process.Pid,
-		LogPath:   logPath,
-		StartedAt: time.Now(),
-		cmd:       cmd,
-		container: containerName,
-		done:      make(chan struct{}),
+		Pid:        cmd.Process.Pid,
+		LogPath:    logPath,
+		StartedAt:  time.Now(),
+		cmd:        cmd,
+		container:  containerName,
+		killTarget: killTarget,
+		done:       make(chan struct{}),
 	}
 	go func() {
 		err := cmd.Wait()

@@ -1,4 +1,4 @@
-name: CLI Build & Release
+name: CLI Test, Build & Release
 
 on:
   push:
@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   build:
-    name: Build CLI
+    name: Test & Build CLI
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -31,6 +31,8 @@ jobs:
           cache-dependency-path: stack/emos-cli/go.sum
 
       - run: go vet ./...
+
+      - run: go test -race ./...
 
       - run: make build-all
 

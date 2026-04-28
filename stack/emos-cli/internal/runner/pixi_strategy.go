@@ -16,18 +16,21 @@ import (
 // setup.sh must be sourced before running ROS commands.
 type PixiStrategy struct {
 	projectDir string
+	extraEnv   []string
 }
 
 func NewPixiStrategy(projectDir string) *PixiStrategy {
 	return &PixiStrategy{projectDir: projectDir}
 }
 
-// pixiRun executes a command inside the pixi environment.
+// pixiRun executes a command inside the pixi environment, with the
+// strategy's per-run env additions stamped onto the resulting *exec.Cmd.
 func (s *PixiStrategy) pixiRun(shellCmd string) *exec.Cmd {
 	cmd := exec.Command("pixi", "run", "--manifest-path",
 		filepath.Join(s.projectDir, "pixi.toml"),
 		"bash", "-c", shellCmd)
 	cmd.Dir = s.projectDir
+	cmd.Env = append(os.Environ(), s.extraEnv...)
 	return cmd
 }
 
@@ -66,7 +69,7 @@ func (s *PixiStrategy) PrepareEnvironment() error {
 func (s *PixiStrategy) SetRMWImpl(rmw string) error {
 	ui.Header("RMW CONFIGURATION")
 	ui.Info("Setting RMW_IMPLEMENTATION=" + rmw)
-	os.Setenv("RMW_IMPLEMENTATION", rmw)
+	s.extraEnv = append(s.extraEnv, "RMW_IMPLEMENTATION="+rmw)
 	return nil
 }
 
@@ -75,7 +78,7 @@ func (s *PixiStrategy) ConfigureZenoh(recipeName string, manifest *recipeManifes
 		configPath := filepath.Join(config.RecipesDir, manifest.ZenohRouterConfig)
 		if _, err := os.Stat(configPath); err == nil {
 			ui.Info("Using Zenoh router config: " + configPath)
-			os.Setenv("ZENOH_ROUTER_CONFIG_URI", configPath)
+			s.extraEnv = append(s.extraEnv, "ZENOH_ROUTER_CONFIG_URI="+configPath)
 		} else {
 			ui.Warn("Zenoh config file not found — using default")
 		}

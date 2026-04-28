@@ -1,12 +1,12 @@
 package api
 
 import (
+	"archive/zip"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -78,6 +78,11 @@ func ListRecipes() ([]Recipe, error) {
 	return recipes, nil
 }
 
+// WARN: DownloadRecipe fetches the recipe archive from the catalog and extracts it
+// into <destDir>/<name>/. The upstream archive layout is inconsistent:
+// Normalise both shapes to <destDir>/<name>/{manifest.json, recipe.py, ...}
+// because that is the layout `emos run` expects.
+// TODO: Make upstream layout consistent
 func DownloadRecipe(name, destDir string) error {
 	url := config.RecipesEndpoint + "/" + name
 	resp, err := http.Get(url)
@@ -95,13 +100,21 @@ func DownloadRecipe(name, destDir string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(f, resp.Body); err != nil {
+	written, err := io.Copy(f, resp.Body)
+	if err != nil {
 		f.Close()
-		return err
+		os.Remove(zipPath)
+		return fmt.Errorf("could not save recipe archive: %w", err)
 	}
 	f.Close()
+	if written < 4 {
+		os.Remove(zipPath)
+		return fmt.Errorf("recipe archive is empty (%d bytes)", written)
+	}
 
-	if err := unzip(zipPath, destDir); err != nil {
+	target := filepath.Join(destDir, name)
+	_ = os.RemoveAll(target)
+	if err := unzipRecipeArchive(zipPath, target); err != nil {
 		os.Remove(zipPath)
 		return fmt.Errorf("failed to extract recipe: %w", err)
 	}
@@ -110,6 +123,87 @@ func DownloadRecipe(name, destDir string) error {
 	return nil
 }
 
-func unzip(src, dest string) error {
-	return exec.Command("unzip", "-o", src, "-d", dest).Run()
+// unzipRecipeArchive extracts a recipe zip into destDir//
+// Refuses any entry whose resolved path escapes destDir (zip-slip guard).
+func unzipRecipeArchive(zipPath, destDir string) error {
+	zr, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return fmt.Errorf("open zip: %w", err)
+	}
+	defer zr.Close()
+
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return err
+	}
+	cleanDest, err := filepath.Abs(destDir)
+	if err != nil {
+		return err
+	}
+
+	stripPrefix := commonTopLevelDir(zr.File)
+
+	for _, f := range zr.File {
+		entryName := f.Name
+		if stripPrefix != "" {
+			entryName = strings.TrimPrefix(entryName, stripPrefix)
+			if entryName == "" {
+				continue // the wrapper directory itself
+			}
+		}
+
+		target := filepath.Join(cleanDest, entryName)
+		if !strings.HasPrefix(target, cleanDest+string(os.PathSeparator)) && target != cleanDest {
+			return fmt.Errorf("zip entry %q escapes destination", f.Name)
+		}
+
+		if f.FileInfo().IsDir() {
+			if err := os.MkdirAll(target, f.Mode()); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			return err
+		}
+
+		out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+		if err != nil {
+			return err
+		}
+		rc, err := f.Open()
+		if err != nil {
+			out.Close()
+			return err
+		}
+		if _, err := io.Copy(out, rc); err != nil {
+			out.Close()
+			rc.Close()
+			return err
+		}
+		out.Close()
+		rc.Close()
+	}
+	return nil
+}
+
+// commonTopLevelDir returns the shared first-segment-and-slash prefix of every
+// non-empty zip entry, or "" if entries are flat (some at root)
+func commonTopLevelDir(files []*zip.File) string {
+	var prefix string
+	for _, f := range files {
+		if f.Name == "" {
+			continue
+		}
+		idx := strings.IndexByte(f.Name, '/')
+		if idx < 0 {
+			return "" // an entry at the root -> archive is already flat
+		}
+		first := f.Name[:idx+1]
+		if prefix == "" {
+			prefix = first
+		} else if prefix != first {
+			return "" // multiple top-level dirs -> don't try to be clever
+		}
+	}
+	return prefix
 }

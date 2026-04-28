@@ -4,13 +4,10 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -19,31 +16,16 @@ import (
 )
 
 const (
-	pairingFileName = "serve.json"
-	tokenTTL        = 90 * 24 * time.Hour
-	pairingDigits   = 6
+	tokenTTL      = 90 * 24 * time.Hour
+	pairingDigits = 6
 )
 
-// authState is the JSON shape persisted to ~/.config/emos/serve.json. Both the
-// pairing code and the issued tokens are stored as SHA-256 hashes.
-type authState struct {
-	PairingCodeHash string        `json:"pairing_code_hash"`
-	PairingCreated  time.Time     `json:"pairing_created"`
-	Tokens          []storedToken `json:"tokens"`
-}
-
-type storedToken struct {
-	Hash      string    `json:"hash"`
-	IssuedAt  time.Time `json:"issued_at"`
-	ExpiresAt time.Time `json:"expires_at"`
-	Label     string    `json:"label,omitempty"`
-}
-
 // Auth handles pairing-code -> bearer-token issuance for the dashboard.
+// The mutex serialises in-memory mutations; load-modify-save goes through
+// config.LoadConfig/SaveConfig under that mutex.
 type Auth struct {
 	mu        sync.Mutex
-	state     authState
-	path      string
+	state     config.AuthState
 	bypass    bool   // --no-auth for development
 	freshCode string // plaintext, only set when newly generated for printing
 }
@@ -52,33 +34,34 @@ type Auth struct {
 // auth state (revoke, regenerate) without booting the full server.
 func NewAuthForCLI() (*Auth, error) { return NewAuth(false) }
 
-// NewAuth loads or initializes the auth state. If no pairing code is on disk,
-// a fresh six-digit code is generated, persisted as a hash, and made available
-// via FreshPairingCode for one-time display by the caller.
+// NewAuth loads or initialises the auth state. If no pairing code is on
+// disk, a fresh six-digit code is generated, persisted as a hash, and made
+// available via FreshPairingCode for one-time display by the caller.
 func NewAuth(bypass bool) (*Auth, error) {
-	a := &Auth{
-		path:   filepath.Join(config.ConfigDir, pairingFileName),
-		bypass: bypass,
+	a := &Auth{bypass: bypass}
+	cfg := config.LoadConfig()
+	if cfg != nil {
+		a.state = cfg.Auth
 	}
-	if err := a.load(); err != nil {
+	if a.state.PairingCodeHash != "" {
+		return a, nil
+	}
+	code, err := generatePairingCode()
+	if err != nil {
 		return nil, err
 	}
-	if a.state.PairingCodeHash == "" {
-		code, err := generatePairingCode()
-		if err != nil {
-			return nil, err
-		}
-		a.state.PairingCodeHash = hashSecret(code)
-		a.state.PairingCreated = time.Now()
-		a.freshCode = code
-		if err := a.save(); err != nil {
-			return nil, err
-		}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.state.PairingCodeHash = hashSecret(code)
+	a.state.PairingCreated = time.Now()
+	a.freshCode = code
+	if err := a.persistLocked(); err != nil {
+		return nil, err
 	}
 	return a, nil
 }
 
-// FreshPairingCode returns the just-generated code if this process generated it
+// FreshPairingCode returns the just-generated code if this process generated it.
 func (a *Auth) FreshPairingCode() string { return a.freshCode }
 
 // RegeneratePairingCode replaces the stored code (revoking any in-flight
@@ -89,18 +72,17 @@ func (a *Auth) RegeneratePairingCode() (string, error) {
 		return "", err
 	}
 	a.mu.Lock()
+	defer a.mu.Unlock()
 	a.state.PairingCodeHash = hashSecret(code)
 	a.state.PairingCreated = time.Now()
-	err = a.saveLocked()
-	a.mu.Unlock()
-	if err != nil {
+	if err := a.persistLocked(); err != nil {
 		return "", err
 	}
 	return code, nil
 }
 
-// Pair exchanges a pairing code for a long-lived bearer token. The code is not
-// rotated on success; multiple devices can pair until the operator regenerates.
+// Pair exchanges a pairing code for a long-lived bearer token. Multiple
+// devices can pair until the operator regenerates the code.
 func (a *Auth) Pair(code, label string) (string, time.Time, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -115,13 +97,13 @@ func (a *Auth) Pair(code, label string) (string, time.Time, error) {
 		return "", time.Time{}, err
 	}
 	exp := time.Now().Add(tokenTTL)
-	a.state.Tokens = append(a.state.Tokens, storedToken{
+	a.state.Tokens = append(a.state.Tokens, config.AuthToken{
 		Hash:      hashSecret(token),
 		IssuedAt:  time.Now(),
 		ExpiresAt: exp,
 		Label:     label,
 	})
-	if err := a.saveLocked(); err != nil {
+	if err := a.persistLocked(); err != nil {
 		return "", time.Time{}, err
 	}
 	return token, exp, nil
@@ -155,10 +137,67 @@ func (a *Auth) RevokeAll() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.state.Tokens = nil
-	return a.saveLocked()
+	return a.persistLocked()
 }
 
-// AuthRequired enforces auth on protected routes
+// TokenView is the safe-to-print metadata for a single issued token.
+// `ID` is a short prefix of the SHA-256 hash, suitable for matching in
+// `emos config revoke-token <id>` without exposing the hash itself.
+type TokenView struct {
+	ID        string
+	Label     string
+	IssuedAt  time.Time
+	ExpiresAt time.Time
+}
+
+// ListTokens returns metadata for every issued token. Hashes are not
+// surfaced — only an unambiguous short ID derived from each.
+func (a *Auth) ListTokens() []TokenView {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	out := make([]TokenView, 0, len(a.state.Tokens))
+	for _, t := range a.state.Tokens {
+		out = append(out, TokenView{
+			ID:        shortID(t.Hash),
+			Label:     t.Label,
+			IssuedAt:  t.IssuedAt,
+			ExpiresAt: t.ExpiresAt,
+		})
+	}
+	return out
+}
+
+// RevokeMatching removes every token whose short ID matches `idOrLabel` (a
+// prefix of the hash) OR whose Label exactly equals `idOrLabel`.
+func (a *Auth) RevokeMatching(idOrLabel string) (int, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	kept := a.state.Tokens[:0]
+	revoked := 0
+	for _, t := range a.state.Tokens {
+		if shortID(t.Hash) == idOrLabel || (t.Label != "" && t.Label == idOrLabel) {
+			revoked++
+			continue
+		}
+		kept = append(kept, t)
+	}
+	if revoked == 0 {
+		return 0, nil
+	}
+	a.state.Tokens = kept
+	return revoked, a.persistLocked()
+}
+
+// shortID returns the first 8 hex chars of a token hash. Long enough that
+// 100+ tokens are extremely unlikely to collide.
+func shortID(hash string) string {
+	if len(hash) >= 8 {
+		return hash[:8]
+	}
+	return hash
+}
+
+// AuthRequired enforces auth on protected routes.
 func (a *Auth) AuthRequired(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if a.bypass {
@@ -186,34 +225,15 @@ func bearerToken(r *http.Request) string {
 	return ""
 }
 
-// --- persistence helpers ---
-
-func (a *Auth) load() error {
-	data, err := os.ReadFile(a.path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
+// persistLocked writes the auth state back to ~/.config/emos/config.json.
+// Caller must hold a.mu.
+func (a *Auth) persistLocked() error {
+	cfg := config.LoadConfig()
+	if cfg == nil {
+		cfg = &config.EMOSConfig{}
 	}
-	return json.Unmarshal(data, &a.state)
-}
-
-func (a *Auth) save() error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.saveLocked()
-}
-
-func (a *Auth) saveLocked() error {
-	if err := os.MkdirAll(filepath.Dir(a.path), 0700); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(a.state, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(a.path, data, 0600)
+	cfg.Auth = a.state
+	return config.SaveConfig(cfg)
 }
 
 // --- crypto helpers ---
@@ -253,4 +273,3 @@ func constantTimeEqual(a, b string) bool {
 	}
 	return v == 0
 }
-

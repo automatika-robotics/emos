@@ -24,6 +24,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]any{
 		"version":     config.Version,
+		"name":        s.opts.DeviceName,
 		"started_at":  s.startedAt,
 		"uptime":      time.Since(s.startedAt).Round(time.Second).String(),
 		"hostname":    hostname(),

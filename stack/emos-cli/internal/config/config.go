@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"time"
+
+	"github.com/automatika-robotics/emos-cli/internal/identity"
 )
 
 // Version is set at build time via -ldflags from the Makefile.
@@ -21,11 +24,56 @@ const (
 
 type EMOSConfig struct {
 	Mode           InstallMode `json:"mode"`
+	Name           string      `json:"name,omitempty"` // human-friendly device name (e.g. "epic-otter")
+	Port           int         `json:"port,omitempty"` // dashboard bind port; 0 means DefaultDashboardPort
 	LicenseKey     string      `json:"license_key,omitempty"`
 	ROSDistro      string      `json:"ros_distro"`
 	ImageTag       string      `json:"image_tag,omitempty"`
 	WorkspacePath  string      `json:"workspace_path,omitempty"`
 	PixiProjectDir string      `json:"pixi_project_dir,omitempty"`
+	Auth           AuthState   `json:"auth"`
+}
+
+// DefaultDashboardPort is the bind port used when EMOSConfig.Port is unset.
+const DefaultDashboardPort = 8765
+
+// DashboardPort returns the configured dashboard port, falling back to the
+// default if none is set or if the config is missing entirely.
+func DashboardPort() int {
+	if cfg := LoadConfig(); cfg != nil && cfg.Port != 0 {
+		return cfg.Port
+	}
+	return DefaultDashboardPort
+}
+
+// AuthState is the dashboard's pairing + bearer-token state. It lives on
+// EMOSConfig so the entire device's persistent state fits in one file
+// (~/.config/emos/config.json). Both fields hold SHA-256 hashes; plaintext
+// secrets are never written to disk.
+type AuthState struct {
+	PairingCodeHash string      `json:"pairing_code_hash,omitempty"`
+	PairingCreated  time.Time   `json:"pairing_created,omitempty"`
+	Tokens          []AuthToken `json:"tokens,omitempty"`
+}
+
+// AuthToken is one issued bearer token's record. The plaintext token is
+// returned to the browser once and then discarded; we keep only the hash
+// to verify on subsequent requests.
+type AuthToken struct {
+	Hash      string    `json:"hash"`
+	IssuedAt  time.Time `json:"issued_at"`
+	ExpiresAt time.Time `json:"expires_at"`
+	Label     string    `json:"label,omitempty"`
+}
+
+// PairedDeviceCount returns the number of bearer tokens currently issued
+// for this device. Nil-safe so callers can chain off LoadConfig() without a
+// guard.
+func (c *EMOSConfig) PairedDeviceCount() int {
+	if c == nil {
+		return 0
+	}
+	return len(c.Auth.Tokens)
 }
 
 const (
@@ -90,14 +138,53 @@ func LoadConfig() *EMOSConfig {
 	return nil
 }
 
-// SaveConfig persists the EMOS config to disk.
+// SaveConfig persists the EMOS config to disk. Mode 0600 because the file
+// holds license keys and hashed auth tokens.
 func SaveConfig(cfg *EMOSConfig) error {
-	os.MkdirAll(ConfigDir, 0755)
+	if err := os.MkdirAll(ConfigDir, 0700); err != nil {
+		return err
+	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(ConfigFile, data, 0644)
+	return os.WriteFile(ConfigFile, data, 0600)
+}
+
+// ResolveDeviceName loads the config (creating an empty one if needed),
+// returns its Name if already set, otherwise computes a deterministic name
+// from the device's hardware fingerprint, persists it, and returns it.
+// Idempotent: subsequent calls return the same value without recomputing.
+func ResolveDeviceName() (string, error) {
+	cfg := LoadConfig()
+	if cfg == nil {
+		// No EMOS install yet, still give the daemon an identity by
+		// creating a minimal config with just the name. This lets the
+		// dashboard work pre-install.
+		cfg = &EMOSConfig{}
+	}
+	if cfg.Name != "" {
+		return cfg.Name, nil
+	}
+	cfg.Name = identity.Compute(cfg.LicenseKey)
+	if err := SaveConfig(cfg); err != nil {
+		return cfg.Name, err
+	}
+	return cfg.Name, nil
+}
+
+// SetDeviceName validates and persists a customer-chosen device name.
+// Replaces any previously stored value (auto-computed or otherwise).
+func SetDeviceName(name string) error {
+	if err := identity.Validate(name); err != nil {
+		return err
+	}
+	cfg := LoadConfig()
+	if cfg == nil {
+		cfg = &EMOSConfig{}
+	}
+	cfg.Name = name
+	return SaveConfig(cfg)
 }
 
 func InstallerURL() string {

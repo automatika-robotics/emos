@@ -33,14 +33,18 @@ var serveCmd = &cobra.Command{
 	Short: "Run the EMOS dashboard (REST API + web UI)",
 	Long: `Starts the EMOS onboarding dashboard on the local network.
 
-The dashboard is reachable at http://emos.local:8765 (mDNS) or at the
-device's IP address. On first launch, a six-digit pairing code is printed
-to the terminal — use it once in the browser to issue a long-lived token.`,
+The dashboard is reachable via mDNS (http://emos.local) or at the device's
+IP address; the configured port is printed at startup. On first launch, a
+six-digit pairing code is printed to the terminal — use it once in the
+browser to issue a long-lived token.`,
 	Run: runServe,
 }
 
 func init() {
-	serveCmd.Flags().StringVar(&serveAddr, "addr", ":8765", "address to bind (host:port)")
+	// Default `--addr` is empty so we can detect user did not pass it and
+	// fall back to the persisted port from config (or DefaultDashboardPort).
+	// Passing the flag explicitly always wins.
+	serveCmd.Flags().StringVar(&serveAddr, "addr", "", "address to bind (host:port); defaults to the configured port")
 	serveCmd.Flags().BoolVar(&serveDisableMDNS, "no-mdns", false, "skip mDNS announcement")
 	serveCmd.Flags().BoolVar(&serveDisableAuth, "no-auth", false, "DEV ONLY: accept unauthenticated requests")
 	serveCmd.Flags().BoolVar(&serveQRCodeOnly, "qr", false, "print a QR code with the dashboard URL and exit")
@@ -48,11 +52,23 @@ func init() {
 	rootCmd.AddCommand(serveCmd)
 }
 
+// resolveBindAddr returns the address to bind. Explicit --addr wins;
+// otherwise we use whatever the user has stored via `emos config set port`,
+// falling back to the package default.
+func resolveBindAddr() string {
+	if serveAddr != "" {
+		return serveAddr
+	}
+	return fmt.Sprintf(":%d", config.DashboardPort())
+}
+
 func runServe(cmd *cobra.Command, args []string) {
 	ui.Banner(config.Version)
 
+	addr := resolveBindAddr()
+
 	if serveQRCodeOnly {
-		if u := qrURL(serveAddr); u != "" {
+		if u := qrURL(addr); u != "" {
 			printQR(u + "/")
 		}
 		return
@@ -61,7 +77,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	// If the dashboard is already running as a systemd service, don't try to
 	// print a friendly summary
 	if installer.IsActive(config.DashboardServiceName) {
-		PrintDashboardAccessSummary(serveAddr, "service", "")
+		PrintDashboardAccessSummary(addr, "service", "")
 		return
 	}
 
@@ -71,8 +87,14 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel}))
 
+	deviceName, err := config.ResolveDeviceName()
+	if err != nil {
+		ui.Warn("Could not persist device name: " + err.Error())
+	}
+
 	srv, err := server.New(server.Options{
-		Addr:        serveAddr,
+		Addr:        addr,
+		DeviceName:  deviceName,
 		DisableMDNS: serveDisableMDNS,
 		DisableAuth: serveDisableAuth,
 		UI:          webui.FS(),
@@ -83,7 +105,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	printBootBanner(serveAddr, srv.PairingCode())
+	printBootBanner(addr, deviceName, srv.PairingCode())
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -96,8 +118,10 @@ func runServe(cmd *cobra.Command, args []string) {
 }
 
 // dashboardURLs lists every URL the dashboard can plausibly be reached at,
-// in priority order (most-likely-to-work first)
-func dashboardURLs(addr string) []string {
+// in priority order: per-device mDNS name first (uniquely identifies this
+// robot), then localhost, then each LAN IP, then the shared `emos.local`
+// shortcut as a fallback.
+func dashboardURLs(addr, deviceName string) []string {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return []string{"http://emos.local" + addr}
@@ -106,7 +130,11 @@ func dashboardURLs(addr string) []string {
 		// Explicit bind — single URL.
 		return []string{fmt.Sprintf("http://%s:%s", host, port)}
 	}
-	urls := []string{fmt.Sprintf("http://localhost:%s", port)}
+	var urls []string
+	if deviceName != "" {
+		urls = append(urls, fmt.Sprintf("http://%s.local:%s", deviceName, port))
+	}
+	urls = append(urls, fmt.Sprintf("http://localhost:%s", port))
 	for _, ip := range server.LocalIPv4Strings() {
 		urls = append(urls, fmt.Sprintf("http://%s:%s", ip, port))
 	}
@@ -117,7 +145,8 @@ func dashboardURLs(addr string) []string {
 // PrintDashboardAccessSummary is the single human readable success block
 // for the dashboard
 func PrintDashboardAccessSummary(addr, origin, freshCode string) {
-	urls := dashboardURLs(addr)
+	deviceName, _ := config.ResolveDeviceName()
+	urls := dashboardURLs(addr, deviceName)
 	scanURL := qrURL(addr)
 
 	ui.Header("EMOS DASHBOARD")
@@ -129,6 +158,9 @@ func PrintDashboardAccessSummary(addr, origin, freshCode string) {
 	}
 
 	fmt.Println()
+	if deviceName != "" {
+		ui.Info("Robot identity: " + deviceName)
+	}
 	if len(urls) == 1 {
 		ui.Info("Browser URL: " + urls[0])
 	} else {
@@ -145,7 +177,7 @@ func PrintDashboardAccessSummary(addr, origin, freshCode string) {
 		ui.Faint("Save it now — it is not stored in plaintext on disk.")
 	} else {
 		ui.Info("Pairing already configured for this device.")
-		ui.Faint("Lost the code? Run `emos serve revoke` to issue a fresh one.")
+		ui.Faint("Lost the code? Run `emos config rotate-pairing` to issue a fresh one.")
 	}
 	fmt.Println()
 
@@ -183,11 +215,14 @@ func qrURL(addr string) string {
 }
 
 // the live foreground `emos serve` greeting
-func printBootBanner(addr, pairingCode string) {
-	urls := dashboardURLs(addr)
+func printBootBanner(addr, deviceName, pairingCode string) {
+	urls := dashboardURLs(addr, deviceName)
 	scanURL := qrURL(addr)
 
 	ui.Header("EMOS DASHBOARD")
+	if deviceName != "" {
+		ui.Info("Robot identity: " + deviceName)
+	}
 	if len(urls) == 1 {
 		ui.Info("Browser URL: " + urls[0])
 	} else {
@@ -202,9 +237,13 @@ func printBootBanner(addr, pairingCode string) {
 		ui.Success("Pairing code (shown once): " + pairingCode)
 		ui.Faint("Enter it in the browser, or scan the QR below with a phone to auto-pair.")
 		ui.Faint("Save it now — it is not stored in plaintext on disk.")
+	} else if config.LoadConfig().PairedDeviceCount() == 0 {
+		// Pairing hash is on disk but every token has been revoked
+		ui.Warn("Pairing configured, but no devices are paired.")
+		ui.Faint("Run `emos config rotate-pairing` for a fresh code to share.")
 	} else {
 		ui.Info("Pairing already configured.")
-		ui.Faint("Lost the code? Run `emos serve revoke` to issue a fresh one.")
+		ui.Faint("Lost the code? Run `emos config rotate-pairing` to issue a fresh one.")
 	}
 	fmt.Println()
 
@@ -234,30 +273,6 @@ func printQR(url string) {
 
 // --- subcommands ---
 
-var serveRevokeCmd = &cobra.Command{
-	Use:   "revoke",
-	Short: "Revoke all bearer tokens and rotate the pairing code",
-	Run: func(cmd *cobra.Command, args []string) {
-		auth, err := server.NewAuthForCLI()
-		if err != nil {
-			ui.Error("Could not load auth state: " + err.Error())
-			os.Exit(1)
-		}
-		if err := auth.RevokeAll(); err != nil {
-			ui.Error("Revoke failed: " + err.Error())
-			os.Exit(1)
-		}
-		code, err := auth.RegeneratePairingCode()
-		if err != nil {
-			ui.Error("Could not regenerate code: " + err.Error())
-			os.Exit(1)
-		}
-		ui.Success("All tokens revoked.")
-		ui.Info("New pairing code (shown once): " + code)
-		ui.Faint("Save it now — it is not stored in plaintext on disk.")
-	},
-}
-
 var serveInstallServiceCmd = &cobra.Command{
 	Use:   "install-service",
 	Short: "Install a systemd unit that starts the dashboard at boot",
@@ -276,7 +291,7 @@ var serveInstallServiceCmd = &cobra.Command{
 		if user == "" {
 			user = os.Getenv("USER")
 		}
-		unit := installer.DashboardUnit(bin, user, 8765)
+		unit := installer.DashboardUnit(bin, user, config.DashboardPort())
 		if err := unit.Install(true, true); err != nil {
 			ui.Error("Install failed: " + err.Error())
 			os.Exit(1)
@@ -300,7 +315,6 @@ var serveUninstallServiceCmd = &cobra.Command{
 }
 
 func init() {
-	serveCmd.AddCommand(serveRevokeCmd)
 	serveCmd.AddCommand(serveInstallServiceCmd)
 	serveCmd.AddCommand(serveUninstallServiceCmd)
 }

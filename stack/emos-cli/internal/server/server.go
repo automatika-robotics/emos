@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net"
@@ -10,18 +11,17 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/grandcat/zeroconf"
-
 	"github.com/automatika-robotics/emos-cli/internal/config"
 )
 
 // Options configures the daemon at boot.
 type Options struct {
-	Addr          string  // bind address, e.g. ":8765"
-	DisableMDNS   bool    // skip zeroconf publication
-	DisableAuth   bool    // dev only: accept all requests
-	UI            fs.FS   // embedded SPA; nil disables the UI
-	Logger        *slog.Logger
+	Addr        string // bind address (host:port); empty = config.DefaultDashboardPort
+	DeviceName  string // human-friendly device name, used by mDNS + dashboard UI
+	DisableMDNS bool   // skip zeroconf publication
+	DisableAuth bool   // dev only: accept all requests
+	UI          fs.FS  // embedded SPA; nil disables the UI
+	Logger      *slog.Logger
 }
 
 // Server bundles every subsystem the daemon needs. Handlers are methods on
@@ -40,14 +40,14 @@ type Server struct {
 	startedAt time.Time
 
 	httpServer *http.Server
-	mdns       *zeroconf.Server
+	mdns       *mdnsRegistrations
 }
 
 // New constructs a Server with all subsystems initialised. The pairing code,
 // if freshly generated, is available via s.PairingCode().
 func New(opts Options) (*Server, error) {
 	if opts.Addr == "" {
-		opts.Addr = ":8765"
+		opts.Addr = fmt.Sprintf(":%d", config.DefaultDashboardPort)
 	}
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
@@ -83,12 +83,13 @@ func (s *Server) Run(ctx context.Context) error {
 		txt := []string{
 			"version=" + config.Version,
 			"mode=" + string(s.modeOrUnknown()),
+			"name=" + s.opts.DeviceName,
 		}
-		mdnsSrv, err := announceMDNS(port, txt, s.log)
+		mdnsRegs, err := announceMDNS(port, s.opts.DeviceName, txt, s.log)
 		if err != nil {
 			s.log.Warn("mDNS register failed", "err", err)
 		}
-		s.mdns = mdnsSrv
+		s.mdns = mdnsRegs
 	}
 
 	s.httpServer = &http.Server{
@@ -117,9 +118,7 @@ func (s *Server) Run(ctx context.Context) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if s.mdns != nil {
-		s.mdns.Shutdown()
-	}
+	s.mdns.Shutdown()
 	return s.httpServer.Shutdown(shutdownCtx)
 }
 

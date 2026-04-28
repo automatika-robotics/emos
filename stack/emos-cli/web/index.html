@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a0a0b" />
+    <meta name="description" content="EMOS — the Embodied Operating System onboarding console." />
+    <title>EMOS</title>
+    <!-- Inline SVG favicon: red Automatika square with a stylised "E" mark.
+         Matches the wordmark's red E and works on every browser tab background. -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23E83F3F'/><path d='M11 8h12v4h-8v3h7v4h-7v3h8v4H11z' fill='white'/></svg>"
+    />
+    <!--
+      Inline pre-mount theme bootstrap. Reads the persisted theme choice and
+      sets data-theme on <html> BEFORE the Svelte bundle parses, so the very
+      first paint matches the user's preference. Tiny script, no deps.
+    -->
+    <script>
+      (function () {
+        try {
+          var v = localStorage.getItem('emos.theme');
+          var resolved = v;
+          if (!v || v === 'system') {
+            resolved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          document.documentElement.setAttribute('data-theme', resolved);
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.content = resolved === 'dark' ? '#0a0a0b' : '#ffffff';
+        } catch (e) { /* private mode — defaults are fine */ }
+      })();
+    </script>
+  </head>
+  <body class="emos-shell">
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

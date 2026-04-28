@@ -63,6 +63,7 @@ func (s *Server) buildRouter() http.Handler {
 
 			r.Get("/jobs", s.handleJobsList)
 			r.Get("/jobs/{id}", s.handleJobGet)
+			r.Delete("/jobs/{id}", s.handleJobCancel)
 			r.Get("/jobs/{id}/logs", s.handleJobLogs)
 		})
 	})

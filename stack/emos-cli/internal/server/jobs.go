@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -36,8 +37,28 @@ type JobView struct {
 type Job struct {
 	JobView
 
-	mu  sync.Mutex
-	bus chan JobEvent
+	mu     sync.Mutex
+	bus    chan JobEvent
+	cancel context.CancelFunc // populated when the job worker accepts a context
+}
+
+// SetCancel registers a cancel func to be invoked by Job.Cancel. Called by
+// the worker after it has built its own context.
+func (j *Job) SetCancel(c context.CancelFunc) {
+	j.mu.Lock()
+	j.cancel = c
+	j.mu.Unlock()
+}
+
+// Cancel triggers the worker's context cancellation if one was registered.
+// Safe to call before SetCancel — simply a no-op then.
+func (j *Job) Cancel() {
+	j.mu.Lock()
+	c := j.cancel
+	j.mu.Unlock()
+	if c != nil {
+		c()
+	}
 }
 
 // JobEvent is a single update on the job's progress channel; subscribers receive

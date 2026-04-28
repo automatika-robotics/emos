@@ -23,6 +23,20 @@ func (s *Server) handleJobGet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, snap)
 }
 
+// handleJobCancel cancels an in-flight job (e.g. a recipe pull). The worker
+// goroutine sees its context cancelled and exits at the next checkpoint.
+// Idempotent, calling on a finished or unknown job is a 404 / no-op.
+func (s *Server) handleJobCancel(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	j := s.jobs.Get(id)
+	if j == nil {
+		writeErr(w, http.StatusNotFound, codeNotFound, "job not found")
+		return
+	}
+	j.Cancel()
+	w.WriteHeader(http.StatusAccepted)
+}
+
 // handleJobLogs streams JobEvent updates via SSE. Closes when the job finishes.
 func (s *Server) handleJobLogs(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")

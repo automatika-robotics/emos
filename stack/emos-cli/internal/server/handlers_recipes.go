@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -156,7 +157,12 @@ func (s *Server) handleRecipePull(w http.ResponseWriter, r *http.Request) {
 
 	id := newID()
 	job := s.jobs.New(id, "recipe_pull", name)
+	// The job owns its own background context so a tab close (DELETE
+	// /jobs/{id}) can abort an in-flight download
+	ctx, cancel := context.WithCancel(context.Background())
+	job.SetCancel(cancel)
 	go func() {
+		defer cancel()
 		job.Update(JobStatusRunning, 0.05, "starting download")
 		if err := os.MkdirAll(config.RecipesDir, 0755); err != nil {
 			job.Update(JobStatusFailed, 0, "create recipes dir: "+err.Error())
@@ -164,7 +170,11 @@ func (s *Server) handleRecipePull(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		job.Update(JobStatusRunning, 0.20, "downloading recipe archive")
-		if err := api.DownloadRecipe(name, config.RecipesDir); err != nil {
+		if err := api.DownloadRecipe(ctx, name, config.RecipesDir); err != nil {
+			if ctx.Err() != nil {
+				job.Update(JobStatusFailed, 0, "cancelled")
+				return
+			}
 			job.Update(JobStatusFailed, 0, err.Error())
 			s.conn.Invalidate()
 			return

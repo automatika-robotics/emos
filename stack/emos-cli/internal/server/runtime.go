@@ -23,6 +23,13 @@ const (
 
 // Run is the daemon-side record of a recipe execution. It is the JSON shape
 // returned by /runs and /runs/{id}.
+//
+// Concurrency invariants:
+//   - Status, ExitCode, FinishedAt, Error: only mutated under Runtime.mu.
+//   - handle: only set by AttachHandle (under Runtime.mu); after the
+//     handleAttached channel is closed, readers can read it safely thanks
+//     to the channel-close happens-before guarantee.
+//   - cancelCh / handleAttached: closed at most once each.
 type Run struct {
 	ID         string    `json:"id"`
 	Recipe     string    `json:"recipe"`
@@ -34,13 +41,39 @@ type Run struct {
 	RMW        string    `json:"rmw"`
 	Error      string    `json:"error,omitempty"`
 
-	handle   *runner.RunHandle `json:"-"`
-	cancelCh chan struct{}     `json:"-"` // closed by Cancel during preparing
+	handle          *runner.RunHandle `json:"-"`
+	cancelCh        chan struct{}     `json:"-"` // closed by CancelPreflight
+	handleAttached  chan struct{}     `json:"-"` // closed by AttachHandle
 }
 
 // CancelCh returns a channel that closes if the run is cancelled before its
 // recipe process is started.
 func (r *Run) CancelCh() <-chan struct{} { return r.cancelCh }
+
+// HandleAttached returns a channel that closes once the recipe process has
+// been started and r.handle is safe to read.
+func (r *Run) HandleAttached() <-chan struct{} { return r.handleAttached }
+
+// Handle returns the live process handle. Only safe to call AFTER
+// HandleAttached() has closed; otherwise returns nil.
+func (r *Run) Handle() *runner.RunHandle {
+	select {
+	case <-r.handleAttached:
+		return r.handle
+	default:
+		return nil
+	}
+}
+
+// isTerminal reports whether the run has already moved into a final state.
+// Caller MUST hold Runtime.mu.
+func (r *Run) isTerminal() bool {
+	switch r.Status {
+	case RunStatusFinished, RunStatusFailed, RunStatusCanceled:
+		return true
+	}
+	return false
+}
 
 // Runtime owns the at-most-one currently running recipe plus a small
 // in-memory ring of recently finished runs
@@ -93,18 +126,9 @@ func (rt *Runtime) Get(id string) *Run {
 	return nil
 }
 
-// Adopt registers a freshly-started run as the active one. Caller is
-// responsible for ensuring no other run is active (use TryAdopt instead).
-func (rt *Runtime) Adopt(r *Run) {
-	rt.mu.Lock()
-	rt.current = r
-	rt.mu.Unlock()
-	go rt.watch(r)
-}
-
 // TryLock atomically registers a run as the active one without starting an
 // exit watcher. Used to claim the single-recipe slot at the start of a
-// preparing-phase goroutine
+// preparing-phase goroutine.
 func (rt *Runtime) TryLock(r *Run) error {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
@@ -114,69 +138,103 @@ func (rt *Runtime) TryLock(r *Run) error {
 	if r.cancelCh == nil {
 		r.cancelCh = make(chan struct{})
 	}
+	if r.handleAttached == nil {
+		r.handleAttached = make(chan struct{})
+	}
 	rt.current = r
 	return nil
 }
 
 // AttachHandle moves a preparing run to running, attaches the live process
-// handle, and starts the exit watcher
+// handle, and starts the exit watcher. After this returns, r.handle is
+// safely readable by anyone who waits on r.HandleAttached().
 func (rt *Runtime) AttachHandle(r *Run, h *runner.RunHandle) {
 	rt.mu.Lock()
+	if r.isTerminal() {
+		// Cancelled or failed during preparing; don't attach.
+		rt.mu.Unlock()
+		_ = h.Cancel(2 * time.Second)
+		return
+	}
 	r.handle = h
 	r.Status = RunStatusRunning
 	r.StartedAt = h.StartedAt
 	rt.mu.Unlock()
+	closeOnce(r.handleAttached)
 	go rt.watch(r)
 }
 
 // FailPreflight transitions a preparing run to failed and rotates it into
-// history
+// history. Idempotent — second calls on an already-terminal run no-op.
 func (rt *Runtime) FailPreflight(r *Run, err error) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
+	if r.isTerminal() {
+		return
+	}
 	r.Status = RunStatusFailed
 	r.Error = err.Error()
 	r.FinishedAt = time.Now()
 	rt.rotateLocked(r)
 }
 
-// CancelPreflight transitions a preparing run to canceled (no handle exists
-// yet, so nothing to SIGTERM, we just close the cancel channel and let the
-// goroutine bail at its next checkpoint).
+// CancelPreflight transitions a preparing run to canceled. Idempotent.
+// Closes the cancel channel so the pre-flight goroutine bails at its next
+// checkpoint; no SIGTERM needed because no process exists yet.
 func (rt *Runtime) CancelPreflight(r *Run) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	if r.cancelCh != nil {
-		select {
-		case <-r.cancelCh:
-		default:
-			close(r.cancelCh)
-		}
+	if r.isTerminal() {
+		return
 	}
+	closeOnce(r.cancelCh)
 	r.Status = RunStatusCanceled
 	r.FinishedAt = time.Now()
 	rt.rotateLocked(r)
 }
 
 // Cancel terminates the active run if its id matches. Routes to either the
-// preparing-phase abort or the running-phase signal-kill. For the running
-// case we mark the status as canceled BEFORE issuing SIGTERM so the
-// watcher classifies the resulting non-zero exit correctly.
+// preparing-phase abort or the running-phase signal-kill.
 func (rt *Runtime) Cancel(id string) error {
 	rt.mu.Lock()
 	cur := rt.current
-	rt.mu.Unlock()
 	if cur == nil || cur.ID != id {
+		rt.mu.Unlock()
 		return errors.New("not running")
 	}
-	if cur.Status == RunStatusPreparing || cur.handle == nil {
-		rt.CancelPreflight(cur)
+	status := cur.Status
+	handle := cur.handle
+	if status == RunStatusPreparing || handle == nil {
+		// Inline the CancelPreflight body to avoid releasing+re-acquiring.
+		if cur.isTerminal() {
+			rt.mu.Unlock()
+			return nil
+		}
+		closeOnce(cur.cancelCh)
+		cur.Status = RunStatusCanceled
+		cur.FinishedAt = time.Now()
+		rt.rotateLocked(cur)
+		rt.mu.Unlock()
 		return nil
 	}
-	rt.mu.Lock()
+	// Running case: mark canceled first so the watcher classifies the
+	// SIGTERM-induced exit correctly, then release the lock and signal.
 	cur.Status = RunStatusCanceled
 	rt.mu.Unlock()
-	return cur.handle.Cancel(5 * time.Second)
+	return handle.Cancel(5 * time.Second)
+}
+
+// closeOnce closes ch if not already closed. Goroutine-safe via the
+// select-default trick; cheap.
+func closeOnce(ch chan struct{}) {
+	if ch == nil {
+		return
+	}
+	select {
+	case <-ch:
+	default:
+		close(ch)
+	}
 }
 
 // rotateLocked moves r out of "current" and into history. Caller holds rt.mu.
@@ -191,11 +249,15 @@ func (rt *Runtime) rotateLocked(r *Run) {
 }
 
 // watch waits on the run handle and rotates the run into history on exit.
+// Idempotent against parallel CancelPreflight / FailPreflight via isTerminal.
 func (rt *Runtime) watch(r *Run) {
 	code, err := r.handle.Wait()
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-
+	if r.isTerminal() && r.Status != RunStatusCanceled {
+		// Already moved to terminal state by another path; nothing to do.
+		return
+	}
 	r.FinishedAt = time.Now()
 	r.ExitCode = code
 	switch {

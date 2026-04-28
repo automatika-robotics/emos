@@ -69,13 +69,14 @@ func (s *Server) handleRunsStart(w http.ResponseWriter, r *http.Request) {
 
 	logFile := runner.LogFilePath(body.Recipe)
 	run := &Run{
-		ID:        newID(),
-		Recipe:    body.Recipe,
-		Status:    RunStatusPreparing,
-		StartedAt: time.Now(), // overwritten when the recipe process actually starts
-		LogPath:   logFile,
-		RMW:       body.RMW,
-		cancelCh:  make(chan struct{}),
+		ID:             newID(),
+		Recipe:         body.Recipe,
+		Status:         RunStatusPreparing,
+		StartedAt:      time.Now(), // overwritten when the recipe process actually starts
+		LogPath:        logFile,
+		RMW:            body.RMW,
+		cancelCh:       make(chan struct{}),
+		handleAttached: make(chan struct{}),
 	}
 	if err := s.runtime.TryLock(run); err != nil {
 		writeErr(w, http.StatusConflict, codeAlreadyRunning,
@@ -131,10 +132,13 @@ func (s *Server) runRecipeAsync(run *Run, recipeDir string, body startRunBody) {
 	}
 
 	// Hand the strategy a fresh run for cleanup-after-exit.
+	// We wait on the run's HandleAttached channel for the happens-before
+	// guarantee, then on the handle's Done channel for the actual exit.
 	deferStrategyCleanup := func() {
 		go func() {
-			if run.handle != nil {
-				<-run.handle.Done()
+			<-run.HandleAttached()
+			if h := run.Handle(); h != nil {
+				<-h.Done()
 			}
 			_ = strategy.Cleanup()
 		}()
@@ -258,23 +262,22 @@ func (s *Server) handleRunLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// `done` closes when the recipe process exits or for a run still in
+	// `done` closes when the recipe process exits, or for a run still in
 	// preparing, when the pre-flight goroutine attaches a handle and that
-	// handle's process eventually finishes. We poll briefly for the handle
-	// in that case so log streaming works seamlessly across the
-	// preparing->running transition.
+	// handle's process eventually finishes.
 	done := make(chan struct{})
 	if cur := s.runtime.Current(); cur != nil && cur.ID == id {
 		go func() {
-			for cur.handle == nil {
-				if cur.Status != RunStatusPreparing {
-					close(done)
-					return
+			defer close(done)
+			select {
+			case <-cur.HandleAttached():
+				if h := cur.Handle(); h != nil {
+					<-h.Done()
 				}
-				time.Sleep(150 * time.Millisecond)
+			case <-cur.CancelCh():
+				// Cancelled before a process ever started.
+				return
 			}
-			<-cur.handle.Done()
-			close(done)
 		}()
 	} else {
 		close(done)

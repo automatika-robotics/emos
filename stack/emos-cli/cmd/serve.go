@@ -24,6 +24,7 @@ var (
 	serveAddr        string
 	serveDisableMDNS bool
 	serveDisableAuth bool
+	serveEnableTLS   bool
 	serveQRCodeOnly  bool
 	serveVerbose     bool
 )
@@ -47,6 +48,7 @@ func init() {
 	serveCmd.Flags().StringVar(&serveAddr, "addr", "", "address to bind (host:port); defaults to the configured port")
 	serveCmd.Flags().BoolVar(&serveDisableMDNS, "no-mdns", false, "skip mDNS announcement")
 	serveCmd.Flags().BoolVar(&serveDisableAuth, "no-auth", false, "DEV ONLY: accept unauthenticated requests")
+	serveCmd.Flags().BoolVar(&serveEnableTLS, "tls", false, "serve over HTTPS using a self-signed certificate")
 	serveCmd.Flags().BoolVar(&serveQRCodeOnly, "qr", false, "print a QR code with the dashboard URL and exit")
 	serveCmd.Flags().BoolVarP(&serveVerbose, "verbose", "v", false, "log every HTTP request (default: only mutations and errors)")
 	rootCmd.AddCommand(serveCmd)
@@ -68,7 +70,11 @@ func runServe(cmd *cobra.Command, args []string) {
 	addr := resolveBindAddr()
 
 	if serveQRCodeOnly {
-		if u := qrURL(addr); u != "" {
+		scheme := "http"
+		if serveEnableTLS {
+			scheme = "https"
+		}
+		if u := qrURL(addr, scheme); u != "" {
 			printQR(u + "/")
 		}
 		return
@@ -97,6 +103,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		DeviceName:  deviceName,
 		DisableMDNS: serveDisableMDNS,
 		DisableAuth: serveDisableAuth,
+		EnableTLS:   serveEnableTLS,
 		UI:          webui.FS(),
 		Logger:      logger,
 	})
@@ -105,7 +112,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	printBootBanner(addr, deviceName, srv.PairingCode())
+	printBootBanner(addr, deviceName, srv)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -121,33 +128,34 @@ func runServe(cmd *cobra.Command, args []string) {
 // in priority order: per-device mDNS name first (uniquely identifies this
 // robot), then localhost, then each LAN IP, then the shared `emos.local`
 // shortcut as a fallback.
-func dashboardURLs(addr, deviceName string) []string {
+func dashboardURLs(addr, deviceName, scheme string) []string {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
-		return []string{"http://emos.local" + addr}
+		return []string{scheme + "://emos.local" + addr}
 	}
 	if host != "" && host != "0.0.0.0" && host != "::" {
 		// Explicit bind — single URL.
-		return []string{fmt.Sprintf("http://%s:%s", host, port)}
+		return []string{fmt.Sprintf("%s://%s:%s", scheme, host, port)}
 	}
 	var urls []string
 	if deviceName != "" {
-		urls = append(urls, fmt.Sprintf("http://%s.local:%s", deviceName, port))
+		urls = append(urls, fmt.Sprintf("%s://%s.local:%s", scheme, deviceName, port))
 	}
-	urls = append(urls, fmt.Sprintf("http://localhost:%s", port))
+	urls = append(urls, fmt.Sprintf("%s://localhost:%s", scheme, port))
 	for _, ip := range server.LocalIPv4Strings() {
-		urls = append(urls, fmt.Sprintf("http://%s:%s", ip, port))
+		urls = append(urls, fmt.Sprintf("%s://%s:%s", scheme, ip, port))
 	}
-	urls = append(urls, fmt.Sprintf("http://emos.local:%s", port))
+	urls = append(urls, fmt.Sprintf("%s://emos.local:%s", scheme, port))
 	return urls
 }
 
 // PrintDashboardAccessSummary is the single human readable success block
-// for the dashboard
+// for the dashboard. Defaults to HTTP
 func PrintDashboardAccessSummary(addr, origin, freshCode string) {
 	deviceName, _ := config.ResolveDeviceName()
-	urls := dashboardURLs(addr, deviceName)
-	scanURL := qrURL(addr)
+	scheme := "http"
+	urls := dashboardURLs(addr, deviceName, scheme)
+	scanURL := qrURL(addr, scheme)
 
 	ui.Header("EMOS DASHBOARD")
 	switch origin {
@@ -200,24 +208,26 @@ func PrintDashboardAccessSummary(addr, origin, freshCode string) {
 // IPv4 on this device. Tailscale is the fallback (only members of the tailnet
 // can reach it from a phone). emos.local is a last resort because Android
 // can't resolve mDNS.
-func qrURL(addr string) string {
+func qrURL(addr, scheme string) string {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return ""
 	}
 	if host != "" && host != "0.0.0.0" && host != "::" && host != "localhost" {
-		return fmt.Sprintf("http://%s:%s", host, port)
+		return fmt.Sprintf("%s://%s:%s", scheme, host, port)
 	}
 	if ip := server.PreferredLANIPv4(); ip != "" {
-		return fmt.Sprintf("http://%s:%s", ip, port)
+		return fmt.Sprintf("%s://%s:%s", scheme, ip, port)
 	}
-	return fmt.Sprintf("http://emos.local:%s", port)
+	return fmt.Sprintf("%s://emos.local:%s", scheme, port)
 }
 
 // the live foreground `emos serve` greeting
-func printBootBanner(addr, deviceName, pairingCode string) {
-	urls := dashboardURLs(addr, deviceName)
-	scanURL := qrURL(addr)
+func printBootBanner(addr, deviceName string, srv *server.Server) {
+	scheme := srv.Scheme()
+	pairingCode := srv.PairingCode()
+	urls := dashboardURLs(addr, deviceName, scheme)
+	scanURL := qrURL(addr, scheme)
 
 	ui.Header("EMOS DASHBOARD")
 	if deviceName != "" {
@@ -232,6 +242,12 @@ func printBootBanner(addr, deviceName, pairingCode string) {
 		}
 	}
 	fmt.Println()
+
+	if info := srv.TLSInfo(); info != nil {
+		ui.Info("TLS fingerprint (verify on first browser warning):")
+		ui.Faint("  " + info.Fingerprint)
+		fmt.Println()
+	}
 
 	if pairingCode != "" {
 		ui.Success("Pairing code (shown once): " + pairingCode)

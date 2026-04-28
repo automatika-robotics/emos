@@ -12,6 +12,7 @@ import (
 	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/installer"
 	"github.com/automatika-robotics/emos-cli/internal/server"
+	"github.com/automatika-robotics/emos-cli/internal/tlsca"
 	"github.com/automatika-robotics/emos-cli/internal/ui"
 )
 
@@ -244,11 +245,62 @@ var configRotatePairingCmd = &cobra.Command{
 	},
 }
 
+// --- TLS ----------------------------------------------------------------
+
+var configTLSFingerprintCmd = &cobra.Command{
+	Use:   "tls-fingerprint",
+	Short: "Print the dashboard's TLS certificate SHA-256 fingerprint",
+	Long: `Prints the active TLS certificate's SHA-256 fingerprint, in the same format
+browsers display under the "Not Secure" warning's "view certificate" dialog.
+On first connect, compare the two values to verify there's no MITM before
+clicking through the warning.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		info, err := tlsca.Load()
+		if err != nil {
+			ui.Warn("No TLS certificate on disk yet.")
+			ui.Faint("It is created the first time `emos serve` runs.")
+			return
+		}
+		ui.Header("TLS CERTIFICATE")
+		ui.Info("Fingerprint (SHA-256):")
+		ui.Faint("  " + info.Fingerprint)
+		ui.Info(fmt.Sprintf("Expires: %s", info.Leaf.NotAfter.Format("2006-01-02")))
+		certPath, keyPath := tlsca.Paths()
+		ui.Info("Certificate: " + certPath)
+		ui.Info("Private key: " + keyPath)
+	},
+}
+
+var configTLSRegenerateCmd = &cobra.Command{
+	Use:   "tls-regenerate",
+	Short: "Mint a fresh self-signed TLS certificate for the dashboard",
+	Long: `Generates a new self-signed certificate covering the device's current
+hostname and LAN IP addresses. Run this after the device moves to a new
+network so the certificate's SANs match the addresses callers actually
+use. Already-paired browsers will see the new "Not Secure" warning until
+they re-trust the cert.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		deviceName, err := config.ResolveDeviceName()
+		if err != nil {
+			ui.Warn("Could not resolve device name: " + err.Error())
+		}
+		info, err := tlsca.Generate(deviceName)
+		if err != nil {
+			ui.Error("Regenerate failed: " + err.Error())
+			os.Exit(1)
+		}
+		ui.Success("Fresh TLS certificate minted.")
+		ui.Info("New fingerprint:")
+		ui.Faint("  " + info.Fingerprint)
+		ui.Faint("Restart `emos serve` (or the systemd service) to use it.")
+	},
+}
+
 // --- destructive --------------------------------------------------------
 
 var configResetCmd = &cobra.Command{
 	Use:   "reset",
-	Short: "Wipe ~/.config/emos/config.json (does not delete recipes or logs)",
+	Short: "Wipe config and resent to default (does not delete recipes or logs)",
 	Run: func(cmd *cobra.Command, args []string) {
 		if !ui.Confirm("This deletes ALL EMOS device state (install info, pairing, tokens). Continue?") {
 			return
@@ -302,6 +354,8 @@ func init() {
 	configCmd.AddCommand(configTokensCmd)
 	configCmd.AddCommand(configRevokeTokenCmd)
 	configCmd.AddCommand(configRotatePairingCmd)
+	configCmd.AddCommand(configTLSFingerprintCmd)
+	configCmd.AddCommand(configTLSRegenerateCmd)
 	configCmd.AddCommand(configResetCmd)
 	rootCmd.AddCommand(configCmd)
 }

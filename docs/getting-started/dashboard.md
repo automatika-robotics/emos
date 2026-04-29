@@ -2,7 +2,7 @@
 
 The EMOS Dashboard is a web app that runs on your robot. Once you open it in a browser, you can browse and install recipes, start and stop them, and watch what they do — all without touching a terminal. It's the recommended way to use EMOS on a freshly unboxed robot.
 
-<!-- TODO(screenshot): docs/_static/images/dashboard/dashboard_overview.png — dashboard hero: identity card, status tiles, last run summary, quick actions -->
+![EMOS Dashboard overview](../_static/images/dashboard_overview.png)
 
 ## What you get
 

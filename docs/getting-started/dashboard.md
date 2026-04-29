@@ -26,9 +26,9 @@ You'll see a block like this:
 ```text
 EMOS DASHBOARD
 
-Robot identity: epic-otter
+Robot identity: rugged-juniper
 Reach the dashboard from a browser:
-  http://epic-otter.local:8765
+  http://rugged-juniper.local:8765
   http://localhost:8765
   http://192.168.1.42:8765
   http://emos.local:8765
@@ -42,8 +42,8 @@ Save it now — it is not stored in plaintext on disk.
 
 Three things to notice:
 
-1. **Robot identity** — your robot has been given a friendly name (`epic-otter` here). This is how you'll find it from your laptop or phone.
-2. **The URLs** — pick whichever one your laptop can reach. From the same Wi-Fi, `http://epic-otter.local:8765` usually works directly. If `.local` doesn't resolve (most Android phones), use the IP address — e.g. `http://192.168.1.42:8765`.
+1. **Robot identity** — your robot has been given a friendly name (`rugged-juniper` here). This is how you'll find it from your laptop or phone.
+2. **The URLs** — pick whichever one your laptop can reach. From the same Wi-Fi, `http://rugged-juniper.local:8765` usually works directly. If `.local` doesn't resolve (most Android phones), use the IP address — e.g. `http://192.168.1.42:8765`.
 3. **The pairing code** — six digits, shown only on first launch. You'll type it into the browser to grant that browser access.
 
 ```{important}
@@ -160,7 +160,7 @@ sudo emos serve uninstall-service
 
 ## Naming your robot
 
-Every robot is given a friendly name on first boot — `epic-otter`, `swift-eagle`, that kind of thing. It survives reboots and reinstalls so you can always type `http://<name>.local:8765` and find it. To pick your own:
+Every robot is given a friendly name on first boot — `rugged-juniper`, `swift-eagle`, that kind of thing. It survives reboots and reinstalls so you can always type `http://<name>.local:8765` and find it. To pick your own:
 
 ```bash
 emos config set name happy-robot

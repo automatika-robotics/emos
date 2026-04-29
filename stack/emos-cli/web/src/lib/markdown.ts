@@ -1,29 +1,55 @@
-// Markdown helpers for recipe descriptions and any other long-form text we
-// pull from manifests / catalog. Trust model: content comes from our own
-// catalog API or the local recipe manifest on disk — both authored by us
-// or the device owner. Attempting full XSS sanitization (DOMPurify etc.)
-// would double the bundle size for a self-XSS-only risk surface.
+// Markdown helpers for recipe descriptions and other long-form text we
+// pull from manifests / catalog. Recipe descriptions reach the dashboard
+// from an external catalog (or, for sideloaded recipes, from manifests
+// authored by anyone with file-system access).
 //
-// Settings:
+// marked settings:
 //   - gfm: true       — task lists, autolinks, strikethrough
 //   - breaks: true    — newline → <br>; matches how recipe descriptions
 //                       are written in plain text today
-//   - mangle/headerIds disabled to keep output predictable for embedding
 
+import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 
-// marked v9+ recommends `use(...)` for global option registration; the older
-// `setOptions` was deprecated and silently ignores some flags in v18.
 marked.use({
   gfm: true,
   breaks: true,
 });
 
-/** Render a markdown string to HTML for use with Svelte's `{@html ...}`. */
+// Locked-down profile: only the tags / attrs that make sense in a recipe
+// description card. Drops `<script>`, `<iframe>`, event handlers, and
+// `javascript:` URLs by default. Links open with `target="_blank"` and
+// `rel="noopener noreferrer"`.
+const PURIFY_CONFIG = {
+  ALLOWED_TAGS: [
+    'a', 'b', 'strong', 'i', 'em',
+    'code', 'pre', 'kbd', 'br', 'p',
+    'ul', 'ol', 'li',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'blockquote', 'hr', 'span', 'del', 's',
+    'input',
+  ] as string[],
+  ALLOWED_ATTR: ['href', 'title', 'target', 'rel', 'type', 'checked', 'disabled'] as string[],
+  ALLOW_DATA_ATTR: false,
+};
+
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node instanceof HTMLAnchorElement) {
+    node.setAttribute('target', '_blank');
+    node.setAttribute('rel', 'noopener noreferrer');
+  }
+  // GFM task lists render <input type="checkbox">. Disable interaction so
+  // it can't dispatch synthetic clicks against page handlers.
+  if (node instanceof HTMLInputElement) {
+    node.setAttribute('disabled', 'disabled');
+  }
+});
+
+/** Render a markdown string to sanitised HTML for use with `{@html ...}`. */
 export function renderMarkdown(input: string | undefined | null): string {
   if (!input) return '';
-  // marked.parse can be sync or async depending on extensions; we don't use any.
-  return marked.parse(input, { async: false }) as string;
+  const raw = marked.parse(input, { async: false }) as string;
+  return DOMPurify.sanitize(raw, PURIFY_CONFIG) as string;
 }
 
 /** Strip markdown for plain-text contexts (e.g. fuzzy-search needles). */

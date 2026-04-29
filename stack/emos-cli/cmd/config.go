@@ -303,17 +303,29 @@ they re-trust the cert.`,
 
 var configResetCmd = &cobra.Command{
 	Use:   "reset",
-	Short: "Wipe config and resent to default (does not delete recipes or logs)",
+	Short: "Reset device state (pairing, tokens, name, port) — keeps install info",
+	Long: `Resets the dashboard's device state: revokes every paired browser, clears
+the saved pairing code, and drops any custom name or port the user has set.
+The actual install on disk (container, native packages, pixi project) is unaffected.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if !ui.Confirm("This deletes ALL EMOS device state (install info, pairing, tokens). Continue?") {
+		if !ui.Confirm("This revokes all paired browsers and resets device name/port. Installation is preserved. Continue?") {
 			return
 		}
-		if err := os.Remove(config.ConfigFile); err != nil && !os.IsNotExist(err) {
-			ui.Error("Could not remove config: " + err.Error())
+		cfg := config.LoadConfig()
+		if cfg == nil {
+			ui.Info("Nothing to reset — no config on disk.")
+			return
+		}
+		// Clear only device-state fields.
+		cfg.Name = ""
+		cfg.Port = 0
+		cfg.Auth = config.AuthState{}
+		if err := config.SaveConfig(cfg); err != nil {
+			ui.Error("Could not write config: " + err.Error())
 			os.Exit(1)
 		}
-		ui.Success("Config wiped.")
-		ui.Faint("Run 'emos install' to set up a fresh installation.")
+		ui.Success("Device state reset.")
+		ui.Faint("On the next 'emos serve', a fresh pairing code will be printed.")
 	},
 }
 

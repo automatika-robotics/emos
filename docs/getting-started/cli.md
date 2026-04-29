@@ -4,20 +4,20 @@ The `emos` CLI manages installation, recipes, the dashboard daemon, and device c
 
 ## Quick Reference
 
-| Command            | Description                                                         |
-| :----------------- | :------------------------------------------------------------------ |
-| `emos install`     | Install EMOS (interactive mode selection)                           |
-| `emos update`      | Update EMOS to the latest version                                   |
-| `emos status`      | Show installation status                                            |
-| `emos serve`       | Run the dashboard daemon (REST API + web UI)                        |
-| `emos config`      | Inspect or modify device configuration, pairing tokens, TLS         |
-| `emos recipes`     | List recipes available for download                                 |
-| `emos pull <name>` | Download a recipe                                                   |
-| `emos ls`          | List locally installed recipes                                      |
-| `emos run <name>`  | Run a recipe (foreground, blocking)                                 |
-| `emos info <name>` | Show sensor/topic requirements for a recipe                         |
-| `emos map <cmd>`   | Mapping tools (record, edit)                                        |
-| `emos version`     | Show CLI version                                                    |
+| Command            | Description                                                 |
+| :----------------- | :---------------------------------------------------------- |
+| `emos install`     | Install EMOS (interactive mode selection)                   |
+| `emos update`      | Update EMOS to the latest version                           |
+| `emos status`      | Show installation status                                    |
+| `emos serve`       | Run the dashboard daemon (REST API + web UI)                |
+| `emos config`      | Inspect or modify device configuration, pairing tokens, TLS |
+| `emos recipes`     | List recipes available for download                         |
+| `emos pull <name>` | Download a recipe                                           |
+| `emos ls`          | List locally installed recipes                              |
+| `emos run <name>`  | Run a recipe (foreground, blocking)                         |
+| `emos info <name>` | Show sensor/topic requirements for a recipe                 |
+| `emos map <cmd>`   | Mapping tools (record, edit)                                |
+| `emos version`     | Show CLI version                                            |
 
 ```{tip}
 Every command supports `-h`/`--help`. The CLI is also a single static binary — copy `/usr/local/bin/emos` to another machine and it just works (no Python, no runtime dependencies).
@@ -152,10 +152,10 @@ emos install --mode licensed <key>     # licensed deployment (requires license k
 emos install --distro jazzy            # pin a ROS distro for container/native mode
 ```
 
-| Flag        | Default       | Description                                               |
-| :---------- | :------------ | :-------------------------------------------------------- |
-| `--mode`    | _(prompt)_    | One of: `container`, `native`, `licensed`.                |
-| `--distro`  | _(prompt)_    | ROS 2 distribution: `jazzy`, `humble`, `kilted`.          |
+| Flag       | Default    | Description                                      |
+| :--------- | :--------- | :----------------------------------------------- |
+| `--mode`   | _(prompt)_ | One of: `container`, `native`, `licensed`.       |
+| `--distro` | _(prompt)_ | ROS 2 distribution: `jazzy`, `humble`, `kilted`. |
 
 The installer offers, at the end, to:
 
@@ -193,14 +193,14 @@ emos serve --addr :9000                # bind to a custom port for one run
 emos serve --qr                        # print a QR for the dashboard URL and exit
 ```
 
-| Flag         | Default | Description                                                                            |
-| :----------- | :------ | :------------------------------------------------------------------------------------- |
-| `--addr`     | _(empty)_ | `host:port` to bind. Empty falls back to the configured port (`emos config set port`) or `8765`. |
-| `--no-mdns`  | `false` | Skip mDNS announcement. The dashboard is then only reachable by IP / explicit hostname. |
-| `--no-auth`  | `false` | **Dev only.** Accept all requests without a bearer token.                              |
-| `--tls`      | `false` | Serve over HTTPS using a self-signed cert under `~/.config/emos/`.                     |
-| `--qr`       | `false` | Print a QR code with the dashboard URL and exit (no daemon).                           |
-| `-v`, `--verbose` | `false` | Log every HTTP request (including reads) at DEBUG.                                |
+| Flag              | Default   | Description                                                                                      |
+| :---------------- | :-------- | :----------------------------------------------------------------------------------------------- |
+| `--addr`          | _(empty)_ | `host:port` to bind. Empty falls back to the configured port (`emos config set port`) or `8765`. |
+| `--no-mdns`       | `false`   | Skip mDNS announcement. The dashboard is then only reachable by IP / explicit hostname.          |
+| `--no-auth`       | `false`   | **Dev only.** Accept all requests without a bearer token.                                        |
+| `--tls`           | `false`   | Serve over HTTPS using a self-signed cert under `~/.config/emos/`.                               |
+| `--qr`            | `false`   | Print a QR code with the dashboard URL and exit (no daemon).                                     |
+| `-v`, `--verbose` | `false`   | Log every HTTP request (including reads) at DEBUG.                                               |
 
 #### `emos serve install-service`
 
@@ -232,7 +232,7 @@ emos config revoke-token <id|label>  # revoke a single paired device
 emos config rotate-pairing        # issue a fresh pairing code (existing tokens stay valid)
 emos config tls-fingerprint       # print the dashboard TLS cert SHA-256 fingerprint
 emos config tls-regenerate        # re-mint the self-signed TLS cert (use after IP change)
-emos config reset                 # WIPE config.json (keeps recipes, logs)
+emos config reset                 # reset device state (pairing/name/port); keeps install info
 ```
 
 #### `emos config show`
@@ -341,10 +341,10 @@ emos run <recipe> --rmw rmw_cyclonedds_cpp
 emos run <recipe> --skip-sensor-check
 ```
 
-| Flag                   | Default            | Description                                              |
-| :--------------------- | :----------------- | :------------------------------------------------------- |
-| `--rmw`                | `rmw_zenoh_cpp`    | One of: `rmw_zenoh_cpp`, `rmw_fastrtps_cpp`, `rmw_cyclonedds_cpp`. |
-| `--skip-sensor-check`  | `false`            | Skip the 10-second sensor-topic verification.            |
+| Flag                  | Default         | Description                                                        |
+| :-------------------- | :-------------- | :----------------------------------------------------------------- |
+| `--rmw`               | `rmw_zenoh_cpp` | One of: `rmw_zenoh_cpp`, `rmw_fastrtps_cpp`, `rmw_cyclonedds_cpp`. |
+| `--skip-sensor-check` | `false`         | Skip the 10-second sensor-topic verification.                      |
 
 #### What happens during `emos run`
 
@@ -402,8 +402,8 @@ emos serve --tls
 
 On first launch under `--tls`, the daemon mints a 2-year ECDSA P-256 certificate and persists it under `~/.config/emos/`:
 
-| Path | Mode | Purpose |
-| :--- | :--- | :--- |
+| Path                     | Mode   | Purpose                                                 |
+| :----------------------- | :----- | :------------------------------------------------------ |
 | `~/.config/emos/tls.crt` | `0644` | PEM-encoded leaf certificate (also acts as its own CA). |
 | `~/.config/emos/tls.key` | `0600` | PEM-encoded private key. Never copy this off the robot. |
 
@@ -421,16 +421,15 @@ A self-signed cert produces a "Not Secure" warning the first time a browser hits
 
 1. **Click through, every time.** Fine for a workshop / one-off install. The encryption protects against passive sniffing on the LAN, the bearer token still protects against unauthenticated access, and the warning is mostly cosmetic. Verify the cert before clicking through:
 
-    ```bash
-    emos config tls-fingerprint
-    ```
+   ```bash
+   emos config tls-fingerprint
+   ```
 
-    Compare the printed SHA-256 fingerprint with the one the browser shows under "View Certificate" before trusting it.
+   Compare the printed SHA-256 fingerprint with the one the browser shows under "View Certificate" before trusting it.
 
 2. **Add the cert to a trust store** so the warning goes away permanently for that device:
-
-    - **Firefox** keeps its own trust store: *Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import* `~/.config/emos/tls.crt`, then tick *"Trust this CA to identify websites."*
-    - **Chrome / Edge** follow the OS trust store. On Linux: `sudo cp tls.crt /usr/local/share/ca-certificates/emos-<name>.crt && sudo update-ca-certificates`. On macOS, drop the cert into Keychain Access and mark it Always Trust. On Windows, `certmgr.msc → Trusted Root Certification Authorities → Import`.
+   - **Firefox** keeps its own trust store: _Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import_ `~/.config/emos/tls.crt`, then tick _"Trust this CA to identify websites."_
+   - **Chrome / Edge** follow the OS trust store. On Linux: `sudo cp tls.crt /usr/local/share/ca-certificates/emos-<name>.crt && sudo update-ca-certificates`. On macOS, drop the cert into Keychain Access and mark it Always Trust. On Windows, `certmgr.msc → Trusted Root Certification Authorities → Import`.
 
 ### When to regenerate
 
@@ -502,5 +501,5 @@ sudo systemctl restart emos-dashboard.service
 ```
 
 ```{tip}
-`~/.config/emos/config.json` is **the** persistent state. Wiping it (`emos config reset`) returns the device to "first boot" without touching recipes or logs.
+`~/.config/emos/config.json` is **the** persistent state. `emos config reset` clears the dashboard's device-side state (paired browsers, custom name, custom port) but **preserves install info** (mode, ROS distro, license key) so the dashboard keeps recognising the device as installed afterwards.
 ```

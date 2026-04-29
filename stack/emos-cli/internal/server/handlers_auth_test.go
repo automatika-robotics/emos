@@ -80,16 +80,17 @@ func TestHandleAuthMeBearer(t *testing.T) {
 	}
 }
 
-func TestHandleAuthMeQueryToken(t *testing.T) {
-	// SSE clients can't set Authorization, so the token also rides on
-	// ?token=. Keeping this path tested guards against accidental removal.
+func TestHandleAuthMeRejectsQueryToken(t *testing.T) {
+	// Tokens in URLs leak through reverse-proxy access logs and Referer
+	// headers — bearerToken() must NOT fall back to ?token=. SSE clients
+	// use the dedicated single-use ticket flow instead.
 	s := newTestServer(t, false)
 	tok, _, _ := s.auth.Pair(s.auth.FreshPairingCode(), "")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me?token="+tok, nil)
 	rec := httpServe(t, s, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 (query-string token must be rejected)", rec.Code)
 	}
 }
 

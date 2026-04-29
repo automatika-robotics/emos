@@ -7,9 +7,21 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
+
+// TestMain lowers bcrypt's pairing-code cost from the production value
+// to bcrypt.MinCost so the test suite (especially the 50-way concurrent
+// Pair test under -race) finishes in seconds, not minutes. The
+// production cost is still what ships in the binary.
+func TestMain(m *testing.M) {
+	pairingHashCost = bcrypt.MinCost
+	os.Exit(m.Run())
+}
 
 // newTestServer returns a Server wired up enough that buildRouter()'s
 // handlers can be exercised end-to-end. It uses a tmp-dir-backed config
@@ -26,13 +38,14 @@ func newTestServer(t *testing.T, bypassAuth bool) *Server {
 		t.Fatalf("NewAuth: %v", err)
 	}
 	s := &Server{
-		opts:      Options{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))},
-		log:       slog.New(slog.NewTextHandler(io.Discard, nil)),
-		auth:      auth,
-		conn:      NewConnectivity(),
-		runtime:   NewRuntime(),
-		jobs:      NewJobs(),
-		startedAt: time.Now(),
+		opts:       Options{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))},
+		log:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		auth:       auth,
+		conn:       NewConnectivity(),
+		runtime:    NewRuntime(),
+		jobs:       NewJobs(),
+		sseTickets: newSSETicketStore(),
+		startedAt:  time.Now(),
 	}
 	s.router = s.buildRouter()
 	return s

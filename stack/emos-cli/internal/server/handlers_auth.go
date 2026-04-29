@@ -38,3 +38,20 @@ func (s *Server) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true})
 }
+
+type sseTicketResponse struct {
+	Ticket    string    `json:"ticket"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// handleAuthSSETicket mints a single-use, short-lived ticket for the SSE
+// endpoints. The caller must hold a valid bearer token (this route lives
+// under the AuthRequired group)
+func (s *Server) handleAuthSSETicket(w http.ResponseWriter, r *http.Request) {
+	ticket, exp, err := s.sseTickets.Issue()
+	if err != nil {
+		writeErr(w, http.StatusServiceUnavailable, codeInternal, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, sseTicketResponse{Ticket: ticket, ExpiresAt: exp})
+}

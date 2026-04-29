@@ -37,10 +37,11 @@ type Server struct {
 	log    *slog.Logger
 	router http.Handler
 
-	auth    *Auth
-	conn    *Connectivity
-	runtime *Runtime
-	jobs    *Jobs
+	auth       *Auth
+	conn       *Connectivity
+	runtime    *Runtime
+	jobs       *Jobs
+	sseTickets *sseTicketStore
 
 	startedAt time.Time
 
@@ -65,14 +66,15 @@ func New(opts Options) (*Server, error) {
 	}
 
 	s := &Server{
-		cfg:       config.LoadConfig(),
-		opts:      opts,
-		log:       opts.Logger,
-		auth:      auth,
-		conn:      NewConnectivity(),
-		runtime:   NewRuntime(),
-		jobs:      NewJobs(),
-		startedAt: time.Now(),
+		cfg:        config.LoadConfig(),
+		opts:       opts,
+		log:        opts.Logger,
+		auth:       auth,
+		conn:       NewConnectivity(),
+		runtime:    NewRuntime(),
+		jobs:       NewJobs(),
+		sseTickets: newSSETicketStore(),
+		startedAt:  time.Now(),
 	}
 	if opts.EnableTLS {
 		info, err := tlsca.Ensure(opts.DeviceName)

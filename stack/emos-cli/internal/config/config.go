@@ -48,17 +48,22 @@ func DashboardPort() int {
 
 // AuthState is the dashboard's pairing + bearer-token state. It lives on
 // EMOSConfig so the entire device's persistent state fits in one file
-// (~/.config/emos/config.json). Both fields hold SHA-256 hashes; plaintext
-// secrets are never written to disk.
+// (~/.config/emos/config.json). Plaintext secrets are never written to
+// disk:
+//   - PairingCodeHash holds a bcrypt hash of the 6-digit code.
+//   - Tokens[].Hash holds an HMAC-SHA256 of the bearer token, keyed by
+//     TokenKey. Verification recomputes the HMAC and compares.
 type AuthState struct {
 	PairingCodeHash string      `json:"pairing_code_hash,omitempty"`
 	PairingCreated  time.Time   `json:"pairing_created,omitempty"`
+	TokenKey        []byte      `json:"token_key,omitempty"` // 32-byte HMAC key, generated once
 	Tokens          []AuthToken `json:"tokens,omitempty"`
 }
 
 // AuthToken is one issued bearer token's record. The plaintext token is
-// returned to the browser once and then discarded; we keep only the hash
-// to verify on subsequent requests.
+// returned to the browser once and then discarded; we keep only an
+// HMAC-SHA256 (keyed by AuthState.TokenKey) to verify on subsequent
+// requests.
 type AuthToken struct {
 	Hash      string    `json:"hash"`
 	IssuedAt  time.Time `json:"issued_at"`

@@ -8,7 +8,7 @@ The fastest way to get started with EMOS is through the CLI. Download the latest
 curl -sSL https://raw.githubusercontent.com/automatika-robotics/emos/main/stack/emos-cli/scripts/install.sh | sudo bash
 ```
 
-Or build from source (requires Go 1.23+):
+Or build from source (requires Go 1.25+):
 
 ```bash
 git clone https://github.com/automatika-robotics/emos.git

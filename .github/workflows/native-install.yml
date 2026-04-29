@@ -38,7 +38,7 @@ jobs:
       - name: Install Go
         run: |
           apt-get update && apt-get install -y --no-install-recommends curl git sudo
-          curl -fsSL https://go.dev/dl/go1.23.4.linux-amd64.tar.gz | tar -C /usr/local -xzf -
+          curl -fsSL https://go.dev/dl/go1.25.0.linux-amd64.tar.gz | tar -C /usr/local -xzf -
           echo "/usr/local/go/bin" >> "$GITHUB_PATH"
 
       - name: Build CLI

@@ -43,9 +43,12 @@ func (s *Server) buildRouter() http.Handler {
 		r.Post("/auth/pair", s.handleAuthPair)
 		r.Get("/auth/me", s.handleAuthMe)
 
-		// --- Authenticated surface ---
+		// --- Authenticated surface (Bearer header) ---
 		r.Group(func(r chi.Router) {
 			r.Use(s.auth.AuthRequired)
+
+			// SSE-ticket issue: requires a valid bearer header to mint.
+			r.Post("/auth/sse-ticket", s.handleAuthSSETicket)
 
 			r.Get("/robot", s.handleRobot)
 
@@ -59,11 +62,18 @@ func (s *Server) buildRouter() http.Handler {
 			r.Post("/runs", s.handleRunsStart)
 			r.Get("/runs/{id}", s.handleRunGet)
 			r.Delete("/runs/{id}", s.handleRunCancel)
-			r.Get("/runs/{id}/logs", s.handleRunLogs)
 
 			r.Get("/jobs", s.handleJobsList)
 			r.Get("/jobs/{id}", s.handleJobGet)
 			r.Delete("/jobs/{id}", s.handleJobCancel)
+		})
+
+		// --- SSE surface (single-use ticket via ?ticket=) ---
+		// EventSource can't carry the Authorization header; these routes
+		// instead require a fresh ticket from POST /auth/sse-ticket.
+		r.Group(func(r chi.Router) {
+			r.Use(s.sseTicketRequired)
+			r.Get("/runs/{id}/logs", s.handleRunLogs)
 			r.Get("/jobs/{id}/logs", s.handleJobLogs)
 		})
 	})

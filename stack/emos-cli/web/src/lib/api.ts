@@ -171,6 +171,11 @@ export const api = {
     }),
   authMe: () => request<{ authenticated: boolean }>('/auth/me'),
 
+  // Mints a single-use ticket for SSE endpoints; the ticket is presented on
+  // the `?ticket=` query string.
+  authSSETicket: () =>
+    request<{ ticket: string; expires_at: string }>('/auth/sse-ticket', { method: 'POST' }),
+
   // protected
   robot: () => request<RobotInfo>('/robot'),
 

@@ -21,8 +21,8 @@
   --color-emos-warn: oklch(0.83 0.16 80);
   --color-emos-bad:  oklch(0.62 0.22 18);
 
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
 
   --radius-card: 1rem;
   --radius-button: 0.625rem;

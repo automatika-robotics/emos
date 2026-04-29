@@ -12,10 +12,6 @@
   const conn = useConnectivity();
   const robot = useRobot();
 
-  let qrSvg = $state<string>('');
-  // Tiny QR generator: use the kazuhikoarase implementation? Easier — do it
-  // server-side via `emos serve --qr` would require a network call. We'll
-  // show the URL and rely on the daemon's terminal QR for first-touch.
   let dashUrl = $state<string>('');
   onMount(() => {
     dashUrl = window.location.origin || '';

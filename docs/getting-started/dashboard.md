@@ -52,27 +52,25 @@ The pairing code is shown **once**. If you lose it, you can mint a new one any t
 
 ### Pair the browser
 
-<!-- TODO(gif): docs/_static/images/dashboard/pair_flow.gif — full pairing UX: scan QR → pair page opens → enter code → token issued → redirected to dashboard -->
+![EMOS serve pairing flow](../_static/images/emos_serve_start.gif)
 
 Open one of the URLs in your browser. The dashboard notices it's the first visit and shows a **Pair** screen — type the six-digit code from the terminal and you're in. The browser remembers the pairing for ~90 days, so you won't have to do this again unless you clear cookies, switch browsers, or revoke the access.
 
 To pair a phone the same way, point its camera at the QR code that the terminal printed; the QR opens the same Pair screen with the code pre-filled.
 
-## The seven views
+## Dashboard views
 
-The dashboard has seven pages. The sidebar (or the command palette — press {kbd}`Ctrl`+{kbd}`K` / {kbd}`⌘`+{kbd}`K` to open it) lets you jump between them.
+The dashboard has six pages. The sidebar (or the command palette — press {kbd}`Ctrl`+{kbd}`K` / {kbd}`⌘`+{kbd}`K` to open it) lets you jump between them.
 
 ### Home
 
-<!-- TODO(screenshot): docs/_static/images/dashboard/home.png — Dashboard view: identity tile, status pills (mode, distro, uptime), most-recent run card, "Pull a recipe" empty state if no installs -->
+![EMOS Dashboard Home](../_static/images/emos_dashboard_main.png)
 
 A one-glance view of the robot: identity, install status, how long it's been up, and what (if anything) is running right now. If you haven't installed any recipes yet, you'll see a friendly card suggesting one to try first.
 
-<!-- TODO(screenshot): docs/_static/images/dashboard/empty_state.png — empty Installed grid + "Pull conversational_agent to try EMOS in 60 seconds" card -->
-
 ### Recipes
 
-<!-- TODO(gif): docs/_static/images/dashboard/recipes_pull.gif — Catalog tab → click "Get" on a recipe card → optimistic card slides into Installed grid → progress fills card border via SSE → done -->
+![EMOS Recipe Pulling](../_static/images/emos_recipe_pull.gif)
 
 The library, with two tabs:
 
@@ -87,7 +85,7 @@ The bar at the top of the page shows whether your robot is currently online. It 
 
 ### Recipe Detail
 
-<!-- TODO(screenshot): docs/_static/images/dashboard/recipe_detail.png — recipe detail page: description, required sensors table (topic + msg type + hardware), other topics, recent-runs list, "Run" button -->
+![EMOS Recipe Details](../_static/images/emos_recipe_details.png)
 
 Click any installed recipe to see what it does. The page shows:
 
@@ -104,7 +102,7 @@ A timeline of every recipe you've run recently. Click any row to open its consol
 
 ### Run Console
 
-<!-- TODO(gif): docs/_static/images/dashboard/run_logs.gif — clicking Run on a recipe → redirected to RunDetail → live logs streaming with ANSI colour → click Stop → process tree reaped, status flips to Cancelled -->
+![EMOS Runs Console](../_static/images/emos_recipe_runs.png)
 
 The live view of a running recipe. Output streams in real time, with colour and a follow-tail toggle so you can scroll back without losing your place. Closing the browser tab does **not** stop the recipe — there's a **Stop** button for that.
 
@@ -112,7 +110,7 @@ The status pill at the top tells you whether the recipe is starting up, running,
 
 ### System
 
-<!-- TODO(screenshot): docs/_static/images/dashboard/system.png — System page: identity, mode/distro/version, hostname/IPs, mDNS name, paired devices count, TLS fingerprint when --tls is on, QR for inviting another device -->
+![EMOS System View](../_static/images/emos_system_view.png)
 
 This is the page you'll want when you need to invite a phone or another laptop to the same robot. It shows:
 
@@ -120,10 +118,6 @@ This is the page you'll want when you need to invite a phone or another laptop t
 - A **QR code** to scan from another device — opens the same Pair screen on that device.
 - A list of paired browsers (you can revoke any of them).
 - Robot install info (mode, ROS distribution, version) and a button to copy any field.
-
-### Pair
-
-The first-touch screen. You only see it when the browser doesn't have a token yet — once it's paired, it never asks again.
 
 ## Inviting another phone or laptop
 

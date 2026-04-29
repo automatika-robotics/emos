@@ -7,6 +7,7 @@ LDFLAGS := -ldflags "-s -w -X github.com/automatika-robotics/emos-cli/internal/c
 WEB_DIR    := web
 WEB_DIST   := internal/webui/dist
 WEB_OUT    := $(WEB_DIST)/index.html
+WEB_STAMP  := $(WEB_DIR)/node_modules/.package-lock.json
 
 .PHONY: build build-all install clean tidy web web-dev web-clean check
 
@@ -28,11 +29,16 @@ install:
 # We only rebuild when source files are newer than the built index.html.
 web: $(WEB_OUT)
 
-$(WEB_OUT): $(shell find $(WEB_DIR)/src $(WEB_DIR)/index.html $(WEB_DIR)/package.json $(WEB_DIR)/vite.config.ts -type f 2>/dev/null)
-	@if [ ! -d $(WEB_DIR)/node_modules ]; then \
-		echo ">> installing web deps"; \
-		cd $(WEB_DIR) && $(NPM) install --silent; \
-	fi
+# Run `npm install` whenever package-lock.json is newer than the install
+# stamp under node_modules. Catches the "git pull added a new dep" case
+# that a bare existence check misses (npm leaves a copy of package-lock
+# inside node_modules after install, which is a reliable freshness mark).
+$(WEB_STAMP): $(WEB_DIR)/package.json $(WEB_DIR)/package-lock.json
+	@echo ">> installing web deps"
+	cd $(WEB_DIR) && $(NPM) install --silent
+	@touch $@
+
+$(WEB_OUT): $(WEB_STAMP) $(shell find $(WEB_DIR)/src $(WEB_DIR)/index.html $(WEB_DIR)/vite.config.ts -type f 2>/dev/null)
 	@echo ">> building web (vite)"
 	# Clean only the build outputs — preserve placeholder.html (tracked) so a
 	# subsequent fresh checkout keeps the embed target valid.

@@ -24,8 +24,8 @@ Each algorithm is fully parameterized. Developers can tune behaviors such as loo
 | [Pure Pursuit](#pure-pursuit) | Geometric tracker | Lookahead-based path tracking with collision avoidance | LaserScan, PointCloud, OccupancyGrid (optional) |
 | [Stanley Steering](#stanley-steering) | Geometric tracker | Front-axle feedback for Ackermann platforms | None (pure path follower) |
 | [DVZ](#deformable-virtual-zone-dvz) | Reactive controller | Deformable safety bubble for fast avoidance | LaserScan |
-| [Vision Follower (RGB)](#vision-follower-rgb) | Visual servoing | 2D target centering with monocular camera | Detections / Trackings |
-| [Vision Follower (RGB-D)](#vision-follower-rgb-d) | Visual servoing + planner | Depth-aware following with obstacle avoidance | Detections, Depth Image, LaserScan/PointCloud |
+| [Vision Follower (RGB)](#vision-follower-rgb) | Visual servoing | 2D target centering with monocular camera | Detections / Trackings, RGB Image |
+| [Vision Follower (RGB-D)](#vision-follower-rgb-d) | Visual servoing + planner | Depth-aware following | Detections, Depth Image |
 | [Trajectory Cost Evaluation](#trajectory-cost-evaluation) | Cost functions | Weighted scoring for sampling-based controllers | -- |
 
 ---
@@ -781,23 +781,13 @@ config = VisionRGBFollowerConfig(
 
 ## Vision Follower (RGB-D)
 
-**Depth-aware target tracking with integrated obstacle avoidance.**
+**Depth-aware target tracking.**
 
 The VisionFollowerRGBD is a sophisticated 3D visual servoing controller. It combines 2D object detections with depth information to estimate the precise 3D position and velocity of a target.
 
-Unlike the pure RGB variant, this controller uses a sampling-based planner (based on **DWA**) to compute motion. This allows the robot to follow a target while simultaneously navigating around obstacles, making it the ideal choice for "Follow Me" applications in complex environments.
-
-### How It Works
-
-The controller utilizes a high-performance C++ core (**VisionDWA**) to execute the following pipeline:
-
-- **3D Projection -- Depth Fusion.** Projects 2D bounding boxes into 3D space using the depth image and camera intrinsics.
-- **DWA Sampling -- Trajectory Rollout.** Generates candidate velocity trajectories based on the robot's current speed and acceleration limits.
-- **Collision Checking -- Safety First.** Evaluates each trajectory against active sensor data (LaserScan/PointCloud) to ensure the robot does not hit obstacles while following.
-- **Goal Scoring -- Relative Pose.** Selects the trajectory that best maintains the configured **Target Distance** and **Target Orientation**.
-
 ### Key Features
 
+- **3D Projection -- Depth Fusion.** Projects 2D bounding boxes into 3D space using the depth image and camera intrinsics.
 - **Relative Positioning** -- Maintain a specific distance and bearing relative to the target.
 - **Velocity Tracking** -- Capable of estimating target velocity to provide smoother, more predictive following.
 - **Recovery Behaviors** -- Includes configurable **Wait** and **Search** (rotating in place) logic for when the target is temporarily occluded or leaves the field of view.
@@ -808,7 +798,6 @@ This controller requires synchronized vision and spatial data.
 
 - Detections -- 2D bounding boxes (Detections2D, Trackings2D).
 - Depth Image Information -- Aligned depth image info for 3D coordinate estimation.
-- Obstacle Data -- LaserScan, PointCloud, or LocalMap for active avoidance.
 
 ### Configuration Parameters
 
@@ -857,7 +846,6 @@ config = VisionRGBDFollowerConfig(
     target_distance=1.5,
     target_orientation=0.0,
     enable_search=True,
-    max_linear_samples=15
 )
 
 ```

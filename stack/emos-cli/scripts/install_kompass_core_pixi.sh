@@ -112,17 +112,24 @@ fi
 
 ACPP_VERSION="v25.10.0"
 ACPP_PREFIX="/usr/local"
+ACPP_STAGE="/tmp/acpp-stage-$$"
 
 log INFO "Building AdaptiveCpp $ACPP_VERSION..."
 cd /tmp
-rm -rf AdaptiveCpp
+rm -rf AdaptiveCpp "$ACPP_STAGE"
+mkdir -p "$ACPP_STAGE"
 git clone --depth 1 --branch "$ACPP_VERSION" https://github.com/AdaptiveCpp/AdaptiveCpp
 cd AdaptiveCpp && mkdir -p build && cd build
 
-CMAKE_FLAGS="-DCMAKE_INSTALL_PREFIX=$ACPP_PREFIX -DLLVM_DIR=$LLVM_DIR -DCLANG_EXECUTABLE_PATH=$CLANG_PATH"
+CMAKE_FLAGS="-DCMAKE_INSTALL_PREFIX=$ACPP_STAGE -DLLVM_DIR=$LLVM_DIR -DCLANG_EXECUTABLE_PATH=$CLANG_PATH"
 CXX=$CLANG_PATH clean_env cmake $CMAKE_FLAGS ..
-clean_env $SUDO make install -j$(nproc)
-cd /tmp && rm -rf AdaptiveCpp
+clean_env make -j$(nproc)
+clean_env make install -j$(nproc)
+
+log INFO "Copying AdaptiveCpp artefacts into $ACPP_PREFIX (requires sudo)..."
+clean_env $SUDO cp -a "$ACPP_STAGE/." "$ACPP_PREFIX/"
+
+cd /tmp && rm -rf AdaptiveCpp "$ACPP_STAGE"
 
 if acpp --acpp-version &>/dev/null; then
     log INFO "AdaptiveCpp installed successfully."
@@ -165,3 +172,6 @@ else
     log ERROR "kompass-core installation failed."
     exit 1
 fi
+
+# Explicit end-of-script marker
+log INFO "\033[1;32m✓ install_kompass_core_pixi.sh: all steps completed.\033[0m"

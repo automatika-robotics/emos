@@ -8,13 +8,17 @@ The fastest way to get started with EMOS is through the CLI. Download the latest
 curl -sSL https://raw.githubusercontent.com/automatika-robotics/emos/main/stack/emos-cli/scripts/install.sh | sudo bash
 ```
 
-Or build from source (requires Go 1.23+):
+Or build from source (requires Go 1.25+):
 
 ```bash
 git clone https://github.com/automatika-robotics/emos.git
 cd emos/stack/emos-cli
 make build
 sudo make install
+```
+
+```{tip}
+The CLI is a single static binary with no runtime dependencies, copy `/usr/local/bin/emos` to another machine on the same architecture and it just works.
 ```
 
 ## Deployment Modes
@@ -104,11 +108,25 @@ See the [CLI Reference](cli.md) for the full list of commands.
 
 ## Which Mode Should I Choose?
 
-| Scenario                                         | Recommended Mode |
-| :----------------------------------------------- | :--------------- |
-| No ROS2 on host, quick evaluation                | **Container**    |
-| ROS2 already installed, system-level integration | **Native**       |
-| No root, no Docker, any Linux distro             | **Pixi**         |
+| Scenario                                            | Recommended Mode |
+| :-------------------------------------------------- | :--------------- |
+| No ROS2 on host, quick evaluation                   | **Container**    |
+| ROS2 already installed, system-level integration    | **Native**       |
+| No root, no Docker, any Linux distro                | **Pixi**         |
+
+## Start the Dashboard
+
+After installation finishes, start the EMOS dashboard for a graphical, zero-touch experience:
+
+```bash
+emos serve
+```
+
+The first launch prints a six-digit pairing code, the URLs the dashboard is reachable at, and a QR code. Open any of the URLs in a browser, enter the code once, and the browser is paired for ~90 days. The installer also offers to set up a systemd unit so the dashboard comes up automatically at boot.
+
+```{seealso}
+[Dashboard](dashboard.md) — full walkthrough of pairing, recipes, and run console
+```
 
 ## Preparing Your Hardware
 

@@ -22,6 +22,17 @@ type recipeManifest struct {
 	ZenohRouterConfig string `json:"zenoh_router_config_file"`
 }
 
+// LoadManifest reads a recipe manifest file. Always returns a non-nil pointer
+// — a missing or malformed manifest yields an empty manifest, since the file
+// is optional.
+func LoadManifest(path string) *recipeManifest {
+	m := &recipeManifest{}
+	if data, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(data, m)
+	}
+	return m
+}
+
 func RunRecipe(recipeName, rmwImpl string, skipSensorCheck bool) error {
 	// Validate RMW implementation
 	validRMW := map[string]bool{
@@ -139,10 +150,11 @@ func RunRecipe(recipeName, rmwImpl string, skipSensorCheck bool) error {
 	return err
 }
 
+// killROSProcesses pkills any ROS processes the current user owns.
 func killROSProcesses() {
 	ui.Info("Killing host ROS processes...")
 	for _, proc := range []string{"roslaunch", "roscore", "ros2"} {
-		runQuiet("sudo", "pkill", "-f", proc)
+		runQuiet("pkill", "-f", proc)
 	}
 	time.Sleep(time.Second)
 	ui.Success("Terminated host ROS processes.")

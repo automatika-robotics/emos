@@ -133,3 +133,110 @@ This recreates the container. Your recipes in `~/emos/recipes/` are preserved (t
 The config file at `~/.config/emos/config.json` is missing.
 
 **Fix:** Run `emos install` to set up EMOS. If you're using the pixi install mode, run `pixi run setup` from the EMOS repo root to register the installation.
+
+---
+
+## Dashboard
+
+The dashboard daemon (`emos serve`) and its [web UI](dashboard.md) have a few common failure modes worth knowing about.
+
+### "address already in use" when starting `emos serve`
+
+Another process is bound to the dashboard port (default `8765`). Most often this is a previous `emos serve` that's still running, either in another terminal or as a systemd service.
+
+```bash
+# Is it already running as a service?
+systemctl status emos-dashboard.service
+
+# Stop the service (or the foreground process), then retry
+sudo systemctl stop emos-dashboard.service
+emos serve
+
+# Or pick a different port for one run
+emos serve --addr :9000
+
+# Or change the persisted port
+emos config set port 9000
+```
+
+### I lost the pairing code
+
+The pairing code is **only printed on first boot** and never persisted in plaintext on disk. Rotate to issue a fresh one:
+
+```bash
+emos config rotate-pairing
+# ✓ New pairing code (shown once): 829471
+```
+
+Already-paired browsers keep working — rotation is a code rotation, not a token revocation. Use `emos config tokens` to see who is paired and `emos config revoke-token <id|label>` to remove a specific browser.
+
+### `emos.local` does not resolve
+
+mDNS (`*.local`) works on most laptops out of the box but is unreliable on phones (especially Android). The dashboard is also published as `<device-name>.local` — and the boot banner always prints LAN IPs you can use directly.
+
+**Fixes, in order of preference:**
+
+```bash
+# 1. Use the device-specific name printed in the banner
+ping epic-otter.local
+
+# 2. Use a LAN IP from the banner
+http://192.168.1.42:8765/
+
+# 3. Confirm avahi/Bonjour is running on the laptop
+#    (Linux: avahi-daemon, macOS: built-in, Windows: Bonjour from the iTunes installer)
+
+# 4. Force a fresh mDNS publication after a hostname change
+emos config set name new-name
+sudo systemctl restart emos-dashboard.service
+```
+
+For headless or factory networks, just use the IP address; the dashboard works identically over IP and mDNS.
+
+### Browser shows a persistent "Not Secure" warning under `--tls`
+
+`emos serve --tls` mints a self-signed cert. Browsers always flag self-signed certs as Not Secure even after you click through the warning — the encryption is real, but the trust chain is not. To get rid of the lozenge:
+
+- **Firefox:** *Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import* `~/.config/emos/tls.crt`, tick "Trust this CA to identify websites." Firefox keeps its own trust store separate from the OS.
+- **Chrome / system-wide:** install the cert into the OS trust store (`update-ca-certificates` on Linux, Keychain on macOS, certmgr on Windows).
+
+Verify the cert before trusting it:
+
+```bash
+emos config tls-fingerprint
+```
+
+Compare the SHA-256 fingerprint with the one the browser shows under "View Certificate".
+
+```{seealso}
+[CLI → HTTPS (Optional)](cli.md#https-optional) for the full rationale and trust-store steps.
+```
+
+### After moving to a new network, HTTPS shows a hostname-mismatch error
+
+The TLS cert's SubjectAltNames are baked in at mint time. If the device's IP or `.local` name changed, the cert no longer covers the address you're using. Regenerate:
+
+```bash
+emos config tls-regenerate
+sudo systemctl restart emos-dashboard.service
+```
+
+### "TLS handshake error from ..." floods the log
+
+Pre-v0.6.2 — these were stdlib `log` lines bypassing slog. The current daemon routes them to slog at DEBUG (invisible at the default INFO level). If you still see them: probably a probe from a Tailscale agent, nmap, or a browser hitting the port over plain HTTP while the daemon is in `--tls` mode. Run `emos serve -v` to see the chatter when debugging.
+
+### "503 service_unavailable, code: offline" on the recipe catalog
+
+The dashboard tried to reach the Automatika recipe server and the device's reachability probe failed. This is by design — already-installed recipes still run while offline. If you expected the device to be online:
+
+```bash
+# Force a fresh probe (bypasses the 30 s cache)
+curl http://emos.local:8765/api/v1/connectivity?refresh=1
+
+# DNS, default route, firewall — the usual suspects
+ping support.automatikarobotics.com
+```
+
+### Dashboard shows "Not installed" but the CLI works
+
+The dashboard reads `~/.config/emos/config.json`; the CLI also falls back to migrating from a legacy `~/.config/emos/license.key` if it finds one. If `emos install` was interrupted before writing the config, the CLI sees the legacy file and migrates on the fly, but the dashboard might race the migration. Re-run `emos install` (or `emos config show`) to materialise a clean config, then refresh the browser.

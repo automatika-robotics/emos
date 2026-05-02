@@ -1,0 +1,28 @@
+<!doctype html>
+<!--
+  Tracked placeholder. Used by `embed.go` when no production SPA build is
+  present in this directory (e.g. on a fresh clone before `make web`).
+  Run `make web` from stack/emos-cli/ to produce the real dashboard.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>EMOS Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root { color-scheme: dark; }
+      body { font-family: ui-sans-serif, system-ui; background: #0a0a0b; color: #fafafa; max-width: 36rem; margin: 5rem auto; padding: 0 1.5rem; line-height: 1.55; }
+      code { background: #1a1a1d; padding: 0.15rem 0.4rem; border-radius: 0.25rem; font-family: ui-monospace, monospace; }
+      .badge { display: inline-block; padding: 0.15rem 0.55rem; border-radius: 999px; background: #1a1a1d; font-size: 0.85rem; color: #a1a1aa; }
+      h1 { margin-top: 1.25rem; }
+      a { color: #5eead4; }
+    </style>
+  </head>
+  <body>
+    <span class="badge">DASHBOARD NOT BUILT</span>
+    <h1>EMOS dashboard placeholder</h1>
+    <p>This binary was built without the production Svelte SPA.</p>
+    <p>From <code>stack/emos-cli/</code>, run <code>make web</code> (or <code>make build</code>) to produce the real dashboard.</p>
+    <p>The REST API is still live at <code>/api/v1/info</code>.</p>
+  </body>
+</html>

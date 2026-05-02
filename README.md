@@ -70,19 +70,11 @@ That's a complete robot agent. It sees through a camera, reasons with a vision-l
 
 EMOS is built on three open-source components that work in tandem:
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/_static/images/diagrams/emos_diagram_dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="docs/_static/images/diagrams/emos_diagram_light.png">
-    <img alt="EMOS Architecture" src="docs/_static/images/diagrams/emos_diagram_light.png" width="45%">
-  </picture>
-</p>
-
-| Component | Layer | What It Does |
-| :--- | :--- | :--- |
+| Component                                                                    | Layer                       | What It Does                                                                                                                       |
+| :--------------------------------------------------------------------------- | :-------------------------- | :--------------------------------------------------------------------------------------------------------------------------------- |
 | [**EmbodiedAgents**](https://github.com/automatika-robotics/embodied-agents) | Intelligence & Manipulation | Agentic graphs of ML models with semantic memory, multi-modal perception, manipulation, and event-driven adaptive reconfiguration. |
-| [**Kompass**](https://github.com/automatika-robotics/kompass) | Navigation | GPU-accelerated planning and control for real-world mobility. Cross-vendor SYCL support, runs on Nvidia, AMD, Intel, and others. |
-| [**Sugarcoat**](https://github.com/automatika-robotics/sugarcoat) | System Primitives | Lifecycle-managed components, event-driven system design, and a Pythonic launch API that replaces XML configuration. |
+| [**Kompass**](https://github.com/automatika-robotics/kompass)                | Navigation                  | GPU-accelerated planning and control for real-world mobility. Cross-vendor SYCL support, runs on Nvidia, AMD, Intel, and others.   |
+| [**Sugarcoat**](https://github.com/automatika-robotics/sugarcoat)            | System Primitives           | Lifecycle-managed components, event-driven system design, and a Pythonic launch API that replaces XML configuration.               |
 
 The three layers form a vertical stack. Sugarcoat provides the execution primitives. Kompass builds navigation nodes on top of them. EmbodiedAgents builds cognitive nodes on the same foundation. At runtime, the **Launcher** brings everything to life from a single Python script, the Recipe.
 
@@ -123,7 +115,7 @@ Install the EMOS CLI from the latest [release](https://github.com/automatika-rob
 curl -sSL https://raw.githubusercontent.com/automatika-robotics/emos/main/stack/emos-cli/scripts/install.sh | sudo bash
 ```
 
-Or build from source (requires Go 1.23+):
+Or build from source (requires Go 1.25+):
 
 ```bash
 git clone https://github.com/automatika-robotics/emos.git
@@ -162,9 +154,19 @@ Then enter the environment with `pixi shell` and `source install/setup.sh`. See 
 
 ### Model Serving
 
-You also need a model serving platform. EMOS supports [Ollama](https://ollama.com), [RoboML](https://github.com/automatika-robotics/robo-ml), [vLLM](https://github.com/vllm-project/vllm), [LeRobot](https://github.com/huggingface/lerobot), and any OpenAI-compatible endpoint.
+You also need a model serving platform. EMOS supports [Ollama](https://ollama.com), [RoboML](https://github.com/automatika-robotics/robo-ml), [vLLM](https://github.com/vllm-project/vllm), [SGLang](https://github.com/sgl-project/sglang), [LeRobot](https://github.com/huggingface/lerobot), and any OpenAI-compatible endpoint.
 
 See the [CLI documentation](stack/emos-cli/README.md) for the full command reference.
+
+## Dashboard
+
+`emos serve` starts a zero-touch web console that lets you browse, install, and run recipes from a browser, with live logs streamed over SSE. mDNS publishes the device as `<robot-name>.local` so you can reach it from any laptop or phone on the same network. Pairing is one-time with a six-digit code; access is revocable.
+
+<p align="center">
+  <img alt="EMOS Dashboard" src="docs/_static/images/dashboard_overview.png" width="80%">
+</p>
+
+See the [Dashboard guide](https://emos.automatikarobotics.com/getting-started/dashboard.html) for a walkthrough.
 
 ## Recipes
 
@@ -217,12 +219,12 @@ EMOS has been developed in collaboration between [Automatika Robotics](https://a
 
 EMOS is a monorepo that integrates three independently developed packages. You can open issues here or directly in the relevant repository:
 
-| Area | Repository | What belongs there |
-| :--- | :--- | :--- |
-| CLI, installation, recipes, docs | [**emos**](https://github.com/automatika-robotics/emos/issues) | CLI bugs, recipe issues, deployment, documentation |
-| AI components, model clients | [**embodied-agents**](https://github.com/automatika-robotics/embodied-agents/issues) | LLM/VLM/VLA components, model clients, speech, vision |
-| Navigation, planning, control | [**kompass**](https://github.com/automatika-robotics/kompass/issues) | Planner, controller, drive manager, mapping, algorithms |
-| Core framework, events, launcher | [**sugarcoat**](https://github.com/automatika-robotics/sugarcoat/issues) | Components, events/actions, fallbacks, lifecycle, web UI |
+| Area                             | Repository                                                                           | What belongs there                                       |
+| :------------------------------- | :----------------------------------------------------------------------------------- | :------------------------------------------------------- |
+| CLI, installation, recipes, docs | [**emos**](https://github.com/automatika-robotics/emos/issues)                       | CLI bugs, recipe issues, deployment, documentation       |
+| AI components, model clients     | [**embodied-agents**](https://github.com/automatika-robotics/embodied-agents/issues) | LLM/VLM/VLA components, model clients, speech, vision    |
+| Navigation, planning, control    | [**kompass**](https://github.com/automatika-robotics/kompass/issues)                 | Planner, controller, drive manager, mapping, algorithms  |
+| Core framework, events, launcher | [**sugarcoat**](https://github.com/automatika-robotics/sugarcoat/issues)             | Components, events/actions, fallbacks, lifecycle, web UI |
 
 If you're unsure, just open it on [emos](https://github.com/automatika-robotics/emos/issues) and we'll route it to the right place.
 

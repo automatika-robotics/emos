@@ -1,0 +1,268 @@
+openapi: 3.1.0
+info:
+  title: EMOS Onboarding API
+  version: "1.0.0"
+  summary: Local-network REST API for the EMOS dashboard and agentic clients.
+  description: |
+    Every endpoint speaks JSON unless explicitly noted. SSE endpoints emit
+    `text/event-stream`. All write operations require a bearer token issued
+    via `POST /auth/pair`.
+
+    Errors share a single shape: `{"code": "...", "message": "...", "details": {}}`.
+    The `code` field is stable; `message` may change.
+servers:
+  - url: /api/v1
+security:
+  - BearerAuth: []
+paths:
+  /health:
+    get:
+      summary: Liveness probe
+      security: []
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [ok] }
+                  version: { type: string }
+                  uptime: { type: string }
+  /info:
+    get:
+      summary: Install + runtime info (mode, distro, version, paths)
+      security: []
+      responses:
+        "200":
+          description: ok
+  /capabilities:
+    get:
+      summary: Feature flags the UI uses for conditional rendering
+      security: []
+      responses:
+        "200":
+          description: ok
+  /connectivity:
+    get:
+      summary: Cached internet reachability (offline indicator source)
+      security: []
+      parameters:
+        - in: query
+          name: refresh
+          schema: { type: string, enum: ["1"] }
+          description: Force a fresh probe instead of returning cached value.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  online: { type: boolean }
+                  last_checked_at: { type: string, format: date-time }
+                  target: { type: string }
+  /openapi.yaml:
+    get:
+      summary: Self-served OpenAPI document
+      security: []
+      responses:
+        "200":
+          description: yaml
+  /auth/pair:
+    post:
+      summary: Exchange a pairing code for a bearer token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  description: Six-digit code printed on first `emos serve` boot.
+                label: { type: string }
+      responses:
+        "200":
+          description: ok
+        "401":
+          description: invalid code
+  /auth/me:
+    get:
+      summary: Verify the bearer token
+      security: []
+      responses:
+        "200":
+          description: authenticated
+        "401":
+          description: invalid or missing token
+  /robot:
+    get:
+      summary: Best-effort robot identity. 404 if unknown.
+      responses:
+        "200":
+          description: identity
+        "404":
+          description: not_found
+  /recipes/local:
+    get:
+      summary: Recipes installed under ~/emos/recipes/. Always offline-OK.
+      responses:
+        "200":
+          description: ok
+  /recipes/remote:
+    get:
+      summary: Catalog of recipes from the Automatika API. Requires internet.
+      responses:
+        "200":
+          description: ok
+        "503":
+          description: offline or upstream failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+  /recipes/{name}:
+    get:
+      summary: Recipe detail with extracted topics
+      parameters:
+        - in: path
+          name: name
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: ok }
+        "404": { description: not installed }
+    delete:
+      summary: Remove a recipe directory
+      parameters:
+        - in: path
+          name: name
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: removed }
+  /recipes/{name}/pull:
+    post:
+      summary: Start a recipe download. Returns a job_id; stream via /jobs/{id}/logs.
+      parameters:
+        - in: path
+          name: name
+          required: true
+          schema: { type: string }
+      responses:
+        "202":
+          description: accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id: { type: string }
+        "503":
+          description: offline
+  /runs:
+    get:
+      summary: Currently running + recent finished runs
+      responses:
+        "200": { description: ok }
+    post:
+      summary: Start a recipe run
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [recipe]
+              properties:
+                recipe: { type: string }
+                rmw:
+                  type: string
+                  enum: [rmw_zenoh_cpp, rmw_fastrtps_cpp, rmw_cyclonedds_cpp]
+                skip_sensor_check: { type: boolean }
+      responses:
+        "202": { description: accepted }
+        "409": { description: another recipe already running }
+  /runs/{id}:
+    get:
+      summary: Status of a single run
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: ok }
+        "404": { description: not found }
+    delete:
+      summary: Cancel a running recipe (SIGTERM, then SIGKILL after grace)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "202": { description: cancellation requested }
+  /runs/{id}/logs:
+    get:
+      summary: SSE stream of recipe stdout/stderr (history then live tail)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: text/event-stream
+          content:
+            text/event-stream: {}
+  /jobs:
+    get:
+      summary: Active and recent background jobs
+      responses:
+        "200": { description: ok }
+  /jobs/{id}:
+    get:
+      summary: Job snapshot
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: ok }
+        "404": { description: not found }
+  /jobs/{id}/logs:
+    get:
+      summary: SSE stream of job progress events
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: text/event-stream
+          content:
+            text/event-stream: {}
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    APIError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Stable machine-readable code (e.g. offline, not_found, already_running).
+        message: { type: string }
+        details: { type: object, additionalProperties: true }

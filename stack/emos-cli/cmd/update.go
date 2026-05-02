@@ -41,7 +41,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	cfg := config.LoadConfig()
-	if cfg == nil {
+	if !cfg.IsInstalled() {
 		ui.Error("No existing installation found.")
 		fmt.Println("  Please run 'emos install' first.")
 		return fmt.Errorf("no installation config")

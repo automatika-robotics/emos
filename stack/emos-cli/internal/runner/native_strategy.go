@@ -14,8 +14,10 @@ import (
 // NativeStrategy handles recipe execution directly on the host (no container).
 // EMOS packages are installed directly into /opt/ros/{distro}/, so only the
 // ROS setup.bash needs to be sourced.
+//
 type NativeStrategy struct {
 	rosDistro string
+	extraEnv  []string
 }
 
 func NewNativeStrategy() *NativeStrategy {
@@ -24,6 +26,11 @@ func NewNativeStrategy() *NativeStrategy {
 		distro = cfg.ROSDistro
 	}
 	return &NativeStrategy{rosDistro: distro}
+}
+
+// envFor stamps the strategy's accumulated env onto a freshly-built command.
+func (s *NativeStrategy) envFor(cmd *exec.Cmd) {
+	cmd.Env = append(os.Environ(), s.extraEnv...)
 }
 
 func (s *NativeStrategy) sourceCmd() string {
@@ -53,7 +60,7 @@ func (s *NativeStrategy) PrepareEnvironment() error {
 func (s *NativeStrategy) SetRMWImpl(rmw string) error {
 	ui.Header("RMW CONFIGURATION")
 	ui.Info("Setting RMW_IMPLEMENTATION=" + rmw)
-	os.Setenv("RMW_IMPLEMENTATION", rmw)
+	s.extraEnv = append(s.extraEnv, "RMW_IMPLEMENTATION="+rmw)
 	return nil
 }
 
@@ -62,7 +69,7 @@ func (s *NativeStrategy) ConfigureZenoh(recipeName string, manifest *recipeManif
 		configPath := filepath.Join(config.RecipesDir, manifest.ZenohRouterConfig)
 		if _, err := os.Stat(configPath); err == nil {
 			ui.Info("Using Zenoh router config: " + configPath)
-			os.Setenv("ZENOH_ROUTER_CONFIG_URI", configPath)
+			s.extraEnv = append(s.extraEnv, "ZENOH_ROUTER_CONFIG_URI="+configPath)
 		} else {
 			ui.Warn("Zenoh config file not found — using default")
 		}
@@ -70,6 +77,7 @@ func (s *NativeStrategy) ConfigureZenoh(recipeName string, manifest *recipeManif
 
 	ui.Spinner("Starting zenoh router...", func() error {
 		cmd := exec.Command("bash", "-c", s.sourceCmd()+" && ros2 run rmw_zenoh_cpp rmw_zenohd &")
+		s.envFor(cmd)
 		return cmd.Start()
 	})
 	time.Sleep(2 * time.Second)
@@ -87,6 +95,7 @@ func (s *NativeStrategy) LaunchRobotHardware() error {
 
 	return ui.Spinner("Launching robot base hardware...", func() error {
 		cmd := exec.Command("bash", "-c", s.sourceCmd()+" && ros2 launch "+bringup+" &")
+		s.envFor(cmd)
 		return cmd.Start()
 	})
 }
@@ -97,7 +106,9 @@ func (s *NativeStrategy) VerifySensorTopics(sensors []ExtractedTopic, distro str
 
 	src := s.sourceCmd()
 	checker := func() (string, error) {
-		out, err := exec.Command("bash", "-c", src+" && ros2 topic list").CombinedOutput()
+		cmd := exec.Command("bash", "-c", src+" && ros2 topic list")
+		s.envFor(cmd)
+		out, err := cmd.CombinedOutput()
 		return string(out), err
 	}
 	return verifySensorTopicsAST(sensors, checker, distro)
@@ -106,17 +117,31 @@ func (s *NativeStrategy) VerifySensorTopics(sensors []ExtractedTopic, distro str
 func (s *NativeStrategy) ExecRecipe(recipeName string, manifest *recipeManifest, logFile string) error {
 	ui.Header("LAUNCHING RECIPE: " + recipeName)
 	ui.Info("All output will be saved to: " + logFile)
-
 	ui.Success("BEGIN RECIPE OUTPUT")
 	fmt.Println()
 
 	recipePath := filepath.Join(config.RecipesDir, recipeName, "recipe.py")
-	shellCmd := fmt.Sprintf("%s && python3 %s 2>&1 | tee %s", s.sourceCmd(), recipePath, logFile)
+	shellCmd := fmt.Sprintf("%s && python3 -u %s 2>&1 | tee %s", s.sourceCmd(), recipePath, logFile)
 	cmd := exec.Command("bash", "-c", shellCmd)
+	s.envFor(cmd)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// StartRecipe launches the recipe non-blocking and writes output only to the
+// log file (no terminal binding). The returned handle is what the daemon
+// stores to track + cancel the run.
+func (s *NativeStrategy) StartRecipe(recipeName string, manifest *recipeManifest, logFile string) (*RunHandle, error) {
+	recipePath := filepath.Join(config.RecipesDir, recipeName, "recipe.py")
+	shellCmd := fmt.Sprintf("%s && exec python3 -u %s >> %s 2>&1", s.sourceCmd(), recipePath, logFile)
+	cmd := exec.Command("bash", "-c", shellCmd)
+	s.envFor(cmd)
+	if err := os.MkdirAll(parentDir(logFile), 0755); err != nil {
+		return nil, err
+	}
+	return startCmd(cmd, logFile)
 }
 
 func (s *NativeStrategy) Cleanup() error {

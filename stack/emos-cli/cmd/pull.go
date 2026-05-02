@@ -36,7 +36,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 	ui.Info("Installing recipe: " + name)
 
 	err := ui.Spinner("Downloading recipe...", func() error {
-		return api.DownloadRecipe(name, destDir)
+		return api.DownloadRecipe(cmd.Context(), name, destDir)
 	})
 	if err != nil {
 		return err

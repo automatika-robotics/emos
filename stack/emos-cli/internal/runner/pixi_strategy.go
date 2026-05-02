@@ -16,18 +16,21 @@ import (
 // setup.sh must be sourced before running ROS commands.
 type PixiStrategy struct {
 	projectDir string
+	extraEnv   []string
 }
 
 func NewPixiStrategy(projectDir string) *PixiStrategy {
 	return &PixiStrategy{projectDir: projectDir}
 }
 
-// pixiRun executes a command inside the pixi environment.
+// pixiRun executes a command inside the pixi environment, with the
+// strategy's per-run env additions stamped onto the resulting *exec.Cmd.
 func (s *PixiStrategy) pixiRun(shellCmd string) *exec.Cmd {
 	cmd := exec.Command("pixi", "run", "--manifest-path",
 		filepath.Join(s.projectDir, "pixi.toml"),
 		"bash", "-c", shellCmd)
 	cmd.Dir = s.projectDir
+	cmd.Env = append(os.Environ(), s.extraEnv...)
 	return cmd
 }
 
@@ -66,7 +69,7 @@ func (s *PixiStrategy) PrepareEnvironment() error {
 func (s *PixiStrategy) SetRMWImpl(rmw string) error {
 	ui.Header("RMW CONFIGURATION")
 	ui.Info("Setting RMW_IMPLEMENTATION=" + rmw)
-	os.Setenv("RMW_IMPLEMENTATION", rmw)
+	s.extraEnv = append(s.extraEnv, "RMW_IMPLEMENTATION="+rmw)
 	return nil
 }
 
@@ -75,7 +78,7 @@ func (s *PixiStrategy) ConfigureZenoh(recipeName string, manifest *recipeManifes
 		configPath := filepath.Join(config.RecipesDir, manifest.ZenohRouterConfig)
 		if _, err := os.Stat(configPath); err == nil {
 			ui.Info("Using Zenoh router config: " + configPath)
-			os.Setenv("ZENOH_ROUTER_CONFIG_URI", configPath)
+			s.extraEnv = append(s.extraEnv, "ZENOH_ROUTER_CONFIG_URI="+configPath)
 		} else {
 			ui.Warn("Zenoh config file not found — using default")
 		}
@@ -119,17 +122,28 @@ func (s *PixiStrategy) VerifySensorTopics(sensors []ExtractedTopic, distro strin
 func (s *PixiStrategy) ExecRecipe(recipeName string, manifest *recipeManifest, logFile string) error {
 	ui.Header("LAUNCHING RECIPE: " + recipeName)
 	ui.Info("All output will be saved to: " + logFile)
-
 	ui.Success("BEGIN RECIPE OUTPUT")
 	fmt.Println()
 
 	recipePath := filepath.Join(config.RecipesDir, recipeName, "recipe.py")
-	shellCmd := fmt.Sprintf("%s && python3 %s 2>&1 | tee %s", s.sourceCmd(), recipePath, logFile)
+	shellCmd := fmt.Sprintf("%s && python3 -u %s 2>&1 | tee %s", s.sourceCmd(), recipePath, logFile)
 	cmd := s.pixiRun(shellCmd)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// StartRecipe launches the recipe inside the pixi env non-blocking. Output is
+// redirected to the log file; the daemon tails it via SSE.
+func (s *PixiStrategy) StartRecipe(recipeName string, manifest *recipeManifest, logFile string) (*RunHandle, error) {
+	recipePath := filepath.Join(config.RecipesDir, recipeName, "recipe.py")
+	shellCmd := fmt.Sprintf("%s && exec python3 -u %s >> %s 2>&1", s.sourceCmd(), recipePath, logFile)
+	cmd := s.pixiRun(shellCmd)
+	if err := os.MkdirAll(parentDir(logFile), 0755); err != nil {
+		return nil, err
+	}
+	return startCmd(cmd, logFile)
 }
 
 func (s *PixiStrategy) Cleanup() error {

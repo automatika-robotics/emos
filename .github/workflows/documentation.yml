@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - "docs/**"
-      - "build_docs.sh"
+      - "Makefile"
+      - ".github/workflows/documentation.yml"
   pull_request:
     paths:
       - "docs/**"
-      - "build_docs.sh"
+      - "Makefile"
+      - ".github/workflows/documentation.yml"
   workflow_dispatch:
 
 permissions:
@@ -21,6 +23,12 @@ concurrency:
   group: "pages"
   cancel-in-progress: false
 
+# pip is told ahead of time that PEP 668's externally-managed marker on the
+# runner's system Python is fine to bypass; lets `make docs-deps` work without
+# bespoke flags.
+env:
+  PIP_BREAK_SYSTEM_PACKAGES: "1"
+
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -30,12 +38,17 @@ jobs:
           submodules: recursive
 
       - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: docs/requirements.txt
 
-      - name: Install dependencies
-        run: pip install --break-system-packages -r docs/requirements.txt
+      - name: Install documentation dependencies
+        run: make docs-deps
 
+        # TODO: switch to`make docs-strict`
       - name: Build documentation
-        run: bash build_docs.sh
+        run: make docs
 
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v5

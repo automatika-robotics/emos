@@ -6,11 +6,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/automatika-robotics/emos-cli/internal/api"
 	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/container"
 	"github.com/automatika-robotics/emos-cli/internal/installer"
+	"github.com/automatika-robotics/emos-cli/internal/server"
 	"github.com/automatika-robotics/emos-cli/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -167,6 +169,7 @@ func installOSSContainer() error {
 	ui.SuccessBox("EMOS installed successfully (container mode)!")
 	ui.Faint("Run 'emos pull <recipe>' to download a recipe, then 'emos run <recipe>' to execute it.")
 	ui.Faint("Ensure your sensor drivers are running externally (host or separate containers).")
+	offerDashboardAutoStart()
 	return nil
 }
 
@@ -236,6 +239,7 @@ func installNative() error {
 	ui.Faint("EMOS packages are now installed in /opt/ros/" + chosen.Distro + "/")
 	ui.Faint("You can run recipes directly: python3 ~/emos/recipes/<recipe>/recipe.py")
 	ui.Faint("Or use the CLI: emos pull <recipe> && emos run <recipe>")
+	offerDashboardAutoStart()
 	return nil
 }
 
@@ -305,15 +309,19 @@ func installLicensed(licenseKey string) error {
 		ui.Warn("Failed to save config: " + err.Error())
 	}
 
-	// Create systemd service
+	// Create systemd service for the EMOS container (auto-restart on boot).
 	if ui.Confirm("Create systemd service for auto-restart?") {
-		if err := createSystemdService(); err != nil {
+		unit := installer.ContainerUnit(config.ContainerName)
+		if err := unit.Install(true, true); err != nil {
 			ui.Warn("Failed to create systemd service: " + err.Error())
+		} else {
+			ui.Success("Systemd service created and started.")
 		}
 	}
 
 	fmt.Println()
 	ui.SuccessBox("EmbodiedOS installed successfully!")
+	offerDashboardAutoStart()
 	return nil
 }
 
@@ -370,35 +378,45 @@ func deployContainer(creds *api.Credentials) error {
 	})
 }
 
-func createSystemdService() error {
-	serviceContent := fmt.Sprintf(`[Unit]
-Description=EmbodiedOS Container
-After=docker.service
-Requires=docker.service
-[Service]
-Restart=always
-ExecStart=/usr/bin/docker start -a %s
-ExecStop=/usr/bin/docker stop -t 2 %s
-[Install]
-WantedBy=multi-user.target
-`, config.ContainerName, config.ContainerName)
-
-	servicePath := "/etc/systemd/system/" + config.ServiceName
-
-	// Write service file
-	cmd := exec.Command("sudo", "tee", servicePath)
-	cmd.Stdin = strings.NewReader(serviceContent)
-	if err := cmd.Run(); err != nil {
-		return err
+// offerDashboardAutoStart prompts the user to enable the dashboard at boot
+// Soft-fails on systems without systemd or on permission errors
+func offerDashboardAutoStart() {
+	bin := "/usr/local/bin/emos"
+	if _, err := os.Stat(bin); err != nil {
+		return
+	}
+	port := config.DashboardPort()
+	probe := installer.DashboardUnit(bin, "", port)
+	if !probe.IsSupported() {
+		return
+	}
+	fmt.Println()
+	if !ui.Confirm("Enable the EMOS dashboard at boot? (browser-based onboarding console)") {
+		return
 	}
 
-	// Reload and enable
-	exec.Command("sudo", "systemctl", "daemon-reload").Run()
-	exec.Command("sudo", "systemctl", "enable", config.ServiceName).Run()
-	exec.Command("sudo", "systemctl", "start", config.ServiceName).Run()
+	// Establish auth state up-front so the service inherits it.
+	auth, err := server.NewAuthForCLI()
+	if err != nil {
+		ui.Warn("Could not initialise dashboard auth state: " + err.Error())
+		return
+	}
+	freshCode := auth.FreshPairingCode() // empty if pairing was already configured
 
-	ui.Success("Systemd service created and started.")
-	return nil
+	user := os.Getenv("SUDO_USER")
+	if user == "" {
+		user = os.Getenv("USER")
+	}
+	unit := installer.DashboardUnit(bin, user, port)
+	if err := unit.Install(true, true); err != nil {
+		ui.Warn("Could not enable dashboard service: " + err.Error())
+		return
+	}
+
+	// Tiny grace period so `systemctl is-active` won't be racy if anyone
+	// checks immediately after this returns.
+	time.Sleep(400 * time.Millisecond)
+	PrintDashboardAccessSummary(fmt.Sprintf(":%d", port), "install", freshCode)
 }
 
 func capitalize(s string) string {

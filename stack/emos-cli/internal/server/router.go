@@ -4,6 +4,8 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -21,10 +23,10 @@ func (s *Server) buildRouter() http.Handler {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
 
-	// CORS, robots are typically accessed from a single LAN browser, but during
-	// development the SvelteKit dev server runs on a different port.
+	// Restrict to local-loopback, the device's mDNS name, and the
+	// shared `emos.local` shortcut.
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"*"},
+		AllowOriginFunc:  s.corsAllowOrigin,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Authorization", "Content-Type"},
 		ExposedHeaders:   []string{"Last-Event-ID"},
@@ -162,4 +164,33 @@ func (s *Server) requestLogger() func(http.Handler) http.Handler {
 			)
 		})
 	}
+}
+
+// corsAllowOrigin decides whether a CORS preflight should be honoured.
+// Returning false makes the chi cors middleware drop the request's
+// Access-Control-* response headers, which forces the browser to block
+// the cross-origin call.
+// Allowed at rest:
+//   - localhost / 127.0.0.1 / [::1] on any port (browser dev tools, mobile
+//     simulators bridged via SSH port-forward).
+//   - <device-name>.local — the per-device mDNS name resolved by Bonjour /
+//     Avahi.
+//   - emos.local — the shared shortcut.
+func (s *Server) corsAllowOrigin(_ *http.Request, origin string) bool {
+	if os.Getenv("EMOS_DEV") == "1" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	switch host {
+	case "localhost", "127.0.0.1", "::1", "emos.local":
+		return true
+	}
+	if name := s.opts.DeviceName; name != "" && host == name+".local" {
+		return true
+	}
+	return false
 }

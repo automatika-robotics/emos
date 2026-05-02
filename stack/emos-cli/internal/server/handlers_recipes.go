@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -52,8 +53,15 @@ func (s *Server) handleRecipesLocal(w http.ResponseWriter, r *http.Request) {
 }
 
 func readLocalRecipe(name string) LocalRecipe {
-	dir := filepath.Join(config.RecipesDir, name)
-	rec := LocalRecipe{Name: name, Path: dir}
+	rec := LocalRecipe{Name: name}
+	dir, err := safeRecipeDir(name)
+	if err != nil {
+		// A symlink under recipes/ pointed outside RecipesDir, or the
+		// name was rejected. Surface a name-only stub so the listing
+		// doesn't accidentally expose contents from the escape target.
+		return rec
+	}
+	rec.Path = dir
 	if _, err := os.Stat(filepath.Join(dir, "recipe.py")); err == nil {
 		rec.HasRecipePy = true
 	}
@@ -106,11 +114,11 @@ func (s *Server) handleRecipesRemote(w http.ResponseWriter, r *http.Request) {
 // handleRecipeDetail returns recipe metadata + extracted topics.
 func (s *Server) handleRecipeDetail(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	if !validRecipeName(name) {
+	dir, err := safeRecipeDir(name)
+	if err != nil {
 		writeErr(w, http.StatusBadRequest, codeBadRequest, "invalid recipe name")
 		return
 	}
-	dir := filepath.Join(config.RecipesDir, name)
 	if _, err := os.Stat(dir); err != nil {
 		writeErr(w, http.StatusNotFound, codeNotFound, "recipe not installed")
 		return
@@ -128,11 +136,11 @@ func (s *Server) handleRecipeDetail(w http.ResponseWriter, r *http.Request) {
 // handleRecipeDelete removes a recipe directory. No-op if it doesn't exist.
 func (s *Server) handleRecipeDelete(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	if !validRecipeName(name) {
+	dir, err := safeRecipeDir(name)
+	if err != nil {
 		writeErr(w, http.StatusBadRequest, codeBadRequest, "invalid recipe name")
 		return
 	}
-	dir := filepath.Join(config.RecipesDir, name)
 	if err := os.RemoveAll(dir); err != nil {
 		writeErr(w, http.StatusInternalServerError, codeInternal, err.Error())
 		return
@@ -182,6 +190,46 @@ func (s *Server) handleRecipePull(w http.ResponseWriter, r *http.Request) {
 		job.Update(JobStatusFinished, 1.0, "installed")
 	}()
 	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": id})
+}
+
+// safeRecipeDir resolves <RecipesDir>/<name> and ensures the result lies
+// within RecipesDir even after symlink resolution.
+// Returns the resolved absolute path, or an error if name fails
+// validation or the resolved path escapes RecipesDir.
+func safeRecipeDir(name string) (string, error) {
+	if !validRecipeName(name) {
+		return "", errors.New("invalid recipe name")
+	}
+	base, err := filepath.EvalSymlinks(config.RecipesDir)
+	if err != nil {
+		// Recipes dir doesn't exist yet (no recipes pulled). The
+		// lexical join is safe because validRecipeName has already
+		// rejected separators / dotdot.
+		return filepath.Join(config.RecipesDir, name), nil
+	}
+	joined := filepath.Join(base, name)
+	resolved, err := filepath.EvalSymlinks(joined)
+	if err != nil {
+		// Recipe dir doesn't exist (yet). The lexical join is rooted
+		// at a real, resolved RecipesDir; validRecipeName guarantees
+		// `name` can't traverse out.
+		return joined, nil
+	}
+	if !pathHasPrefix(resolved, base) {
+		return "", errors.New("recipe path escapes recipes dir")
+	}
+	return resolved, nil
+}
+
+// pathHasPrefix reports whether `p` is `prefix` or lies within it.
+// Compares with a trailing separator so `/x/foo` doesn't accidentally
+// match `/x/fo` as a prefix.
+func pathHasPrefix(p, prefix string) bool {
+	if p == prefix {
+		return true
+	}
+	sep := string(filepath.Separator)
+	return strings.HasPrefix(p, strings.TrimSuffix(prefix, sep)+sep)
 }
 
 // validRecipeName guards against path traversal and weird names; matches

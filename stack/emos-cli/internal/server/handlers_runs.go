@@ -44,7 +44,8 @@ func (s *Server) handleRunsStart(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, codeBadRequest, err.Error())
 		return
 	}
-	if !validRecipeName(body.Recipe) {
+	recipeDir, err := safeRecipeDir(body.Recipe)
+	if err != nil {
 		writeErr(w, http.StatusBadRequest, codeBadRequest, "invalid recipe name")
 		return
 	}
@@ -61,7 +62,6 @@ func (s *Server) handleRunsStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	recipeDir := filepath.Join(config.RecipesDir, body.Recipe)
 	if _, err := os.Stat(filepath.Join(recipeDir, "recipe.py")); err != nil {
 		writeErr(w, http.StatusNotFound, codeNotFound, "recipe not installed")
 		return

@@ -64,10 +64,33 @@ func resolveBindAddr() string {
 	return fmt.Sprintf(":%d", config.DashboardPort())
 }
 
+// bindIsLoopback reports whether `addr` binds only the loopback. Used by
+// the --no-auth gate.
+// Only `127.0.0.1`, `[::1]`, and `localhost` qualify.
+func bindIsLoopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	switch host {
+	case "127.0.0.1", "::1", "localhost":
+		return true
+	}
+	return false
+}
+
 func runServe(cmd *cobra.Command, args []string) {
 	ui.Banner(config.Version)
 
 	addr := resolveBindAddr()
+
+	// `--no-auth` is intended for local development only. We refuse non
+	// loopback binding.
+	if serveDisableAuth && !bindIsLoopback(addr) {
+		ui.Error("--no-auth refuses to bind a non-loopback address (got " + addr + ").")
+		ui.Faint("This flag is for local development only. To use it, also pass --addr 127.0.0.1:8765 (or [::1]:8765).")
+		os.Exit(1)
+	}
 
 	if serveQRCodeOnly {
 		scheme := "http"

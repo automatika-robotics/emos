@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"strings"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
@@ -20,9 +21,13 @@ type SystemdUnit struct {
 	Wants       []string
 	ExecStart   string
 	ExecStop    string
-	Restart     string // "always", "on-failure", ""
-	User        string // "" → run as root
+	Restart     string   // "always", "on-failure", ""
+	User        string   // "" → run as root
 	Environment []string
+	// Hardening is a list of `Key=Value` directives emitted verbatim in
+	// the [Service] section before ExecStart. Used for sandboxing knobs
+	// like NoNewPrivileges, ProtectSystem, PrivateTmp, ReadWritePaths.
+	Hardening []string
 }
 
 // Render returns the .service file body.
@@ -48,6 +53,9 @@ func (u SystemdUnit) Render() string {
 	}
 	for _, e := range u.Environment {
 		b.WriteString("Environment=" + e + "\n")
+	}
+	for _, h := range u.Hardening {
+		b.WriteString(h + "\n")
 	}
 	b.WriteString("ExecStart=" + u.ExecStart + "\n")
 	if u.ExecStop != "" {
@@ -123,9 +131,32 @@ func IsActive(unitName string) bool {
 // is computed at install time so the unit follows the binary the user is
 // actually running (`/usr/local/bin/emos` if installed via the script,
 // or whatever os.Executable resolves to in dev).
-func DashboardUnit(binaryPath, user string, port int) SystemdUnit {
+//
+// Hardening covers sandboxing knobs that are cheap for a long-running
+// networked daemon:
+//   - NoNewPrivileges: child processes (recipe subprocesses, `docker
+//     exec`, `pixi run`, plain Python) can't acquire privileges via
+//     setuid binaries.
+//   - ProtectSystem=strict: /usr, /boot, /etc, /sys, /srv become
+//     read-only.
+//   - PrivateTmp: a private /tmp namespace per service. Stops a
+//     compromised recipe from leaking artefacts into a shared /tmp.
+//   - ReadWritePaths: the directories the daemon (and the recipes it
+//     spawns) actually need to write to.
+func DashboardUnit(binaryPath, runAsUser string, port int) SystemdUnit {
 	if port == 0 {
 		port = config.DefaultDashboardPort
+	}
+	home := userHomeDir(runAsUser)
+	hardening := []string{
+		"NoNewPrivileges=true",
+		"ProtectSystem=strict",
+		"PrivateTmp=true",
+	}
+	if home != "" {
+		hardening = append(hardening,
+			fmt.Sprintf("ReadWritePaths=%s/emos %s/.config/emos", home, home),
+		)
 	}
 	return SystemdUnit{
 		Name:        config.DashboardServiceName,
@@ -134,12 +165,31 @@ func DashboardUnit(binaryPath, user string, port int) SystemdUnit {
 		Wants:       []string{"network-online.target"},
 		ExecStart:   fmt.Sprintf("%s serve --addr :%d", binaryPath, port),
 		Restart:     "on-failure",
-		User:        user,
+		User:        runAsUser,
+		Hardening:   hardening,
 	}
 }
 
+// userHomeDir resolves a username's home directory. Falls back to $HOME
+// when running unprivileged on the calling user, then "" when nothing
+// works (caller treats empty as "skip ReadWritePaths" rather than
+// shipping a wrong path).
+func userHomeDir(username string) string {
+	if username != "" {
+		if u, err := user.Lookup(username); err == nil {
+			return u.HomeDir
+		}
+	}
+	if h := os.Getenv("HOME"); h != "" {
+		return h
+	}
+	return ""
+}
+
 // ContainerUnit auto-restarts the EMOS Docker container at boot. Used by
-// the licensed install flow.
+// the licensed install flow. No ReadWritePaths because the unit only shells
+// `docker` (which talks to /var/run/docker.sock, outside ProtectSystem's
+// reach), and the container itself has its own mounts.
 func ContainerUnit(containerName string) SystemdUnit {
 	return SystemdUnit{
 		Name:        config.ServiceName,
@@ -149,5 +199,10 @@ func ContainerUnit(containerName string) SystemdUnit {
 		ExecStart:   "/usr/bin/docker start -a " + containerName,
 		ExecStop:    "/usr/bin/docker stop -t 2 " + containerName,
 		Restart:     "always",
+		Hardening: []string{
+			"NoNewPrivileges=true",
+			"ProtectSystem=strict",
+			"PrivateTmp=true",
+		},
 	}
 }

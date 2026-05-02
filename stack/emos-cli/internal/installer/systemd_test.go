@@ -70,6 +70,46 @@ func TestDashboardUnitExplicitPort(t *testing.T) {
 	}
 }
 
+func TestDashboardUnitHardening(t *testing.T) {
+	// Sandboxing knobs need to actually render in the unit file. Each one
+	// is a one-liner systemd will reject silently if misspelled, so the
+	// test guards against typos as much as accidental removal.
+	u := DashboardUnit("/usr/local/bin/emos", "alice", 8765)
+	body := u.Render()
+
+	wantInService := []string{
+		"NoNewPrivileges=true",
+		"ProtectSystem=strict",
+		"PrivateTmp=true",
+	}
+	for _, w := range wantInService {
+		if !strings.Contains(body, w) {
+			t.Errorf("Render output missing %q\n--- got ---\n%s", w, body)
+		}
+	}
+
+	// ReadWritePaths is conditional on resolving alice's home dir; on a
+	// CI runner alice doesn't exist, so we only assert the directive
+	// appears when the hardening slice contains it.
+	for _, h := range u.Hardening {
+		if strings.HasPrefix(h, "ReadWritePaths=") {
+			if !strings.Contains(h, "/emos") || !strings.Contains(h, "/.config/emos") {
+				t.Fatalf("ReadWritePaths = %q, want both ~/emos and ~/.config/emos", h)
+			}
+		}
+	}
+}
+
+func TestContainerUnitHardening(t *testing.T) {
+	u := ContainerUnit("emos")
+	body := u.Render()
+	for _, w := range []string{"NoNewPrivileges=true", "ProtectSystem=strict", "PrivateTmp=true"} {
+		if !strings.Contains(body, w) {
+			t.Errorf("Render output missing %q\n--- got ---\n%s", w, body)
+		}
+	}
+}
+
 func TestContainerUnit(t *testing.T) {
 	u := ContainerUnit("emos")
 	if u.Name != config.ServiceName {

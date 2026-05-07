@@ -2,7 +2,7 @@
 
 The **Dynamic Web UI** brings an entirely new level of **system visibility**, **control**, and **ease of use** to EMOS recipes. Built with [**FastHTML**](https://www.fastht.ml/) and [**MonsterUI**](https://monsterui.answer.ai/), it **automatically generates a responsive, extensible web interface** for any EMOS recipe -- eliminating the need for manual front-end work.
 
-With zero configuration, your ROS 2 system instantly becomes a **fully monitorable and configurable web application**, complete with real-time data streaming and visual feedback.
+With zero configuration, your EMOS recipe instantly that has spawned a ROS2 based system, becomes a **fully monitorable and configurable application**, complete with real-time data streaming and visual feedback.
 
 ---
 
@@ -48,6 +48,15 @@ You can view, control, and debug every part of your ROS 2 application directly f
   </picture>
   </p>
 
+- {material-regular}`hub;1.2em;sd-text-primary` **System Graph** --
+  A draggable, resizable node-graph view of the whole running recipe: components are nodes, topics are typed edges, and **events** and **actions** are first-class graph elements with their own detail cards. Click any element to inspect it. See the [Visualizing the System Graph](../recipes/events-and-resilience/visualizing-system-graph.md) recipe for a hands-on tour.
+
+  <p align="center">
+  <picture align="center">
+    <img alt="System Graph view in the Web UI" src="https://automatikarobotics.com/docs/system_vis_ui.gif" width="90%">
+  </picture>
+  </p>
+
 - {material-regular}`build;1.2em;sd-text-primary` **Extensible Design** --
   Developers can extend the UI to support **custom message types**, **interactive widgets**, or **bespoke visualizations**.
 
@@ -59,7 +68,7 @@ The following example shows how to enable the Dynamic Web UI to automatically ge
 
 In the example below, we show how to enable the UI directly within a recipe to send and receive text messages, visualize detections, or stream live camera images from your robot -- all without writing a single line of front-end code.
 
-For a complete, real-world example, see how a similar UI is used in the VLM agent recipe from [**EmbodiedAgents**](https://automatika-robotics.github.io/embodied-agents/).
+For a complete, real-world example, see how a similar UI is used in the [VLM agent recipe](../getting-started/quickstart.md).
 
 ### Step 1 -- Define Your Topics
 

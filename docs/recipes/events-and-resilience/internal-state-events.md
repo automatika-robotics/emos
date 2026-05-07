@@ -11,7 +11,7 @@ Sometimes that's not enough. The thing you want to react to is **internal state*
 For these cases, EMOS supports **callable-based events**: an `Event` constructed from any Python callable that returns `bool`, polled at a configurable rate. The callable holds whatever state it needs — a closure variable, a class attribute, a global counter — and the Monitor polls it at `check_rate` Hz. When it returns `True`, registered Actions fire just like for any other event.
 
 ```{seealso}
-For the conceptual reference, see [Events & Actions → Events from Internal State](../../concepts/events-and-actions.md#events-from-internal-state). For visualising live events in the Web UI, see [Visualizing Events](visualizing-events.md).
+For the conceptual reference, see [Events & Actions](../../concepts/events-and-actions.md). For inspecting live events in the Web UI, see [Visualizing the System Graph](visualizing-system-graph.md).
 ```
 
 ---
@@ -146,4 +146,4 @@ Use a topic-based event when the condition genuinely is *"some message arrived"*
 
 ## Visualisation
 
-Callable-based events show up on the [System Graph](../../concepts/web-ui.md) too: the source component (or the recipe-level dispatcher) is the upstream node, and the registered Actions are the downstream nodes. The detail card lists `check_rate` and the current trigger count, so you can confirm at runtime that the predicate is actually flipping when you expect it to. See [Visualizing Events](visualizing-events.md) for the tour.
+Callable-based events show up on the [System Graph](../../concepts/web-ui.md) too: the source component (or the recipe-level dispatcher) is the upstream node, and the registered Actions are the downstream nodes. The detail card lists `check_rate` and the current trigger count, so you can confirm at runtime that the predicate is actually flipping when you expect it to. See [Visualizing the System Graph](visualizing-system-graph.md) for the tour.

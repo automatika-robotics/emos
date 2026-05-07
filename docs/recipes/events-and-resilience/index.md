@@ -28,6 +28,20 @@ Swap models, switch algorithms, and restart hardware -- the same API for both la
 Run a lightweight detector continuously, wake the heavy VLM only when needed.
 :::
 
+:::{grid-item-card} {material-regular}`account_tree;1.2em;sd-text-primary` Visualizing the System Graph
+:link: visualizing-system-graph
+:link-type: doc
+
+Tour the System Graph view in the Web UI -- components, topics, events, and actions of the whole running recipe.
+:::
+
+:::{grid-item-card} {material-regular}`change_history;1.2em;sd-text-primary` Internal-State Events
+:link: internal-state-events
+:link-type: doc
+
+Build events from any Python callable returning bool, calculated compound signals or hardware monitors, polled at a configurable rate.
+:::
+
 :::{grid-item-card} {material-regular}`sensors;1.2em;sd-text-primary` External Reflexes
 :link: external-reflexes
 :link-type: doc

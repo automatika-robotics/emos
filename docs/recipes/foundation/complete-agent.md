@@ -5,7 +5,7 @@ This is the capstone recipe. Everything we have built in the previous tutorials 
 This is what EMOS is designed for. Instead of stitching together dozens of ROS nodes, launch files, and custom middleware, you define a complete agentic workflow as a graph of [Components](../../intelligence/ai-components.md) connected through [Topics](../../concepts/topics.md), and bring it up with a single call. The result is a robot that can listen, see, think, remember, navigate, and speak -- all orchestrated by EMOS.
 
 ```{seealso}
-For the multiprocessing-and-fault-tolerant variant of this recipe, see [Multiprocessing & Fault Tolerance](../events-and-resilience/multiprocessing.md). For the agentic-harness variant where a single [Cortex](../../intelligence/cortex.md) component takes charge of an entire graph like this, see [Memory and Cortex](../planning-and-manipulation/cortex-memory.md) and [Embodied Reasoning with Cortex](../planning-and-manipulation/cortex-navigation.md).
+For the multiprocessing-and-fault-tolerant variant of this recipe, see [Multiprocessing & Fault Tolerance](../events-and-resilience/multiprocessing.md). For the agentic-harness variant where a single [Cortex](../../intelligence/cortex.md) component takes charge of an entire graph like this, see [Memory and Cortex](../planning-and-manipulation/cortex-memory.md) and [Cortex Driving the Full Stack](../planning-and-manipulation/cortex-navigation.md).
 ```
 
 ```{admonition} Prerequisites

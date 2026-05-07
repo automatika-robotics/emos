@@ -278,4 +278,4 @@ launcher.bringup()
 
 - {doc}`Tool Calling <tool-calling>` — generalises this pattern. Instead of registering Memory's pre-defined tools, write your own Python function as a custom tool and register it with `goto.register_tool(...)`.
 - {doc}`Complete Agent <complete-agent>` — drops this Go-to-X pattern into a full multi-modal agent (speech I/O + vision + memory + Q&A + routing) defined in one Python script.
-- {doc}`Embodied Reasoning with Cortex <../planning-and-manipulation/cortex-navigation>` — the agentic-harness version: drop a [Cortex](../../intelligence/cortex.md) component on top of Memory and the navigation stack and the robot handles compound natural-language goals like *"go to the kitchen and tell me what's on the counter"* with no orchestration code from you.
+- {doc}`Cortex Driving the Full Stack <../planning-and-manipulation/cortex-navigation>` — the agentic-harness version: drop a [Cortex](../../intelligence/cortex.md) component on top of Memory and the navigation stack and the robot handles compound natural-language goals like *"go to the kitchen and tell me what's on the counter"* with no orchestration code from you.

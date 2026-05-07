@@ -2,7 +2,7 @@
 
 **All robots can fail, but smart robots recover.**
 
-EMOS components are **Self-Aware** and **Self-Healing** by design. The Health Status system allows every component to explicitly declare its operational state --- not just "Alive" or "Dead," but *how* it is functioning. When failures are detected, the Fallback system automatically triggers pre-configured recovery strategies, keeping the robot operational without human intervention.
+EMOS components are **Self-Aware** and **Self-Healing** by design. The Health Status system allows every component to explicitly declare its operational state --- not just "Alive" or "Dead," but _how_ it is functioning. When failures are detected, the Fallback system automatically triggers pre-configured recovery strategies, keeping the robot operational without human intervention.
 
 ---
 
@@ -11,10 +11,10 @@ EMOS components are **Self-Aware** and **Self-Healing** by design. The Health St
 The **Health Status** is the heartbeat of an EMOS component. Unlike standard ROS2 nodes, EMOS components differentiate between a math error (Algorithm Failure), a hardware crash (Component Failure), or a missing input (System Failure).
 
 These reports are broadcast back to the system to trigger:
-* {material-regular}`notifications;1.2em;sd-text-warning` **Alerts:** Notify the operator of specific issues.
-* {material-regular}`flash_on;1.2em;sd-text-primary` **Reflexes:** Trigger [Events](events-and-actions.md) to handle the situation.
-* {material-regular}`healing;1.2em;sd-text-success` **Self-Healing:** Execute automatic [Fallbacks](#fallback-strategies) to recover the node.
 
+- {material-regular}`notifications;1.2em;sd-text-warning` **Alerts:** Notify the operator of specific issues.
+- {material-regular}`flash_on;1.2em;sd-text-primary` **Reflexes:** Trigger [Events](events-and-actions.md) to handle the situation.
+- {material-regular}`healing;1.2em;sd-text-success` **Self-Healing:** Execute automatic [Fallbacks](#fallback-strategies) to recover the node.
 
 ### Status Hierarchy
 
@@ -27,18 +27,17 @@ EMOS defines distinct failure levels to help you pinpoint the root cause of an i
 - <span class="sd-text-warning" style="font-weight: bold; font-size: 1.1em;">{material-regular}`warning;1.5em;sd-text-warning` ALGORITHM_FAILURE</span>
   **"I ran, but I couldn't solve it."**
   The node is healthy, but the logic failed.
-  *Examples:* Path planner couldn't find a path; Object detector found nothing; Optimization solver did not converge.
+  _Examples:_ Path planner couldn't find a path; Object detector found nothing; Optimization solver did not converge.
 
 - <span class="sd-text-danger" style="font-weight: bold; font-size: 1.1em;">{material-regular}`error;1.5em;sd-text-danger` COMPONENT_FAILURE</span>
   **"I am broken."**
   An internal crash or hardware issue occurred within this specific node.
-  *Examples:* Memory leak; Exception raised in a callback; Division by zero.
+  _Examples:_ Memory leak; Exception raised in a callback; Division by zero.
 
 - <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`link_off;1.5em;sd-text-primary` SYSTEM_FAILURE</span>
   **"I am fine, but my inputs are broken."**
   The failure is caused by an external dependency.
-  *Examples:* Input topic is empty or stale; Network is down; Disk is full.
-
+  _Examples:_ Input topic is empty or stale; Network is down; Disk is full.
 
 ### Reporting Status
 
@@ -54,7 +53,7 @@ self.health_status.set_healthy()
 
 #### Declaring Failures
 
-When things go wrong, be specific. This helps the Fallback system decide whether to *Retry* (Algorithm), *Restart* (Component), or *Wait* (System).
+When things go wrong, be specific. This helps the Fallback system decide whether to _Retry_ (Algorithm), _Restart_ (Component), or _Wait_ (System).
 
 **Algorithm Failure:**
 
@@ -80,7 +79,6 @@ self.health_status.set_fail_component(component_names=["Camera_Driver_API"])
 self.health_status.set_fail_system(topic_names=["/camera/rgb", "/odom"])
 ```
 
-
 ### Automatic Broadcasting
 
 You do not need to manually publish the status message.
@@ -88,10 +86,9 @@ You do not need to manually publish the status message.
 EMOS automatically broadcasts the status at the start of every execution step. This ensures a consistent "Heartbeat" frequency, even if your algorithm blocks or hangs (up to the threading limits).
 
 :::{tip}
-If you need to trigger an immediate alert from a deeply nested callback or a separate thread, you *can* force a publish:
+If you need to trigger an immediate alert from a deeply nested callback or a separate thread, you _can_ force a publish:
 `self.health_status_publisher.publish(self.health_status())`
 :::
-
 
 ### Implementation Pattern
 
@@ -132,9 +129,10 @@ def _execution_step(self):
 Fallbacks are the **Self-Healing Mechanism** of an EMOS component. They define the specific set of [Actions](events-and-actions.md#actions) to execute automatically when a failure is detected in the component's Health Status.
 
 Instead of crashing or freezing when an error occurs, a Component can be configured to attempt intelligent recovery strategies:
-* {material-regular}`swap_horiz;1.2em;sd-text-warning` *Algorithm stuck?* $\rightarrow$ **Switch** to a simpler backup.
-* {material-regular}`restart_alt;1.2em;sd-text-danger` *Driver disconnected?* $\rightarrow$ **Re-initialize** the hardware.
-* {material-regular}`autorenew;1.2em;sd-text-primary` *Sensor timeout?* $\rightarrow$ **Restart** the node.
+
+- {material-regular}`swap_horiz;1.2em;sd-text-warning` _Algorithm stuck?_ $\rightarrow$ **Switch** to a simpler backup.
+- {material-regular}`restart_alt;1.2em;sd-text-danger` _Driver disconnected?_ $\rightarrow$ **Re-initialize** the hardware.
+- {material-regular}`autorenew;1.2em;sd-text-primary` _Sensor timeout?_ $\rightarrow$ **Restart** the node.
 
 ```{figure} /_static/images/diagrams/fallbacks_dark.png
 :class: dark-only
@@ -150,7 +148,6 @@ Instead of crashing or freezing when an error occurs, a Component can be configu
 The Self-Healing Loop
 ```
 
-
 ### The Recovery Hierarchy
 
 When a component reports a failure, EMOS doesn't just panic. It checks for a registered fallback strategy in a specific order of priority.
@@ -160,24 +157,22 @@ This allows you to define granular responses for different types of errors.
 - <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`link_off;1.5em;sd-text-primary` 1. System Failure</span> `on_system_fail`
   **The Context is Broken.**
   External failures like missing input topics or disk full.
-  *Example Strategy:* Wait for data, or restart the data pipeline.
+  _Example Strategy:_ Wait for data, or restart the data pipeline.
 
 - <span class="sd-text-danger" style="font-weight: bold; font-size: 1.1em;">{material-regular}`error;1.5em;sd-text-danger` 2. Component Failure</span> `on_component_fail`
   **The Node is Broken.**
   Internal crashes or hardware disconnects.
-  *Example Strategy:* Restart the component lifecycle or re-initialize drivers.
+  _Example Strategy:_ Restart the component lifecycle or re-initialize drivers.
 
 - <span class="sd-text-warning" style="font-weight: bold; font-size: 1.1em;">{material-regular}`warning;1.5em;sd-text-warning` 3. Algorithm Failure</span> `on_algorithm_fail`
   **The Logic is Broken.**
   The code ran but couldn't solve the problem (e.g., path not found).
-  *Example Strategy:* Reconfigure parameters (looser tolerance) or switch algorithms.
+  _Example Strategy:_ Reconfigure parameters (looser tolerance) or switch algorithms.
 
 - <span class="sd-text-secondary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`help_center;1.5em;sd-text-secondary` 4. Catch-All</span> `on_fail`
   **Generic Safety Net.**
   If no specific handler is found above, this fallback is executed.
-  *Example Strategy:* Log an error or stop the robot.
-
-
+  _Example Strategy:_ Log an error or stop the robot.
 
 ### Recovery Strategies
 
@@ -185,7 +180,7 @@ A Fallback isn't just a single function call. It is a robust policy defined by *
 
 #### The Persistent Retry (Single Action)
 
-*Try, try again.*
+_Try, try again._
 The system executes the action repeatedly until it returns `True` (success) or `max_retries` is reached.
 
 ```python
@@ -195,7 +190,7 @@ driver.on_component_fail(fallback=restart(component=driver), max_retries=3)
 
 #### The Escalation Ladder (List of Actions)
 
-*If at first you don't succeed, try something stronger.*
+_If at first you don't succeed, try something stronger._
 You can define a sequence of actions. If the first one fails (after its retries), the system moves to the next one.
 
 1. **Clear Costmaps** (Low cost, fast)
@@ -217,7 +212,6 @@ planner.on_algorithm_fail(
 #### The "Give Up" State
 
 If all strategies fail (all retries of all actions exhausted), the component enters the **Give Up** state and executes the `on_giveup` action. This is the "End of Line", usually used to park the robot safely or alert a human.
-
 
 ### How to Implement Fallbacks
 
@@ -279,4 +273,27 @@ class MyDriver(BaseComponent):
         if self.hw.connect():
             return True # Recovery Succeeded!
         return False    # Recovery Failed, will retry...
+```
+
+---
+
+## Process-Level Recovery
+
+The Health-Status / Fallback system above operates **inside a running component**. If a component goes further than that and the _entire process_ crashes -- a segfault in a native dependency, a Python `os._exit`, an OOM kill -- there is nothing left running to dispatch a fallback. EMOS adds a layer underneath for exactly this case.
+
+### Respawning crashed processes -- `Launcher.on_process_fail`
+
+`Launcher.on_process_fail()` enables process-level respawning for every component the launcher started in multiprocessing mode. If a component process exits with a non-zero status outside of normal shutdown, the launcher relaunches it.
+
+```python
+launcher = Launcher()
+launcher.add_pkg(components=[...], multiprocessing=True, package_name="...")
+launcher.on_process_fail(max_retries=3)   # respawn up to 3 times per component
+launcher.bringup()
+```
+
+User-initiated shutdowns (Ctrl-C, SIGTERM) do not count as failures, so this won't fight you when you stop the recipe yourself.
+
+```{tip}
+Pair `on_process_fail` with `executor_spin_timeout` (see [Launcher](launcher.md)) when running latency-sensitive callbacks -- the latter prevents a slow callback from looking like a stalled process and tripping the respawn unnecessarily.
 ```

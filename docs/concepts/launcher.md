@@ -99,7 +99,26 @@ Define "Catch-All" policies for the entire system.
 launcher.on_component_fail(action_name="restart")
 ```
 
-### 4. Events Orchestration
+For the further case where an entire **process** crashes (segfault, OOM, native exception) and there is nothing left in-process to dispatch a Fallback, the launcher provides `Launcher.on_process_fail()`. The launcher relaunches any component process that exits with a non-zero status outside of normal shutdown:
+
+```python
+launcher.on_process_fail(max_retries=3)   # respawn up to 3 times per component
+```
+
+See [Process-Level Recovery](status-and-fallbacks.md#process-level-recovery) for the full picture.
+
+### 4. Executor Spin Timeout
+
+```python
+launcher = Launcher(
+    multi_processing=True,
+    executor_spin_timeout=0.05,   # seconds
+)
+```
+
+Each component runs a ROS2 executor that spins its callbacks. The executor blocks for at most this many seconds per spin call regardless of how fast the component's main loop is running. Lower values reduce callback latency at the cost of CPU; the default works for most recipes. Tune this when running latency-sensitive callbacks alongside `on_process_fail` to avoid mistaking a slow callback for a stalled process.
+
+### 5. Events Orchestration
 
 Pass your events/actions dictionary **once** to the `Launcher` and it will handle delegating the event monitoring to the concerned component.
 

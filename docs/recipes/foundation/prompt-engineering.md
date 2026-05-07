@@ -1,9 +1,9 @@
 # Prompt Engineering
 
-In this recipe we will use the output of an object detection component to enrich the prompt of a VLM (MLLM) component. Let us start by importing the components.
+In this recipe we will use the output of an object detection component to enrich the prompt of a VLM component. Let us start by importing the components.
 
 ```python
-from agents.components import Vision, MLLM
+from agents.components import Vision, VLM
 ```
 
 ## Setting up the Object Detection Component
@@ -19,14 +19,14 @@ image0 = Topic(name="image_raw", msg_type="Image")
 detections_topic = Topic(name="detections", msg_type="Detections")
 ```
 
-Additionally the component requires a model client with an object detection model. We will use the RESP client for RoboML and use the VisionModel, a convenient model class made available in EMOS for initializing all vision models available in the opensource [mmdetection](https://github.com/open-mmlab/mmdetection) library. We will specify the model we want to use by specifying the checkpoint attribute.
+Additionally the component requires a model client with an object detection model. We will use the RESP client for RoboML and the `VisionModel` wrapper, which initialises any [HuggingFace Transformers object detection model](https://huggingface.co/models?pipeline_tag=object-detection) (RT-DETR, DETR, Grounding DINO, YOLOS, ...) by checkpoint name. We pick the RT-DETR checkpoint pretrained on COCO + Objects365.
 
 ```{note}
-Learn about setting up RoboML with vision [here](https://github.com/automatika-robotics/roboml/blob/main/README.md#for-vision-models-support).
+Learn about setting up RoboML with vision [here](https://github.com/automatika-robotics/roboml/blob/main/README.md#vision-model-support).
 ```
 
 ```{seealso}
-Checkout all available mmdetection models and their benchmarking results in the [mmdetection model zoo](https://github.com/open-mmlab/mmdetection?tab=readme-ov-file#overview-of-benchmark-and-model-zoo).
+Browse all supported detection models on the [HuggingFace object-detection page](https://huggingface.co/models?pipeline_tag=object-detection).
 ```
 
 ```python
@@ -36,7 +36,7 @@ from agents.config import VisionConfig
 
 # Add an object detection model
 object_detection = VisionModel(name="object_detection",
-                               checkpoint="dino-4scale_r50_8xb2-12e_coco")
+                               checkpoint="PekingU/rtdetr_r50vd_coco_o365")
 roboml_detection = RoboMLRESPClient(object_detection)
 
 # Initialize the Vision component
@@ -55,14 +55,14 @@ vision = Vision(
 Notice that we passed in an optional config to the component. Component configs can be used to setup various parameters in the component. If the component calls an ML model then inference parameters for the model can be set in the component config.
 ```
 
-## Setting up the MLLM Component
+## Setting up the VLM Component
 
-For the MLLM component, we will provide an additional text input topic, which will listen to our queries. The output of the component will be another text topic. We will use the RoboML HTTP client with the multimodal LLM Idefics2 by the good folks at HuggingFace for this example.
+For the VLM component, we will provide an additional text input topic, which will listen to our queries. The output of the component will be another text topic. We will use the RoboML HTTP client with the multimodal LLM Idefics2 by the good folks at HuggingFace for this example.
 
 ```python
 from agents.models import TransformersMLLM
 
-# Define MLLM input and output text topics
+# Define VLM input and output text topics
 text_query = Topic(name="text0", msg_type="String")
 text_answer = Topic(name="text1", msg_type="String")
 
@@ -70,10 +70,10 @@ text_answer = Topic(name="text1", msg_type="String")
 idefics = TransformersMLLM(name="idefics_model", checkpoint="HuggingFaceM4/idefics2-8b")
 idefics_client = RoboMLHTTPClient(idefics)
 
-# Define an MLLM component
+# Define a VLM component
 # We can pass in the detections topic which we defined previously directly as an optional input
-# to the MLLM component in addition to its other required inputs
-mllm = MLLM(
+# to the VLM component in addition to its other required inputs
+mllm = VLM(
     inputs=[text_query, image0, detections_topic],
     outputs=[text_answer],
     model_client=idefics_client,
@@ -116,7 +116,7 @@ And there we have it. Complete code of this example is provided below.
 ```{code-block} python
 :caption: Prompt Engineering with Object Detection
 :linenos:
-from agents.components import Vision, MLLM
+from agents.components import Vision, VLM
 from agents.models import VisionModel, TransformersMLLM
 from agents.clients import RoboMLRESPClient, RoboMLHTTPClient
 from agents.ros import Topic, Launcher
@@ -126,7 +126,7 @@ image0 = Topic(name="image_raw", msg_type="Image")
 detections_topic = Topic(name="detections", msg_type="Detections")
 
 object_detection = VisionModel(
-    name="object_detection", checkpoint="dino-4scale_r50_8xb2-12e_coco"
+    name="object_detection", checkpoint="PekingU/rtdetr_r50vd_coco_o365"
 )
 roboml_detection = RoboMLRESPClient(object_detection)
 
@@ -146,7 +146,7 @@ text_answer = Topic(name="text1", msg_type="String")
 idefics = TransformersMLLM(name="idefics_model", checkpoint="HuggingFaceM4/idefics2-8b")
 idefics_client = RoboMLHTTPClient(idefics)
 
-mllm = MLLM(
+mllm = VLM(
     inputs=[text_query, image0, detections_topic],
     outputs=[text_answer],
     model_client=idefics_client,

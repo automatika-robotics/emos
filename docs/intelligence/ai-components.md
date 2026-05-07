@@ -2,6 +2,8 @@
 
 A **Component** is the primary execution unit in EmbodiedAgents, the EMOS intelligence framework. Components represent functional behaviors -- for example, the ability to process text, understand images, or synthesize speech. Components can be combined arbitrarily to create more complex systems such as multi-modal agents with perception-action loops.
 
+Most EmbodiedAgents components are **capabilities** -- a single thing the robot can do. LLM, VLM, VLA, Vision, SpeechToText, TextToSpeech, SemanticRouter, VideoMessageMaker each wrap a particular modality or model surface; [Memory](memory.md) is a capability too, giving the robot a graph-backed spatio-temporal record of what it has seen and felt. [Cortex](cortex.md) is the one component that doesn't sit in that family: it's a high-level planner-executor that *uses* the capabilities, turning natural-language goals into ordered calls against the available component capabilities.
+
 ```{note}
 To learn more about the internal structure and lifecycle behavior of components, check out the concept [here](../concepts/components.md).
 ```
@@ -30,10 +32,13 @@ EmbodiedAgents provides a suite of ready-to-use components. These can be compose
   - Converts spoken audio into text using speech-to-text models (e.g., Whisper). Suitable for voice command recognition. It also implements small on-board models for Voice Activity Detection (VAD) and Wakeword recognition, using audio capture devices onboard the robot. Supports built-in local STT for on-device transcription.
 
 * - **TextToSpeech**
-  - Synthesizes audio from text using TTS models (e.g., SpeechT5, Bark). Output audio can be played using the robot's speakers or published to a topic. Implements `say(text)` and `stop_playback` functions to play/stop audio based on events from other components or the environment. Supports built-in local TTS for on-device speech synthesis.
+  - Synthesizes audio from text using HuggingFace Transformers TTS models (Bark, VITS, SpeechT5, SeamlessM4T, etc.) via the unified `TransformersTTS` wrapper. Output audio can be played using the robot's speakers or published to a topic. Implements `say(text)` and `stop_playback` functions to play/stop audio based on events from other components or the environment. Supports built-in local TTS for on-device speech synthesis.
 
-* - **MapEncoding**
-  - Provides a spatio-temporal working memory by converting semantic outputs (e.g., from MLLMs or Vision) into a structured map representation. Uses robot localization data and output topics from other components to store information in a vector DB.
+* - **Memory**
+  - Provides a graph-backed spatio-temporal memory powered by [eMEM](https://github.com/automatika-robotics/emem). Encodes perception layers (e.g. detections, scene captions) and interoception layers (e.g. battery, internal flags) into an episodic, entity-aware graph and exposes ten retrieval tools as component actions. Replaces the deprecated **MapEncoding** -- see the dedicated [Memory page](memory.md).
+
+* - **Cortex**
+  - The agentic core. An AI-powered planner-executor that inspects the rest of the recipe, decomposes a natural-language goal into a sequence of component-action calls, and runs them while monitoring the outputs. See [Cortex](cortex.md).
 
 * - **SemanticRouter**
   - Routes information between topics based on semantic content and predefined routing rules. Uses a vector DB for semantic matching or an LLM for decision-making. This allows for creating complex graphs of components where a single input source can trigger different information processing pathways.

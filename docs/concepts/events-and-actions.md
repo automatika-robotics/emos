@@ -180,6 +180,40 @@ return_event = Event(needs_return, on_change=True)
 
 ---
 
+## Events from Internal State (a.k.a Generic Events)
+
+Most events watch a topic. Sometimes you need an event whose firing condition is **internal state** that is not being published as a ROS topic -- for example a hardware monitor or a compound signal that requires arbitrary calculation. For these cases, an `Event` accepts a third kind of condition alongside topic predicates: **any Python callable that returns `bool`**, polled at a configurable rate.
+
+```python
+from ros_sugar.event import Event
+from ros_sugar.actions import log
+
+
+def is_overheating() -> bool:           # must be type-annotated as bool
+    return read_temperature() > 75.0    # any internal state goes here
+
+
+# Fires when ``is_overheating()`` returns True; polled twice a second.
+event_overheat = Event(is_overheating, check_rate=2.0)
+
+events_actions = {
+    event_overheat: log(msg="Overheating -- backing off"),
+}
+```
+
+Two rules: the callable's return type annotation **must be `bool`**, and the callable **cannot be a `@component_action`** method bound to a managed component. Use a plain function or a regular instance method. The polling loop runs on the central Monitor; `check_rate` is in Hz and defaults to the Monitor's loop rate when omitted.
+
+```{seealso}
+For a complete worked recipe -- including how to feed the predicate's state from elsewhere in the graph and what the event looks like in the Web UI -- see [Internal-State Events](../recipes/events-and-resilience/internal-state-events.md).
+```
+
+Use this when:
+- The trigger condition is **internal state** that has no business being a topic.
+- You want **derived predicates** that span multiple sources, easier to express as a Python callable that makes arbitrary calculations on them rather than as a chain of topic conditions.
+- You want **encapsulation** -- keep the predicate state inside the recipe rather than pushing it onto a topic just so an event can watch it.
+
+---
+
 ## Actions
 
 **Executable context-aware behaviors for your robotic system.**

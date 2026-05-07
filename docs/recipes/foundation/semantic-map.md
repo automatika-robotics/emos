@@ -1,18 +1,28 @@
-# Semantic Map
+# Spatio-Temporal Memory
 
-Autonomous Mobile Robots (AMRs) keep a representation of their environment in the form of occupancy maps. One can layer semantic information on top of these occupancy maps and with the use of multimodal LLMs one can even add answers to arbitrary questions about the environment to this map. In EMOS such maps can be created using vector databases which are specifically designed to store natural language data and retrieve it based on natural language queries. Thus an embodied agent can keep a text based _spatio-temporal memory_, from which it can do retrieval to answer questions or do spatial planning.
+Autonomous Mobile Robots (AMRs) keep a representation of their environment in the form of occupancy maps. Such maps are fine for navigation but are *amnesic*: a robot doesn't *know* the objects, the rooms, the situations, or its own history. The [Memory](../../intelligence/memory.md) component gives an EMOS agent a structured place to store everything it perceives, indexed by **meaning**, **location**, and **time** — and to consolidate that stream of observations into long-term memory the way humans do.
 
-Here we will show an example of generating such a map using object detection information and questions answered by an MLLM. This map can of course be made arbitrarily complex and robust by adding checks on the data being stored, however in our example we will keep things simple. Lets start by importing relevant [components](../../intelligence/ai-components.md).
+In this recipe we wire perception into Memory: an object detector publishing `Detections`, a VLM publishing periodic introspective answers, both feeding `Memory` as separate layers. **Memory** runs on [eMEM](https://github.com/automatika-robotics/emem), a hybrid graph-based spatio-temporal memory built on neuroscience principles: tiered consolidation, episodic structure, entity persistence, and interoception as a first-class memory dimension.
 
-```python
-from agents.components import MapEncoding, Vision, MLLM
+```{seealso}
+For the conceptual background on Memory and the neuroscience principles behind it, see the [Memory page](../../intelligence/memory.md). Once you've built a memory and want to *reason over it* in plain English, the [Memory and Cortex](../planning-and-manipulation/cortex-memory.md) recipe shows how Cortex auto-discovers Memory's tools and uses them in its orchestration.
 ```
 
-Next, we will use a vision component to provide us with object detections, as we did in the [Prompt Engineering](prompt-engineering.md) recipe.
+```{admonition} Prerequisites
+:class: important
+
+The `Memory` component requires the [eMEM](https://github.com/automatika-robotics/emem) Python package. Install it into the same environment as the EMOS launcher before running this recipe:
+
+`pip install emem`
+```
+
+---
 
 ## Setting up a Vision Component
 
 ```python
+from agents.components import Vision
+from agents.config import VisionConfig
 from agents.ros import Topic
 
 # Define the image input topic
@@ -21,20 +31,21 @@ image0 = Topic(name="image_raw", msg_type="Image")
 detections_topic = Topic(name="detections", msg_type="Detections")
 ```
 
-Additionally the component requires a model client with an object detection model. We will use the RESP client for RoboML and use the VisionModel, a convenient model class made available in EMOS for initializing all vision models available in the opensource [mmdetection](https://github.com/open-mmlab/mmdetection) library. We will specify the model we want to use by specifying the checkpoint attribute.
+Additionally the component requires a model client with an object detection model. We will use the RESP client for [RoboML](https://github.com/automatika-robotics/roboml) and the `VisionModel` wrapper, which initialises any [HuggingFace Transformers object detection model](https://huggingface.co/models?pipeline_tag=object-detection) (RT-DETR, DETR, Grounding DINO, YOLOS, ...) by checkpoint name.
 
 ```{note}
-Learn about setting up RoboML with vision [here](https://www.github.com/automatika-robotics/roboml).
+Learn about setting up RoboML with vision [here](https://github.com/automatika-robotics/roboml/blob/main/README.md#vision-model-support).
 ```
 
 ```python
 from agents.models import VisionModel
-from agents.clients.roboml import RoboMLRESPClient
-from agents.config import VisionConfig
+from agents.clients import RoboMLRESPClient
 
 # Add an object detection model
-object_detection = VisionModel(name="object_detection",
-                               checkpoint="dino-4scale_r50_8xb2-12e_coco")
+object_detection = VisionModel(
+    name="object_detection",
+    checkpoint="PekingU/rtdetr_r50vd_coco_o365",
+)
 roboml_detection = RoboMLRESPClient(object_detection)
 
 # Initialize the Vision component
@@ -49,13 +60,16 @@ vision = Vision(
 )
 ```
 
-The vision component will provide us with semantic information to add to our map. However, object names are only the most basic semantic element of the scene. One can view such basic elements in aggregate to create more abstract semantic associations. This is where multimodal LLMs come in.
+The vision component will provide us with semantic information to add to memory. However, object names are only the most basic semantic element of the scene. One can view such basic elements in aggregate to create more abstract semantic associations. This is where multimodal LLMs come in.
 
-## Setting up an MLLM Component
+---
 
-With large scale multimodal LLMs we can ask higher level introspective questions about the sensor information the robot is receiving and record this information on our spatio-temporal map. As an example we will setup an MLLM component that periodically asks itself the same question, about the nature of the space the robot is present in. In order to achieve this we will use two concepts. First is that of a **FixedInput**, a simulated [Topic](../../concepts/topics.md) that has a fixed value whenever it is read by a listener. And the second is that of a _timed_ component. In EMOS, components can get triggered by either an input received on a Topic or automatically after a certain period of time. This latter trigger specifies a timed component. Lets see what all of this looks like in code.
+## Setting up a VLM Component
+
+With multimodal LLMs we can ask higher-level introspective questions about what the robot is currently seeing and store the answers in memory alongside the raw detections. We'll set up a VLM component that periodically asks itself the same question — what kind of room am I in? — using two EMOS concepts: a `FixedInput` (a simulated [Topic](../../concepts/topics.md) whose value is a constant string) and a *timed* component (one whose `trigger` is a frequency rather than an input topic).
 
 ```python
+from agents.components import VLM
 from agents.clients import OllamaClient
 from agents.models import OllamaModel
 from agents.ros import FixedInput
@@ -66,27 +80,30 @@ qwen_client = OllamaClient(qwen_vl)
 
 # Define a fixed input for the component
 introspection_query = FixedInput(
-    name="introspection_query", msg_type="String",
-    fixed="What kind of a room is this? Is it an office, a bedroom or a kitchen? Give a one word answer, out of the given choices")
+    name="introspection_query",
+    msg_type="String",
+    fixed=(
+        "What kind of a room is this? Is it an office, a bedroom or a kitchen? "
+        "Give a one word answer, out of the given choices"
+    ),
+)
 # Define output of the component
 introspection_answer = Topic(name="introspection_answer", msg_type="String")
 
 # Start a timed (periodic) component using the mllm model defined earlier
-# This component answers the same question after every 15 seconds
-introspector = MLLM(
-    inputs=[introspection_query, image0],  # we use the image0 topic defined earlier
+# This component answers the same question every 15 seconds
+introspector = VLM(
+    inputs=[introspection_query, image0],   # we use image0 from earlier
     outputs=[introspection_answer],
     model_client=qwen_client,
-    trigger=15.0,  # we provide the time interval as a float value to the trigger parameter
+    trigger=15.0,                           # frequency in seconds
     component_name="introspector",
 )
 ```
 
-LLM/MLLM model outputs can be unpredictable. Before publishing the answer of our question to the output topic, we want to ensure that the model has indeed provided a one word answer, and this answer is one of the expected choices. EMOS allows us to add arbitrary pre-processor functions to data that is going to be published (conversely, we can also add post-processing functions to data that has been received in a listener's callback, but we will see that in another recipe). We will add a simple pre-processing function to our output topic as follows:
+LLM/VLM model outputs can be unpredictable. Before publishing the answer of our question to the output topic, we want to ensure that the model has indeed provided a one word answer, and that this answer is one of the expected choices. EMOS allows arbitrary pre-processor functions on data being published; we'll add a tiny validator that drops anything outside the expected vocabulary:
 
 ```python
-# Define an arbitrary function to validate the output of the introspective component
-# before publication.
 from typing import Optional
 
 def introspection_validation(output: str) -> Optional[str]:
@@ -97,140 +114,148 @@ def introspection_validation(output: str) -> Optional[str]:
 introspector.add_publisher_preprocessor(introspection_answer, introspection_validation)
 ```
 
-This should ensure that our component only publishes the model output to this topic if the validation function returns an output. All that is left to do now is to setup our MapEncoding component.
+Now `introspection_answer` only carries clean one-word labels.
 
-## Creating a Semantic Map as a Vector DB
+---
 
-The final step is to store the output of our models in a spatio-temporal map. EMOS provides a MapEncoding component that takes input data being published by other components and appropriately stores them in a vector DB. The input to a MapEncoding component is in the form of map layers. A _MapLayer_ is a thin abstraction over _Topic_, with certain additional parameters. We will create our map layers as follows:
+## Building Memory
+
+The final step is to wire those two streams into a `Memory` component. Memory's input surface is a list of `MemLayer`s — each layer subscribes to a topic, and observations from that layer are tagged with a layer name in the underlying graph so you can later query *only* perception, *only* internal state, etc.
 
 ```python
-from agents.ros import MapLayer
+from agents.ros import MemLayer
 
 # Object detection output from vision component
-layer1 = MapLayer(subscribes_to=detections_topic, temporal_change=True)
+layer1 = MemLayer(subscribes_to=detections_topic)
 # Introspection output from mllm component
-layer2 = MapLayer(subscribes_to=introspection_answer, resolution_multiple=3)
+layer2 = MemLayer(subscribes_to=introspection_answer)
 ```
 
-_temporal_change_ parameter specifies that for the same spatial position the output coming in from the component needs to be stored along with timestamps, as the output can change over time. By default this option is set to **False**. _resolution_multiple_ specifies that we can coarse grain spatial coordinates by combining map grid cells.
+```{tip}
+Memory also models **interoception** — internal body state — as a first-class memory dimension. Adding a layer with `is_internal_state=True` (e.g. `MemLayer(subscribes_to=battery_topic, is_internal_state=True)`) routes those observations through `add_body_state` instead of `add`. They're queryable through the dedicated `body_status` tool and surface naturally alongside perception observations in `get_current_context`. We'll exercise this in the [Memory and Cortex](../planning-and-manipulation/cortex-memory.md) recipe.
+```
 
-Next we need to provide our component with localization information via an odometry topic and a map data topic (of type OccupancyGrid). The latter is necessary to know the actual resolution of the robots map.
+Memory needs the robot's pose (so every observation is tagged with where it was made) and two model clients — one for consolidation summarisation, one for embedding generation:
 
 ```python
-# Initialize mandatory topics defining the robots localization in space
+from agents.components import Memory
+from agents.config import MemoryConfig
+
+# Localization input — Memory uses these coordinates directly, no occupancy grid required
 position = Topic(name="odom", msg_type="Odometry")
-map_topic = Topic(name="map", msg_type="OccupancyGrid")
-```
 
-```{caution}
-Be sure to replace the name parameter in topics with the actual topic names being published on your robot.
-```
+# Embedding client for vector indexing of every observation
+embedding_model = OllamaModel(
+    name="embeddings", checkpoint="nomic-embed-text-v2-moe:latest"
+)
+embedding_client = OllamaClient(embedding_model)
 
-Finally we initialize the MapEncoding component by providing it a database client. For the database client we will use HTTP DB client from RoboML. Much like model clients, the database client is initialized with a vector DB specification. For our example we will use Chroma DB, an open source multimodal vector DB.
-
-```{seealso}
-Checkout Chroma DB [here](https://trychroma.com).
-```
-
-```python
-from agents.vectordbs import ChromaDB
-from agents.clients import ChromaClient
-from agents.config import MapConfig
-
-# Initialize a vector DB that will store our semantic map
-chroma = ChromaDB()
-chroma_client = ChromaClient(db=chroma)
-
-# Create the map component
-map_conf = MapConfig(map_name="map")  # We give our map a name
-map = MapEncoding(
+memory = Memory(
     layers=[layer1, layer2],
     position=position,
-    map_topic=map_topic,
-    config=map_conf,
-    db_client=chroma_client,
-    trigger=15.0,  # map layer data is stored every 15 seconds
-    component_name="map_encoding",
+    model_client=qwen_client,        # used to summarise episodes into gists
+    embedding_client=embedding_client,
+    config=MemoryConfig(db_path="/tmp/robot_memory.db"),
+    trigger=15.0,                    # flush layer data into memory every 15s
+    component_name="memory",
 )
 ```
 
-## Launching the Components
+That single `Memory` component maintains:
 
-And as always we will launch our components as we did in the previous recipes.
+- A **typed graph** with four node types (Observation, Episode, Gist, Entity) and six edge types -- so the agent's memory is a structured object, not a flat blob of vectors.
+- **Tiered storage**, working &rarr; short-term &rarr; long-term &rarr; archived. Observations move through the tiers automatically as time passes; raw text is dropped after archival but the consolidated gist remains searchable.
+- **Three complementary indexes** sharing the graph: HNSW for semantic search, R-tree for spatial queries, SQLite indexes for temporal queries -- queryable independently or simultaneously.
+- **Automatic entity merging**: a new detection of "red chair" near a known "red chair" entity is recognised as the same entity rather than a new one, with cosine similarity *and* spatial proximity controlling the merge.
+
+You don't see any of this in the recipe — you wire layers in, and the structure emerges. See the [Memory page](../../intelligence/memory.md) for the architecture in detail.
+
+---
+
+## Wrapping Tasks in Episodes
+
+The VLM-introspector + detector pair is a good demonstration of layered memory ingestion, but in a real recipe you'd usually want to **bracket** the activity in an *episode*. Episodes are how Memory groups observations into task spans for consolidation: when an episode ends, eMEM clusters the observations made during it, asks the LLM to summarise each cluster into a *gist*, and archives the raw text -- the gist remains fully searchable in long-term memory.
+
+`Memory` exposes `start_episode` and `end_episode` as component actions — the simplest way to call them from a recipe is via [Events & Actions](../../concepts/events-and-actions.md). For example, you might trigger `start_episode` whenever the robot enters a new region and `end_episode` when it leaves. We'll show this pattern fully in [Memory and Cortex](../planning-and-manipulation/cortex-memory.md) where Cortex wraps every action task in an episode automatically.
+
+For now, every observation we feed in lives in working memory, gets flushed to short-term memory on the trigger schedule, and migrates to long-term as time accumulates.
+
+---
+
+## Launching the Components
 
 ```python
 from agents.ros import Launcher
 
-# Launch the components
 launcher = Launcher()
 launcher.add_pkg(
-    components=[vision, introspector, map]
-    )
+    components=[vision, introspector, memory],
+    package_name="automatika_embodied_agents",
+    multiprocessing=True,
+)
 launcher.bringup()
 ```
 
-And that is it. We have created our spatio-temporal semantic map using the outputs of two model components. The complete code for this recipe is below:
+That's it. The robot is now accumulating a structured spatio-temporal memory of everything Vision detects and everything the VLM introspects, indexed by where it happened and when.
+
+---
+
+## Full Recipe Code
 
 ```{code-block} python
-:caption: Semantic Mapping with MapEncoding
+:caption: Spatio-Temporal Memory with Vision and an Introspecting VLM
 :linenos:
 from typing import Optional
-from agents.components import MapEncoding, Vision, MLLM
-from agents.models import VisionModel, OllamaModel
-from agents.clients import RoboMLRESPClient, ChromaClient, OllamaClient
-from agents.ros import Topic, MapLayer, Launcher, FixedInput
-from agents.vectordbs import ChromaDB
-from agents.config import MapConfig, VisionConfig
 
-# Define the image input topic
+from agents.components import Memory, VLM, Vision
+from agents.config import MemoryConfig, VisionConfig
+from agents.models import OllamaModel, VisionModel
+from agents.clients import OllamaClient, RoboMLRESPClient
+from agents.ros import FixedInput, Launcher, MemLayer, Topic
+
+
+# --- Vision: object detection ---
 image0 = Topic(name="image_raw", msg_type="Image")
-# Create a detection topic
 detections_topic = Topic(name="detections", msg_type="Detections")
 
-# Add an object detection model
 object_detection = VisionModel(
-    name="object_detection", checkpoint="dino-4scale_r50_8xb2-12e_coco"
+    name="object_detection", checkpoint="PekingU/rtdetr_r50vd_coco_o365"
 )
 roboml_detection = RoboMLRESPClient(object_detection)
 
-# Initialize the Vision component
-detection_config = VisionConfig(threshold=0.5)
 vision = Vision(
     inputs=[image0],
     outputs=[detections_topic],
     trigger=image0,
-    config=detection_config,
+    config=VisionConfig(threshold=0.5),
     model_client=roboml_detection,
     component_name="detection_component",
 )
 
 
-# Define a model client (working with Ollama in this case)
+# --- VLM: periodic room-type introspection ---
 qwen_vl = OllamaModel(name="qwen_vl", checkpoint="qwen2.5vl:latest")
 qwen_client = OllamaClient(qwen_vl)
 
-# Define a fixed input for the component
 introspection_query = FixedInput(
     name="introspection_query",
     msg_type="String",
-    fixed="What kind of a room is this? Is it an office, a bedroom or a kitchen? Give a one word answer, out of the given choices",
+    fixed=(
+        "What kind of a room is this? Is it an office, a bedroom or a kitchen? "
+        "Give a one word answer, out of the given choices"
+    ),
 )
-# Define output of the component
 introspection_answer = Topic(name="introspection_answer", msg_type="String")
 
-# Start a timed (periodic) component using the mllm model defined earlier
-# This component answers the same question after every 15 seconds
-introspector = MLLM(
-    inputs=[introspection_query, image0],  # we use the image0 topic defined earlier
+introspector = VLM(
+    inputs=[introspection_query, image0],
     outputs=[introspection_answer],
     model_client=qwen_client,
-    trigger=15.0,  # we provide the time interval as a float value to the trigger parameter
+    trigger=15.0,
     component_name="introspector",
 )
 
 
-# Define an arbitrary function to validate the output of the introspective component
-# before publication.
 def introspection_validation(output: str) -> Optional[str]:
     for option in ["office", "bedroom", "kitchen"]:
         if option in output.lower():
@@ -239,35 +264,43 @@ def introspection_validation(output: str) -> Optional[str]:
 
 introspector.add_publisher_preprocessor(introspection_answer, introspection_validation)
 
-# Object detection output from vision component
-layer1 = MapLayer(subscribes_to=detections_topic, temporal_change=True)
-# Introspection output from mllm component
-layer2 = MapLayer(subscribes_to=introspection_answer, resolution_multiple=3)
 
-# Initialize mandatory topics defining the robots localization in space
+# --- Memory: graph-backed spatio-temporal store ---
+embedding_model = OllamaModel(
+    name="embeddings", checkpoint="nomic-embed-text-v2-moe:latest"
+)
+embedding_client = OllamaClient(embedding_model)
+
 position = Topic(name="odom", msg_type="Odometry")
-map_topic = Topic(name="map", msg_type="OccupancyGrid")
 
-# Initialize a vector DB that will store our semantic map
-chroma = ChromaDB()
-chroma_client = ChromaClient(db=chroma)
+layer1 = MemLayer(subscribes_to=detections_topic, temporal_change=True)
+layer2 = MemLayer(subscribes_to=introspection_answer, resolution_multiple=3)
 
-# Create the map component
-map_conf = MapConfig(map_name="map")  # We give our map a name
-map = MapEncoding(
+memory = Memory(
     layers=[layer1, layer2],
     position=position,
-    map_topic=map_topic,
-    config=map_conf,
-    db_client=chroma_client,
+    model_client=qwen_client,
+    embedding_client=embedding_client,
+    config=MemoryConfig(db_path="/tmp/robot_memory.db"),
     trigger=15.0,
-    component_name="map_encoding",
+    component_name="memory",
 )
 
-# Launch the components
+
+# --- Launch ---
 launcher = Launcher()
 launcher.add_pkg(
-    components=[vision, introspector, map]
-    )
+    components=[vision, introspector, memory],
+    package_name="automatika_embodied_agents",
+    multiprocessing=True,
+)
 launcher.bringup()
 ```
+
+---
+
+## Where next
+
+- {doc}`Memory and Cortex <../planning-and-manipulation/cortex-memory>` — once you've built a memory, *reason* over it. Cortex auto-discovers all of Memory's retrieval tools and answers questions in plain English: *"where did you last see the cat?"*, *"summarise the last episode"*, *"is the kitchen messy right now?"*.
+- {doc}`Cortex: The Agentic Harness <../planning-and-manipulation/cortex-agent>` — the Cortex introduction, if you haven't met it yet.
+- {doc}`Memory concept page <../../intelligence/memory>` — the full architectural reference for eMEM: nodes, edges, tiers, consolidation, the ten retrieval tools.

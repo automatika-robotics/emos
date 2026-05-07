@@ -1,204 +1,281 @@
 # GoTo Navigation
 
-In the previous [recipe](semantic-map.md) we created a semantic map using the MapEncoding component. Intuitively one can imagine that using the map data would require some form of RAG. Let us suppose that we want to create a Go-to-X component, which, when given a command like 'Go to the yellow door', would retrieve the coordinates of the _yellow door_ from the map and publish them to a goal point topic of type _PoseStamped_ to be handled by our robot's [navigation system](../../navigation/overview.md). We will create our Go-to-X component using the LLM [component](../../intelligence/ai-components.md) provided by EMOS. We will start by initializing the component, and configuring it to use RAG.
+In the previous [recipe](semantic-map.md) we built a graph-backed spatio-temporal memory using the `Memory` component. Memory tags every observation with the robot's pose, so for any concept the agent has encountered (an object class, a room label) we can ask Memory: *where did we see this?* It already exposes that lookup as a component action called `locate`, returning a centroid plus a radius for the most likely region.
 
-## Initialize the component
+In this recipe we wire `locate` into a Go-to-X component so that a command like *"Go to the kitchen"* turns into a `PoseStamped` goal point that the navigation stack can consume. We do this by **registering Memory's `locate` tool on an LLM** -- the LLM decides when to call the tool, Memory answers, and a small preprocessor converts the textual answer into a numpy coordinate that gets published as the goal.
+
+```{seealso}
+For the conceptual reference of Memory's full retrieval surface, see the [Memory page](../../intelligence/memory.md). For a generic introduction to LLM tool calling that is not tied to navigation, see the next recipe, [Tool Calling](tool-calling.md).
+```
+
+```{admonition} Prerequisites
+:class: important
+
+Memory needs the [eMEM](https://github.com/automatika-robotics/emem) package: `pip install emem`.
+```
+
+---
+
+## What we're building
+
+Three components in a single launcher:
+
+| Component | Role |
+|---|---|
+| **Vision** | Object detector publishing `Detections` per frame. Feeds Memory. |
+| **Memory** | Graph-backed spatio-temporal memory ingesting detections; tags each observation with the robot's pose from `/odom`. |
+| **goto LLM** | A plain `LLM` component that takes a free-form *"go to X"* query, calls Memory's `locate` tool to look up the place, and publishes the resulting coordinates on `goal_point`. |
+
+Memory's `locate` returns a textual answer like `"... Location: (10.3, 9.8, 0.0) ..."` (centroid plus a description). We wire a small regex preprocessor onto the goto LLM's output topic that picks the centroid out and converts it to an `np.ndarray`, which the framework publishes as the `PoseStamped` goal point.
+
+---
+
+## Step 1: Vision and Memory
+
+```python
+from agents.clients import OllamaClient, RoboMLRESPClient
+from agents.components import Memory, Vision
+from agents.config import MemoryConfig, VisionConfig
+from agents.models import OllamaModel, VisionModel
+from agents.ros import Launcher, MemLayer, Topic
+
+image0 = Topic(name="image_raw", msg_type="Image")
+detections_topic = Topic(name="detections", msg_type="Detections")
+position = Topic(name="odom", msg_type="Odometry")
+
+vision = Vision(
+    inputs=[image0],
+    outputs=[detections_topic],
+    trigger=image0,
+    config=VisionConfig(threshold=0.5),
+    model_client=RoboMLRESPClient(
+        VisionModel(name="rtdetr", checkpoint="PekingU/rtdetr_r50vd_coco_o365")
+    ),
+    component_name="vision",
+)
+
+embedding_client = OllamaClient(
+    OllamaModel(name="embeddings", checkpoint="nomic-embed-text-v2-moe:latest")
+)
+
+memory = Memory(
+    layers=[MemLayer(subscribes_to=detections_topic, temporal_change=True)],
+    position=position,
+    embedding_client=embedding_client,
+    config=MemoryConfig(db_path="/tmp/go_to_x.db"),
+    trigger=10.0,
+    component_name="memory",
+)
+```
+
+Each detection becomes an `ObservationNode` in Memory tagged with the robot's pose at the moment the detection was made. After a few minutes of accumulation, eMEM's entity layer auto-merges nearby semantically-similar detections into persistent entities, and `locate("chair")` returns the centroid of the merged "chair" entity.
+
+---
+
+## Step 2: The Go-to-X LLM
 
 ```python
 from agents.components import LLM
-from agents.models import OllamaModel
 from agents.config import LLMConfig
-from agents.clients import OllamaClient
-from agents.ros import Launcher, Topic
 
-# Start a Llama3.2 based llm component using ollama client
-llama = OllamaModel(name="llama", checkpoint="llama3.2:3b")
-llama_client = OllamaClient(llama)
+qwen = OllamaModel(name="qwen", checkpoint="qwen3.5:latest")
+qwen_client = OllamaClient(qwen)
 
-# Define LLM input and output topics including goal_point topic of type PoseStamped
 goto_in = Topic(name="goto_in", msg_type="String")
 goal_point = Topic(name="goal_point", msg_type="PoseStamped")
-```
 
-In order to configure the component to use RAG, we will set the following options in its config.
-
-```python
-config = LLMConfig(enable_rag=True,
-                   collection_name="map",
-                   distance_func="l2",
-                   n_results=1,
-                   add_metadata=True)
-```
-
-Note that the _collection_name_ parameter is the same as the map name we set in the previous [recipe](semantic-map.md). We have also set _add_metadata_ parameter to true to make sure that our metadata is included in the RAG result, as the spatial coordinates we want to get are part of the metadata. Let us have a quick look at the metadata stored in the map by the MapEncoding component.
-
-```
-{
-    "coordinates": [1.1, 2.2, 0.0],
-    "layer_name": "Topic_Name",  # same as topic name that the layer is subscribed to
-    "timestamp": 1234567,
-    "temporal_change": True
-}
-```
-
-With this information, we will first initialize our component.
-
-```{caution}
-In the following code block we are using the same DB client that was setup in the [Semantic Map](semantic-map.md) recipe.
-```
-
-```python
-# initialize the component
 goto = LLM(
     inputs=[goto_in],
     outputs=[goal_point],
-    model_client=llama_client,
-    db_client=chroma_client,  # check the previous example where we setup this database client
+    model_client=qwen_client,
     trigger=goto_in,
-    config=config,
-    component_name='go_to_x'
+    config=LLMConfig(),
+    component_name="go_to_x",
 )
-```
 
-## Pre-process the model output before publishing
-
-Knowing that the output of retrieval will be appended to the beginning of our query as context, we will setup a component level prompt for our LLM.
-
-```python
-# set a component prompt
 goto.set_component_prompt(
-    template="""From the given metadata, extract coordinates and provide
-    the coordinates in the following json format:\n {"position": coordinates}"""
+    template=(
+        "The user asks you to go to a place. Use the available tools to "
+        "look up the place's location in memory. Pass the place name to "
+        "the locate tool as the ``concept`` argument. User said: {{goto_in}}"
+    )
 )
 ```
 
-```{note}
-One might notice that we have not used an input topic name in our prompt. This is because we only need the input topic to fetch data from the vector DB during the RAG step. The query to the LLM in this case would only be composed of data fetched from the DB and our prompt.
-```
+---
 
-As the LLM output will contain text other than the _json_ string that we have asked for, we need to add a pre-processing function to the output topic that extracts the required part of the text and returns the output in a format that can be published to a _PoseStamped_ topic, i.e. a numpy array of floats.
+## Step 3: Register Memory's `locate` tool on the LLM
 
 ```python
+memory.register_tools_on(goto, tools=["locate"], send_tool_response_to_model=False)
+```
+
+`register_tools_on` exposes Memory's component actions to the goto LLM as callable tools. We register a single tool, `locate`, since the LLM only needs the lookup capability for this recipe. The flag `send_tool_response_to_model=False` is what makes the recipe end-to-end: instead of feeding `locate`'s answer back into the LLM for a follow-up generation, the answer becomes the *output of the LLM component*. After preprocessing, that output is what gets published on `goal_point`.
+
+---
+
+## Step 4: Parse Memory's textual answer into coordinates
+
+`locate` returns text formatted like:
+
+```
+Concept: kitchen
+Location: (10.32, 9.84, 0.0)
+Confidence: 0.91
+Radius: 1.45m
+...
+```
+
+We register a small preprocessor on the `goal_point` output topic that pulls the centroid out of that text and converts it to an `np.ndarray`. The framework then publishes the array as a `PoseStamped`.
+
+```python
+import re
 from typing import Optional
-import json
+
 import numpy as np
 
-# pre-process the output before publishing to a topic of msg_type PoseStamped
-def llm_answer_to_goal_point(output: str) -> Optional[np.ndarray]:
-    # extract the json part of the output string (including brackets)
-    # one can use sophisticated regex parsing here but we'll keep it simple
-    json_string = output[output.find("{") : output.rfind("}") + 1]
-    # load the string as a json and extract position coordinates
-    # if there is an error, return None, i.e. no output would be published to goal_point
-    try:
-        json_dict = json.loads(json_string)
-        coordinates = np.fromstring(json_dict["position"], sep=',', dtype=np.float64)
-        print('Coordinates Extracted:', coordinates)
-        if coordinates.shape[0] < 2 or coordinates.shape[0] > 3:
-            return
-        elif coordinates.shape[0] == 2:  # sometimes LLMs avoid adding the zeros of z-dimension
-            coordinates = np.append(coordinates, 0)
-        return coordinates
-    except Exception:
-        return
+_LOCATION_RE = re.compile(r"Location:\s*\(([^)]+)\)")
 
-# add the pre-processing function to the goal_point output topic
-goto.add_publisher_preprocessor(goal_point, llm_answer_to_goal_point)
+
+def locate_text_to_goal_point(output: str) -> Optional[np.ndarray]:
+    """Pull the centroid coordinates out of Memory.locate's text output."""
+    match = _LOCATION_RE.search(output)
+    if not match:
+        return  # no match → nothing to publish
+    try:
+        coords = np.fromstring(match.group(1), sep=",", dtype=np.float64)
+    except ValueError:
+        return
+    if coords.shape[0] == 2:
+        coords = np.append(coords, 0.0)
+    if coords.shape[0] != 3:
+        return
+    return coords
+
+
+goto.add_publisher_preprocessor(goal_point, locate_text_to_goal_point)
 ```
 
-## Launching the Components
+If the LLM (correctly) called `locate`, the regex matches, the coordinates parse cleanly, and the goal point is published. If the LLM hallucinated or the place is unknown to Memory, the preprocessor returns `None` and **nothing is published** -- the navigation stack sees no spurious goal.
 
-And we will launch our Go-to-X component.
+---
+
+## Step 5: Launch
 
 ```python
-from agents.ros import Launcher
-
-# Launch the component
 launcher = Launcher()
-launcher.add_pkg(
-    components=[goto]
-    )
+launcher.add_pkg(components=[vision, memory, goto])
 launcher.bringup()
 ```
 
-And that is all. Our Go-to-X component is ready. The complete code for this recipe is given below:
+---
+
+## Full recipe code
 
 ```{code-block} python
-:caption: Go-to-X Component
+:caption: Go-to-X with Memory tool calling
 :linenos:
+import re
 from typing import Optional
-import json
+
 import numpy as np
-from agents.components import LLM
-from agents.models import OllamaModel
-from agents.vectordbs import ChromaDB
-from agents.config import LLMConfig
-from agents.clients import ChromaClient, OllamaClient
-from agents.ros import Launcher, Topic
 
-# Start a Llama3.2 based llm component using ollama client
-llama = OllamaModel(name="llama", checkpoint="llama3.2:3b")
-llama_client = OllamaClient(llama)
+from agents.clients import OllamaClient, RoboMLRESPClient
+from agents.components import LLM, Memory, Vision
+from agents.config import LLMConfig, MemoryConfig, VisionConfig
+from agents.models import OllamaModel, VisionModel
+from agents.ros import Launcher, MemLayer, Topic
 
-# Initialize a vector DB that will store our routes
-chroma = ChromaDB()
-chroma_client = ChromaClient(db=chroma)
 
-# Define LLM input and output topics including goal_point topic of type PoseStamped
+# -- Perception side: vision + memory --
+image0 = Topic(name="image_raw", msg_type="Image")
+detections_topic = Topic(name="detections", msg_type="Detections")
+position = Topic(name="odom", msg_type="Odometry")
+
+vision = Vision(
+    inputs=[image0],
+    outputs=[detections_topic],
+    trigger=image0,
+    config=VisionConfig(threshold=0.5),
+    model_client=RoboMLRESPClient(
+        VisionModel(name="rtdetr", checkpoint="PekingU/rtdetr_r50vd_coco_o365")
+    ),
+    component_name="vision",
+)
+
+embedding_client = OllamaClient(
+    OllamaModel(name="embeddings", checkpoint="nomic-embed-text-v2-moe:latest")
+)
+
+memory = Memory(
+    layers=[MemLayer(subscribes_to=detections_topic, temporal_change=True)],
+    position=position,
+    embedding_client=embedding_client,
+    config=MemoryConfig(db_path="/tmp/go_to_x.db"),
+    trigger=10.0,
+    component_name="memory",
+)
+
+
+# -- Go-to-X LLM --
+qwen = OllamaModel(name="qwen", checkpoint="qwen3.5:latest")
+qwen_client = OllamaClient(qwen)
+
 goto_in = Topic(name="goto_in", msg_type="String")
 goal_point = Topic(name="goal_point", msg_type="PoseStamped")
 
-config = LLMConfig(enable_rag=True,
-                   collection_name="map",
-                   distance_func="l2",
-                   n_results=1,
-                   add_metadata=True)
-
-# initialize the component
 goto = LLM(
     inputs=[goto_in],
     outputs=[goal_point],
-    model_client=llama_client,
-    db_client=chroma_client,  # check the previous example where we setup this database client
+    model_client=qwen_client,
     trigger=goto_in,
-    config=config,
-    component_name='go_to_x'
+    config=LLMConfig(),
+    component_name="go_to_x",
 )
 
-# set a component prompt
 goto.set_component_prompt(
-    template="""From the given metadata, extract coordinates and provide
-    the coordinates in the following json format:\n {"position": coordinates}"""
+    template=(
+        "The user asks you to go to a place. Use the available tools to "
+        "look up the place's location in memory. Pass the place name to "
+        "the locate tool as the ``concept`` argument. User said: {{goto_in}}"
+    )
 )
 
+memory.register_tools_on(goto, tools=["locate"], send_tool_response_to_model=False)
 
-# pre-process the output before publishing to a topic of msg_type PoseStamped
-def llm_answer_to_goal_point(output: str) -> Optional[np.ndarray]:
-    # extract the json part of the output string (including brackets)
-    # one can use sophisticated regex parsing here but we'll keep it simple
-    json_string = output[output.find("{") : output.rfind("}") + 1]
-    # load the string as a json and extract position coordinates
-    # if there is an error, return None, i.e. no output would be published to goal_point
-    try:
-        json_dict = json.loads(json_string)
-        coordinates = np.fromstring(json_dict["position"], sep=',', dtype=np.float64)
-        print('Coordinates Extracted:', coordinates)
-        if coordinates.shape[0] < 2 or coordinates.shape[0] > 3:
-            return
-        elif coordinates.shape[0] == 2:  # sometimes LLMs avoid adding the zeros of z-dimension
-            coordinates = np.append(coordinates, 0)
-        return coordinates
-    except Exception:
+
+_LOCATION_RE = re.compile(r"Location:\s*\(([^)]+)\)")
+
+
+def locate_text_to_goal_point(output: str) -> Optional[np.ndarray]:
+    """Pull the centroid coordinates out of Memory.locate's text output."""
+    match = _LOCATION_RE.search(output)
+    if not match:
         return
+    try:
+        coords = np.fromstring(match.group(1), sep=",", dtype=np.float64)
+    except ValueError:
+        return
+    if coords.shape[0] == 2:
+        coords = np.append(coords, 0.0)
+    if coords.shape[0] != 3:
+        return
+    return coords
 
 
-# add the pre-processing function to the goal_point output topic
-goto.add_publisher_preprocessor(goal_point, llm_answer_to_goal_point)
+goto.add_publisher_preprocessor(goal_point, locate_text_to_goal_point)
 
-# Launch the component
+
+# -- Launch (single process so the LLM can call Memory in-process) --
 launcher = Launcher()
-launcher.add_pkg(
-    components=[goto]
-    )
+launcher.add_pkg(components=[vision, memory, goto])
 launcher.bringup()
 ```
+
+---
+
+## Where next
+
+- {doc}`Tool Calling <tool-calling>` — generalises this pattern. Instead of registering Memory's pre-defined tools, write your own Python function as a custom tool and register it with `goto.register_tool(...)`.
+- {doc}`Complete Agent <complete-agent>` — drops this Go-to-X pattern into a full multi-modal agent (speech I/O + vision + memory + Q&A + routing) defined in one Python script.
+- {doc}`Embodied Reasoning with Cortex <../planning-and-manipulation/cortex-navigation>` — the agentic-harness version: drop a [Cortex](../../intelligence/cortex.md) component on top of Memory and the navigation stack and the robot handles compound natural-language goals like *"go to the kitchen and tell me what's on the counter"* with no orchestration code from you.

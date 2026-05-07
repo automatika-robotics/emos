@@ -25,7 +25,19 @@ extensions = [
     "myst_parser",
     "sphinx_sitemap",
     "sphinx_design",
+    "sphinxcontrib.mermaid",
 ]
+
+mermaid_version = "latest"
+mermaid_init_config = {
+    "startOnLoad": False,
+    "securityLevel": "loose",
+    # NOTE: keep the inner quotes single. The extension embeds this dict
+    # inside a JS template literal, which would consume backslash-escaped
+    # double quotes before JSON.parse sees them.
+    "fontFamily": "'Architects Daughter', 'Caveat', system-ui, sans-serif",
+    "flowchart": {"curve": "basis"},
+}
 
 # -- autodoc2: all three packages in one build
 autodoc2_packages = [
@@ -146,6 +158,8 @@ LLMS_TXT_SELECTION = [
     # Intelligence Layer (EmbodiedAgents) -- components, clients, models
     "intelligence/overview.md",
     "intelligence/ai-components.md",
+    "intelligence/cortex.md",
+    "intelligence/memory.md",
     "intelligence/clients.md",
     "intelligence/models.md",
     # Navigation Layer (Kompass) -- robot config, planning, control
@@ -165,6 +179,9 @@ LLMS_TXT_SELECTION = [
     "recipes/foundation/semantic-routing.md",
     "recipes/foundation/complete-agent.md",
     # Planning & Manipulation Recipes
+    "recipes/planning-and-manipulation/cortex-agent.md",
+    "recipes/planning-and-manipulation/cortex-memory.md",
+    "recipes/planning-and-manipulation/cortex-navigation.md",
     "recipes/planning-and-manipulation/planning-models.md",
     "recipes/planning-and-manipulation/vla-manipulation.md",
     "recipes/planning-and-manipulation/event-driven-vla.md",
@@ -179,6 +196,8 @@ LLMS_TXT_SELECTION = [
     "recipes/events-and-resilience/multiprocessing.md",
     "recipes/events-and-resilience/fallback-recipes.md",
     "recipes/events-and-resilience/event-driven-cognition.md",
+    "recipes/events-and-resilience/visualizing-system-graph.md",
+    "recipes/events-and-resilience/internal-state-events.md",
     "recipes/events-and-resilience/external-reflexes.md",
     "recipes/events-and-resilience/cross-component-events.md",
     "recipes/events-and-resilience/composed-events.md",
@@ -227,16 +246,20 @@ def generate_llms_txt(app, exception):
         "GenericHTTPClient, LeRobotClient, etc.) with a model wrapper. Clients are "
         "interchangeable -- swap inference backends without changing component logic.\n"
         "3. **Build Components** -- Instantiate components (LLM, VLM, VLA, SpeechToText, "
-        "TextToSpeech, Vision, MapEncoding, SemanticRouter) with inputs, outputs, and a "
-        "model_client. Set `trigger` to control when the component executes.\n"
+        "TextToSpeech, Vision, Memory, Cortex, SemanticRouter) with inputs, outputs, and a "
+        "model_client. Set `trigger` to control when the component executes. Use `Memory` "
+        "for spatio-temporal memory and `Cortex` as an agentic harness that auto-discovers "
+        "the rest of the graph as LLM tools.\n"
         "4. **Wire Navigation** -- For mobile robots, configure a `RobotConfig` and "
         "instantiate Kompass components (Planner, Controller, DriveManager) with appropriate "
         "algorithms (DWA, PurePursuit, etc.).\n"
-        "5. **Add Events & Fallbacks** -- Use `on_algorithm_fail()`, `on_component_fail()`, "
-        "and custom event/action pairs for runtime adaptivity. Events can trigger model swaps, "
-        "component restarts, or arbitrary callbacks.\n"
-        "6. **Launch** -- Use `Launcher()` to add component packages and call `bringup()`. "
-        "For production, run components in separate processes via `Launcher(multiprocessing=True)`.\n\n"
+        "5. **Add Events & Fallbacks** -- Use `on_fail()` per component for restart-style "
+        "recovery, `launcher.on_process_fail()` for process-level crash recovery, and custom "
+        "event/action pairs for runtime adaptivity. Events can trigger model swaps, component "
+        "restarts, or arbitrary callbacks.\n"
+        "6. **Launch** -- Use `Launcher()` to add component packages with "
+        "`launcher.add_pkg(components=[...], multiprocessing=True)` and call `bringup()`. "
+        "The `multiprocessing` flag goes on `add_pkg`, not on the Launcher constructor.\n\n"
         "The documentation below is ordered as a curriculum: architecture first, then "
         "components and APIs, then example recipes of increasing complexity.\n\n"
         "---\n\n"

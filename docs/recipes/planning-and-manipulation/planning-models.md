@@ -102,7 +102,7 @@ config = VLMConfig(task="grounding")
 
 # initialize the component
 go_to_x = VLM(
-    inputs=[llm_output, rgbd],
+    inputs=[llm_output, rgbd0],
     outputs=[grounding_output],
     model_client=robobrain_client,
     trigger=llm_output,

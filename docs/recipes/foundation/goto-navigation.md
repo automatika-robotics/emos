@@ -59,7 +59,7 @@ embedding_client = OllamaClient(
 )
 
 memory = Memory(
-    layers=[MemLayer(subscribes_to=detections_topic, temporal_change=True)],
+    layers=[MemLayer(subscribes_to=detections_topic)],
     position=position,
     embedding_client=embedding_client,
     config=MemoryConfig(db_path="/tmp/go_to_x.db"),
@@ -119,11 +119,12 @@ memory.register_tools_on(goto, tools=["locate"], send_tool_response_to_model=Fal
 `locate` returns text formatted like:
 
 ```
-Concept: kitchen
-Location: (10.32, 9.84, 0.0)
-Confidence: 0.91
-Radius: 1.45m
-...
+Location: (10.3, 9.8, 0.0)
+Radius: 1.5m
+Based on: 5 memories (3x detections, 2x scene)
+  [detections] kitchen counter with cups and a kettle...
+  [scene] open kitchen area near the pantry...
+  [detections] kitchen island with stools...
 ```
 
 We register a small preprocessor on the `goal_point` output topic that pulls the centroid out of that text and converts it to an `np.ndarray`. The framework then publishes the array as a `PoseStamped`.
@@ -208,7 +209,7 @@ embedding_client = OllamaClient(
 )
 
 memory = Memory(
-    layers=[MemLayer(subscribes_to=detections_topic, temporal_change=True)],
+    layers=[MemLayer(subscribes_to=detections_topic)],
     position=position,
     embedding_client=embedding_client,
     config=MemoryConfig(db_path="/tmp/go_to_x.db"),

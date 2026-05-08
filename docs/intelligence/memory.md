@@ -134,7 +134,7 @@ scene      = Topic(name="scene_description", msg_type="String")
 battery    = Topic(name="/battery_level", msg_type="Float32")
 
 # Perception layers
-detections_layer = MemLayer(subscribes_to=detections, temporal_change=True)
+detections_layer = MemLayer(subscribes_to=detections)
 scene_layer      = MemLayer(subscribes_to=scene)
 
 # Interoception layer
@@ -144,7 +144,6 @@ battery_layer    = MemLayer(subscribes_to=battery, is_internal_state=True)
 | Field | Meaning |
 |---|---|
 | `subscribes_to` | The topic to ingest from. |
-| `temporal_change` | If `True`, observations on the same spatial position are timestamped and stored as a sequence. Useful for objects that move or reappear. |
 | `is_internal_state` | If `True`, observations are routed through `add_body_state` -- they're invisible to perception retrieval tools and surface only through the dedicated `body_status` tool. Used for interoception. |
 
 `MapLayer` is preserved as a backwards-compatible alias of `MemLayer`.

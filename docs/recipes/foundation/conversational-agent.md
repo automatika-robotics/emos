@@ -32,7 +32,7 @@ from agents.config import SpeechToTextConfig
 audio_in = Topic(name="audio0", msg_type="Audio")
 text_query = Topic(name="text0", msg_type="String")
 
-s2t_config = SpeechToTextConfig(enable_vad=True,     # option to listen for speech through the microphone, set to False if usign web UI
+s2t_config = SpeechToTextConfig(enable_vad=True,     # option to listen for speech through the microphone, set to False if using web UI
                                 enable_wakeword=True) # option to invoke the component with a wakeword like 'hey jarvis', set to False if using web UI
 ```
 
@@ -97,7 +97,7 @@ text_answer = Topic(name="text1", msg_type="String")
 qwen_vl = OllamaModel(name="qwen_vl", checkpoint="qwen2.5vl:latest")
 qwen_client = OllamaClient(qwen_vl)
 
-mllm_config = VLMConfig(stream=True)  # Other inference specific paramters can be provided here
+mllm_config = VLMConfig(stream=True)  # Other inference specific parameters can be provided here
 
 # Define an VLM component
 mllm = VLM(
@@ -183,7 +183,7 @@ text_query = Topic(name="text0", msg_type="String")
 whisper = Whisper(name="whisper")  # Custom model init params can be provided here
 roboml_whisper = RoboMLWSClient(whisper)
 
-s2t_config = SpeechToTextConfig(enable_vad=True,     # option to listen for speech through the microphone, set to False if usign web UI
+s2t_config = SpeechToTextConfig(enable_vad=True,     # option to listen for speech through the microphone, set to False if using web UI
                                 enable_wakeword=True) # option to invoke the component with a wakeword like 'hey jarvis', set to False if using web UI
 
 speech_to_text = SpeechToText(
@@ -200,7 +200,7 @@ text_answer = Topic(name="text1", msg_type="String")
 
 qwen_vl = OllamaModel(name="qwen_vl", checkpoint="qwen2.5vl:latest")
 qwen_client = OllamaClient(qwen_vl)
-mllm_config = VLMConfig(stream=True)  # Other inference specific paramters can be provided here
+mllm_config = VLMConfig(stream=True)  # Other inference specific parameters can be provided here
 
 mllm = VLM(
     inputs=[text_query, image0],

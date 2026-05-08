@@ -127,7 +127,7 @@ embedding_client = OllamaClient(embedding_model)
 memory = Memory(
     layers=[
         # --- Perception layers ---
-        MemLayer(subscribes_to=detections_out, temporal_change=True),
+        MemLayer(subscribes_to=detections_out),
         MemLayer(subscribes_to=scene_description),
 
         # --- Interoception layers ---

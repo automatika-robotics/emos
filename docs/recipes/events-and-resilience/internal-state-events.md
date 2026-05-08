@@ -111,7 +111,7 @@ events_actions = {
 }
 ```
 
-`check_rate=0.5` means Mermaid checks `idle.is_idle()` every 2 seconds. As long as `touch_on_speech` keeps firing, `is_idle()` returns False; the moment 60 seconds elapse without a query, the next poll returns True and the Action fires.
+`check_rate=0.5` means the Monitor checks `idle.is_idle()` every 2 seconds. As long as `touch_on_speech` keeps firing, `is_idle()` returns False; the moment 60 seconds elapse without a query, the next poll returns True and the Action fires.
 
 ### Step 4: Hand the events_actions dict to the Launcher
 

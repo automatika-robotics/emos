@@ -273,8 +273,8 @@ embedding_client = OllamaClient(embedding_model)
 
 position = Topic(name="odom", msg_type="Odometry")
 
-layer1 = MemLayer(subscribes_to=detections_topic, temporal_change=True)
-layer2 = MemLayer(subscribes_to=introspection_answer, resolution_multiple=3)
+layer1 = MemLayer(subscribes_to=detections_topic)
+layer2 = MemLayer(subscribes_to=introspection_answer)
 
 memory = Memory(
     layers=[layer1, layer2],

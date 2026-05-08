@@ -192,7 +192,8 @@ mllm = VLM(
 mllm.set_component_prompt(
     template=(
         "Imagine you are a robot. This image has the following items: "
-        "{{ detections }}. Answer the following about this image: {{ text0 }}"
+        "{{ detections }}. Answer the following about this image: "
+        "{{ mllm_query }}"
     )
 )
 
@@ -231,7 +232,7 @@ position = Topic(name="odom", msg_type="Odometry")
 
 memory = Memory(
     layers=[
-        MemLayer(subscribes_to=detections_topic, temporal_change=True),
+        MemLayer(subscribes_to=detections_topic),
         MemLayer(subscribes_to=introspection_answer),
     ],
     position=position,
@@ -329,7 +330,7 @@ mllm_route = Route(
         "Whats in front of you?",
         "Where are we",
         "Do you see any people?",
-        "How many things are infront of you?",
+        "How many things are in front of you?",
         "Is this room occupied?",
     ],
 )

@@ -11,21 +11,21 @@ Bridge the gap between high-level reasoning and physical actuation. These recipe
 :link: cortex-agent
 :link-type: doc
 
-A component that sits on top of the rest of your recipe and turns it into a self-directing agent. Cortex auto-discovers every components capabilities and uses them to acheive a high level goal.
+A component that sits on top of the rest of your recipe and turns it into a self-directing agent. Cortex auto-discovers every component's capabilities and uses them to achieve a high-level goal.
 :::
 
 :::{grid-item-card} {material-regular}`memory;1.2em;sd-text-primary` Memory and Cortex
 :link: cortex-memory
 :link-type: doc
 
-Cortex paired with graph-backed spatio-temporal memory. It recalls past observations, reason about internal state via interoception, and wrap action tasks in episodes that consolidate into long-term memory.
+Cortex paired with graph-backed spatio-temporal memory. It recalls past observations, reasons about internal state via interoception, and wraps action tasks in episodes that consolidate into long-term memory.
 :::
 
 :::{grid-item-card} {material-regular}`route;1.2em;sd-text-primary` Cortex Driving the Full Stack
 :link: cortex-navigation
 :link-type: doc
 
-The full stack. Cortex orchestrates Vision, VLM, Memory, the Kompass navigation stack, and TTS end-to-end. Compound goals fulfille by a single agent -- no behavior trees, no state machines.
+The full stack. Cortex orchestrates Vision, VLM, Memory, the Kompass navigation stack, and TTS end-to-end. Compound goals fulfilled by a single agent -- no behavior trees, no state machines.
 :::
 
 :::{grid-item-card} {material-regular}`psychology;1.2em;sd-text-primary` Multimodal Planning

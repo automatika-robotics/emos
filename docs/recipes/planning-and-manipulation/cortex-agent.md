@@ -43,11 +43,11 @@ Every one of those tools is automatic. You write the components; Cortex makes th
 
 ## What we're building
 
-A robot that, when you tell it *"describe what you see and track the person"*, will:
+A robot that, when you tell it *"describe what you see and then start tracking the person"*, will:
 
-1. Plan three steps -- call `vlm.describe`, feed its answer to `tts.say`, then dispatch `vision.track`.
-2. Execute them in order -- describing the scene, speaking the description through `tts.say`, then dispatching the long-running tracking action.
-3. Watch the tracking action server's feedback stream and report status.
+1. Plan three steps -- call `vlm.describe`, feed its answer to `tts.say`, then call `vision.track`.
+2. Execute them in order -- describing the scene, speaking the description through `tts.say`, then asking `Vision` to start tracking the requested label.
+3. Report each step's result back into the planning loop and close out the episode.
 
 The recipe is short. There is no event wiring. There are no fallback policies. There are no topic-routed connections between the VLM, the TTS, and Cortex -- speech happens because Cortex calls `tts.say()` as a tool, not because some output topic is silently subscribed by TTS. We don't write a single prompt either -- Cortex's built-in prompts plus the auto-discovered tool descriptions are the prompt.
 
@@ -199,7 +199,7 @@ Open the Web UI at `http://localhost:5001` and send tasks in plain English:
 | Goal | What Cortex plans |
 |---|---|
 | *"describe what you see"* | Two steps: `vlm.describe` produces a sentence; `tts.say` is called with that sentence as its `text` argument. |
-| *"track the person"* | One step: `send_goal_to_track_vision_target(label="person")`. Cortex dispatches the action goal asynchronously and watches its feedback stream until the tracking server reports completion or you cancel. |
+| *"start tracking the person"* | One step: `vision.track(label="person")`. The Vision component's `@component_action` starts continuous tracking on the named label (results stream on the `trackings` topic) and returns a confirmation string immediately. |
 | *"take a picture, describe it, then track whatever's in front of you"* | Three steps, sequenced. The third step's argument is bound from the second step's output -- Cortex resolves `<output from step 2>` placeholders at runtime. |
 | *"toggle the LED"* | One step: the custom `toggle_led` action you registered. |
 | *"are you ok?"* | No actions needed. The planner returns text only; the reply lands on the `cortex_output` topic. (If you want it spoken, your prompt can nudge the planner to always end with a `tts.say` call.) |
@@ -218,13 +218,17 @@ Watch the launcher's main logging card to see the planning trace, the goals Cort
 
 ## What just happened
 
-When you sent the goal *"describe what you see and track the person"*, Cortex:
+When you sent the goal *"describe what you see and then start tracking the person"*, Cortex:
 
 1. Built a plan via the planning loop. The first iteration optionally called `inspect_component("vision")` to confirm the tool surface, then committed three execution tool calls.
-2. Confirmed and dispatched each step. The first (`vlm.describe`) returned a text description; the second (`tts.say`) was called with that description bound as its `text` argument and the speaker spoke it; the third (`send_goal_to_track_vision_target`) was an action goal, dispatched asynchronously. Cortex registered the action client in `_active_action_clients` and the confirmation step started returning `CONTINUE` to wait for tracking feedback rather than barrelling on.
-3. When tracking completed (or you cancelled the high-level goal), the action client was reaped, the episode closed, and the plan returned `SUCCEEDED`.
+2. Confirmed and called each step in turn. The first (`vlm.describe`) returned a text description; the second (`tts.say`) was called with that description bound as its `text` argument and the speaker spoke it; the third (`vision.track`) asked the Vision component to start continuous tracking on the named label and returned a confirmation string. Tracking results then streamed on the component's `trackings` topic for any downstream consumer to use.
+3. With every step's tool result folded back into the trace, the episode closed and the plan returned `SUCCEEDED`.
 
-Compare that to the equivalent recipe written without Cortex: bespoke event wiring for the trigger, hand-tuned prompts on each component, manual action-client construction, manual feedback parsing, manual cancellation. **Cortex collapses all of that into the one component you just dropped in.**
+Compare that to the equivalent recipe written without Cortex: bespoke event wiring for the trigger, hand-tuned prompts on each component, manual sequencing of the speech and tracking calls. **Cortex collapses all of that into the one component you just dropped in.**
+
+```{tip}
+For the long-running case -- where Cortex *should* dispatch a Kompass action server like the Controller's `track_vision_target` (or the Planner's `navigate_to_goal`) and watch its feedback stream until the goal completes -- add the `Controller` (or `Planner`) component to the launcher. Cortex auto-registers each one's main action server as `send_goal_to_<server>` and switches into asynchronous monitoring mode. See [Cortex Driving the Full Stack](cortex-navigation.md).
+```
 
 ---
 

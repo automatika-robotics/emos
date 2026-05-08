@@ -165,7 +165,7 @@ Cortex always runs as a ROS2 **action server** -- you don't configure `run_type`
 
 ## Cortex is also the Monitor
 
-When the launcher detects a Cortex component in the recipe, it is **also used as the Monitor** -- the central node that hosts events and actions, tracks every component's health, manages lifecycle transitions, and coordinates fallbacks. Practical implications:
+When the launcher detects a Cortex component in the recipe, it is **also used as the Monitor** -- the central node that hosts events and actions, tracks every component's health, manages lifecycle transitions, and coordinates fallbacks.
 
 This is why Cortex needs no list of components to monitor -- the launcher feeds it the full graph.
 
@@ -202,11 +202,12 @@ Setting `db_client` on Cortex enables retrieval-augmented planning. Before each 
 
 ```python
 from agents.clients import ChromaClient
+from agents.vectordbs import ChromaDB
 
 cortex = Cortex(
     output=cortex_output,
     model_client=planner_client,
-    db_client=ChromaClient(host="localhost", port=8000),
+    db_client=ChromaClient(db=ChromaDB(), host="localhost", port=8000),
     config=CortexConfig(
         enable_rag=True,
         collection_name="building_layout",

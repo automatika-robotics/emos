@@ -104,8 +104,8 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 
 	// If the dashboard is already running as a systemd service, don't try to
-	// print a friendly summary
-	if installer.IsActive(config.DashboardServiceName) {
+	// print a friendly summary -- unless WE are the systemd-spawned process
+	if os.Getenv("INVOCATION_ID") == "" && installer.IsActive(config.DashboardServiceName) {
 		PrintDashboardAccessSummary(addr, "service", "")
 		return
 	}

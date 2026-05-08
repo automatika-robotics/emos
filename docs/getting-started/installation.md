@@ -187,6 +187,7 @@ Install the driver package and launch it directly:
 ```bash
 sudo apt install ros-jazzy-usb-cam
 source /opt/ros/jazzy/setup.bash
+export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 run usb_cam usb_cam_node_exe
 ```
 
@@ -231,6 +232,10 @@ If a specific driver package isn't available on RoboStack, you can still install
 :::
 
 ::::
+
+```{important}
+Match the driver's RMW implementation to the one your recipe uses, or the driver's topics won't be visible to it. EMOS recipes default to **Zenoh** -- set `export RMW_IMPLEMENTATION=rmw_zenoh_cpp` in the shell where you launch the driver. If the recipe overrides this (e.g. `emos run <recipe> --rmw rmw_cyclonedds_cpp`), export the same value instead.
+```
 
 ### Verifying Sensors
 

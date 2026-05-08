@@ -7,8 +7,11 @@ on:
     branches: [main]
     paths:
       - "docker/emos/**"
+      - "stack/sugarcoat"
       - "stack/sugarcoat/**"
+      - "stack/embodied-agents"
       - "stack/embodied-agents/**"
+      - "stack/kompass"
       - "stack/kompass/**"
   workflow_dispatch:
 

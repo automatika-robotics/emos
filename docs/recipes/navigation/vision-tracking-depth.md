@@ -83,20 +83,23 @@ my_robot = RobotConfig(
 
 ## Step 3: Controller with VisionRGBDFollower
 
-Now we set up the `Controller` component to use the `VisionRGBDFollower`. Compared to the RGB version, we need two additional inputs:
+Now we set up the `Controller` component to use the `VisionRGBDFollower`. In Kompass the controller selects between path-following and vision-following modes via its **algorithm**, and `VisionRGBDFollower` and `VisionRGBFollower` are sibling controllers that live behind `ControllersID.VISION_DEPTH` and `ControllersID.VISION_IMG` respectively.
+
+Compared to the [RGB version](vision-tracking-rgb.md), the RGBD path needs two additional inputs:
 
 - The **detections topic** from the vision component
 - The **depth camera info topic** for depth-to-3D projection
 
 ```python
 from kompass.components import Controller, ControllerConfig
+from kompass.control import ControllersID
 
 depth_cam_info_topic = Topic(name="/camera/aligned_depth_to_color/camera_info", msg_type="CameraInfo")
 
 config = ControllerConfig(ctrl_publish_type="Parallel")
 controller = Controller(component_name="controller", config=config)
+controller.algorithm = ControllersID.VISION_DEPTH
 controller.inputs(vision_detections=detections_topic, depth_camera_info=depth_cam_info_topic)
-controller.algorithm = "VisionRGBDFollower"
 ```
 
 ---
@@ -127,6 +130,7 @@ from agents.components import Vision
 from agents.config import VisionConfig
 from agents.ros import Topic
 from kompass.components import Controller, ControllerConfig, DriveManager, LocalMapper
+from kompass.control import ControllersID
 from kompass.robot import (
     AngularCtrlLimits,
     LinearCtrlLimits,
@@ -166,8 +170,8 @@ depth_cam_info_topic = Topic(name="/camera/aligned_depth_to_color/camera_info", 
 # Setup the controller
 config = ControllerConfig(ctrl_publish_type="Parallel")
 controller = Controller(component_name="controller", config=config)
+controller.algorithm = ControllersID.VISION_DEPTH
 controller.inputs(vision_detections=detections_topic, depth_camera_info=depth_cam_info_topic)
-controller.algorithm = "VisionRGBDFollower"
 controller.direct_sensor = False
 
 # Add additional helper components
@@ -176,11 +180,17 @@ mapper = LocalMapper(component_name="local_mapper")
 
 # Bring it up with the launcher
 launcher = Launcher()
-launcher.add_pkg(components=[vision], ros_log_level="warn",
-                 package_name="automatika_embodied_agents",
-                 executable_entry_point="executable",
-                 multiprocessing=True)
-launcher.kompass(components=[controller, mapper, driver])
+launcher.add_pkg(
+    components=[vision],
+    package_name="automatika_embodied_agents",
+    multiprocessing=True,
+    ros_log_level="warn",
+)
+launcher.add_pkg(
+    components=[controller, mapper, driver],
+    package_name="kompass",
+    multiprocessing=True,
+)
 # Set the robot config for all components
 launcher.robot = my_robot
 launcher.bringup()

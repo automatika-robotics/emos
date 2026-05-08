@@ -1,88 +1,114 @@
 # Multiprocessing & Fault Tolerance
 
-In the previous recipes we saw how we can make a complex graph of components to create an intelligent embodied agent. In this recipe we will have a look at some of the features that EMOS provides to make the same system robust and production-ready.
+In the previous recipes we saw how to compose a complex graph of components into an intelligent embodied agent. In this recipe we look at the features EMOS provides to make the same graph **robust and production-ready** -- running every component in its own process for crash isolation, and adding component-level and process-level recovery so a transient failure doesn't bring the whole system down.
+
+```{admonition} Prerequisites
+:class: important
+
+This recipe builds on [Complete Agent](../foundation/complete-agent.md). Memory needs the [eMEM](https://github.com/automatika-robotics/emem) package: `pip install emem`.
+```
 
 ## Run Components in Separate Processes
 
-The first thing we want to do is to run each component in a different process. By default our launcher launches each component in a separate thread, however ROS was designed such that each functional unit (a component in EMOS, that maps to a node in ROS) runs in a separate process such that failure of one process does not crash the whole system. In order to enable multiprocessing we simply pass the name of our ROS package, i.e. `automatika_embodied_agents` and the multiprocessing parameter to our launcher as follows:
+By default the launcher runs each component in its own thread. ROS, however, was designed so that each functional unit -- a component in EMOS, mapped to a node in ROS -- runs in a **separate process**, such that failure of one process does not crash the rest of the system. We enable multiprocessing by passing `multiprocessing=True` and the ROS package name to `add_pkg`:
 
 ```python
-launcher = Launcher()
 launcher.add_pkg(
-    components=[
-        mllm,
-        llm,
-        goto,
-        introspector,
-        map,
-        router,
-        speech_to_text,
-        text_to_speech,
-        vision
-    ],
+    components=all_components,
     package_name="automatika_embodied_agents",
-    multiprocessing=True
+    multiprocessing=True,
 )
 ```
 
-## Adding Fallback Behavior
+## Component-Level Fallbacks
 
-EMOS provides fallback behaviors in case a component fails. For example in components that send inference requests to machine learning models, a failure can happen if the model client cannot connect to the model serving platform due to a connection glitch or a failure at the end of the platform. To handle such a case we can restart our component, which will make it check connection with the model serving platform during its activation. The component will remain in an unhealthy state until it successfully activates, and it will keep on executing fallback behavior until it remains unhealthy. This fallback behavior can be specified in the launcher which will automatically apply it to all components. We can also add a time interval between consecutive fallback actions. All of this can be done by passing the following parameters to the launcher before bring up:
+When a component fails -- a model server drops, a sensor goes dead, an algorithm can't find a solution -- EMOS lets us register **fallback strategies** that the component executes automatically. The simplest one is *restart*: re-run the lifecycle so the component checks its inputs and connections again before returning to the active state. We attach this to every component in the recipe with a small loop:
 
 ```python
-launcher.on_fail(action_name="restart")
-launcher.fallback_rate = 1 / 10  # 0.1 Hz or 10 seconds
+from agents.ros import Action
+
+for component in all_components:
+    component.on_fail(
+        action=Action(component.restart),
+        max_retries=2,
+    )
+    component.fallback_rate = 1 / 10  # 0.1 Hz -- check for failures every 10s
 ```
+
+`on_fail` registers the action to take when the component reports an unhealthy state; `fallback_rate` controls how often EMOS retries while the component stays unhealthy.
 
 ```{seealso}
-EMOS provides advanced fallback behaviors at the component level. To learn more about these, checkout the [Fallback](../../concepts/status-and-fallbacks.md) documentation.
+EMOS supports much richer fallback behaviour -- escalation ladders, custom handlers, the four-level health-status hierarchy. See [Status & Fallbacks](../../concepts/status-and-fallbacks.md) for the full picture.
 ```
 
-With these two simple modifications, our complex graph of an embodied agent can be made significantly more robust to failures and has a graceful fallback behavior in case a failure does occur. The complete agent code is as follows:
+## Process-Level Crash Recovery
+
+Component-level fallbacks handle the case where a component is *running* but unhealthy. They cannot help if the entire process **crashes** -- a segfault, an OOM kill, an unhandled native exception. For that, EMOS provides `Launcher.on_process_fail`, which respawns any component process that exits with a non-zero status outside of a clean shutdown:
 
 ```python
-import numpy as np
-import json
+launcher.on_process_fail(max_retries=3)
+```
+
+The two layers compose: the in-process fallback tries to restart the component up to 2 times; if those fail and the process actually exits, the launcher respawns the process up to 3 times. See [Process-Level Recovery](../../concepts/status-and-fallbacks.md#process-level-recovery) for the full discussion.
+
+## The Complete Recipe
+
+Putting it all together:
+
+```python
+import re
 from typing import Optional
+
+import numpy as np
+
+from agents.clients import (
+    ChromaClient,
+    OllamaClient,
+    RoboMLHTTPClient,
+    RoboMLRESPClient,
+)
 from agents.components import (
-    MLLM,
+    LLM,
+    VLM,
+    Memory,
+    SemanticRouter,
     SpeechToText,
     TextToSpeech,
-    LLM,
     Vision,
-    MapEncoding,
-    SemanticRouter,
 )
-from agents.config import TextToSpeechConfig
-from agents.clients import RoboMLHTTPClient, RoboMLRESPClient
-from agents.clients import ChromaClient
-from agents.clients import OllamaClient
-from agents.models import Whisper, SpeechT5, VisionModel, OllamaModel
+from agents.config import (
+    LLMConfig,
+    MemoryConfig,
+    SemanticRouterConfig,
+    TextToSpeechConfig,
+    VisionConfig,
+)
+from agents.models import OllamaModel, TransformersTTS, VisionModel, Whisper
+from agents.ros import Action, FixedInput, Launcher, MemLayer, Route, Topic
 from agents.vectordbs import ChromaDB
-from agents.config import VisionConfig, LLMConfig, MapConfig, SemanticRouterConfig
-from agents.ros import Topic, Launcher, FixedInput, MapLayer, Route
 
 
-### Setup our models and vectordb ###
-whisper = Whisper(name="whisper")
-whisper_client = RoboMLHTTPClient(whisper)
-speecht5 = SpeechT5(name="speecht5")
-speecht5_client = RoboMLHTTPClient(speecht5)
-object_detection_model = VisionModel(
-    name="dino_4scale", checkpoint="dino-4scale_r50_8xb2-12e_coco"
+### Models and shared clients ###
+whisper_client = RoboMLHTTPClient(Whisper(name="whisper"))
+tts_client = RoboMLHTTPClient(TransformersTTS(name="tts"))
+detection_client = RoboMLRESPClient(
+    VisionModel(name="rtdetr", checkpoint="PekingU/rtdetr_r50vd_coco_o365")
 )
-detection_client = RoboMLRESPClient(object_detection_model)
-qwen_vl = OllamaModel(name="qwen_vl", checkpoint="qwen2.5vl:latest")
-qwen_client = OllamaClient(qwen_vl)
-llama = OllamaModel(name="llama", checkpoint="llama3.2:3b")
-llama_client = OllamaClient(llama)
-chroma = ChromaDB()
-chroma_client = ChromaClient(db=chroma)
+qwen_vl_client = OllamaClient(
+    OllamaModel(name="qwen_vl", checkpoint="qwen2.5vl:latest")
+)
+qwen_client = OllamaClient(OllamaModel(name="qwen", checkpoint="qwen3:0.6b"))
+embedding_client = OllamaClient(
+    OllamaModel(name="embeddings", checkpoint="nomic-embed-text-v2-moe:latest")
+)
+# ChromaDB is still used by SemanticRouter for route embeddings.
+chroma_client = ChromaClient(db=ChromaDB(), port=8080)
 
-### Setup our components ###
-# Setup a speech to text component
+
+### Speech I/O ###
 audio_in = Topic(name="audio0", msg_type="Audio")
 query_topic = Topic(name="question", msg_type="String")
+query_answer = Topic(name="answer", msg_type="String")
 
 speech_to_text = SpeechToText(
     inputs=[audio_in],
@@ -92,63 +118,63 @@ speech_to_text = SpeechToText(
     component_name="speech_to_text",
 )
 
-# Setup a text to speech component
-query_answer = Topic(name="answer", msg_type="String")
-
-t2s_config = TextToSpeechConfig(play_on_device=True)
-
 text_to_speech = TextToSpeech(
     inputs=[query_answer],
     trigger=query_answer,
-    model_client=speecht5_client,
-    config=t2s_config,
+    model_client=tts_client,
+    config=TextToSpeechConfig(play_on_device=True),
     component_name="text_to_speech",
 )
 
-# Setup a vision component for object detection
+
+### Vision (object detection) ###
 image0 = Topic(name="image_raw", msg_type="Image")
 detections_topic = Topic(name="detections", msg_type="Detections")
 
-detection_config = VisionConfig(threshold=0.5)
 vision = Vision(
     inputs=[image0],
     outputs=[detections_topic],
     trigger=image0,
-    config=detection_config,
+    config=VisionConfig(threshold=0.5),
     model_client=detection_client,
     component_name="object_detection",
 )
 
-# Define a generic mllm component for vqa
+
+### VQA VLM ###
 mllm_query = Topic(name="mllm_query", msg_type="String")
 
-mllm = MLLM(
+mllm = VLM(
     inputs=[mllm_query, image0, detections_topic],
     outputs=[query_answer],
-    model_client=qwen_client,
+    model_client=qwen_vl_client,
     trigger=mllm_query,
     component_name="visual_q_and_a",
 )
-
 mllm.set_component_prompt(
-    template="""Imagine you are a robot.
-    This image has following items: {{ detections }}.
-    Answer the following about this image: {{ text0 }}"""
+    template=(
+        "Imagine you are a robot. This image has the following items: "
+        "{{ detections }}. Answer the following about this image: {{ text0 }}"
+    )
 )
 
-# Define a fixed input mllm component that does introspection
+
+### Introspection VLM (room classification feeding the memory) ###
 introspection_query = FixedInput(
     name="introspection_query",
     msg_type="String",
-    fixed="What kind of a room is this? Is it an office, a bedroom or a kitchen? Give a one word answer, out of the given choices",
+    fixed=(
+        "What kind of a room is this? Is it an office, a bedroom or a "
+        "kitchen? Give a one word answer, out of the given choices"
+    ),
 )
 introspection_answer = Topic(name="introspection_answer", msg_type="String")
 
-introspector = MLLM(
+introspector = VLM(
     inputs=[introspection_query, image0],
     outputs=[introspection_answer],
-    model_client=qwen_client,
-    trigger=15.0,
+    model_client=qwen_vl_client,
+    trigger=10.0,
     component_name="introspector",
 )
 
@@ -161,92 +187,81 @@ def introspection_validation(output: str) -> Optional[str]:
 
 introspector.add_publisher_preprocessor(introspection_answer, introspection_validation)
 
-# Define a semantic map using MapEncoding component
-layer1 = MapLayer(subscribes_to=detections_topic, temporal_change=True)
-layer2 = MapLayer(
-    subscribes_to=introspection_answer,
-    resolution_multiple=3,
-    pre_defined=[(np.array([1.1, 2.1, 3.2]), "The door is here. DOOR.")],
-)
 
+### Memory (graph-backed spatio-temporal memory) ###
 position = Topic(name="odom", msg_type="Odometry")
-map_topic = Topic(name="map", msg_type="OccupancyGrid")
 
-map_conf = MapConfig(map_name="map")
-map = MapEncoding(
-    layers=[layer1, layer2],
+memory = Memory(
+    layers=[
+        MemLayer(subscribes_to=detections_topic),
+        MemLayer(subscribes_to=introspection_answer),
+    ],
     position=position,
-    map_topic=map_topic,
-    config=map_conf,
-    db_client=chroma_client,
+    model_client=qwen_client,
+    embedding_client=embedding_client,
+    config=MemoryConfig(db_path="/tmp/complete_agent_multiprocessing.db"),
     trigger=15.0,
-    component_name="map_encoder",
+    component_name="memory",
 )
 
-# Define a generic LLM component
+
+### Generic LLM (general Q&A) ###
 llm_query = Topic(name="llm_query", msg_type="String")
 
 llm = LLM(
     inputs=[llm_query],
     outputs=[query_answer],
-    model_client=llama_client,
+    model_client=qwen_client,
     trigger=[llm_query],
     component_name="general_q_and_a",
 )
 
-# Define a Go-to-X component using LLM
+
+### Go-to-X using LLM tool calling on Memory.locate ###
 goto_query = Topic(name="goto_query", msg_type="String")
 goal_point = Topic(name="goal_point", msg_type="PoseStamped")
-
-goto_config = LLMConfig(
-    enable_rag=True,
-    collection_name="map",
-    distance_func="l2",
-    n_results=1,
-    add_metadata=True,
-)
 
 goto = LLM(
     inputs=[goto_query],
     outputs=[goal_point],
-    model_client=llama_client,
-    config=goto_config,
-    db_client=chroma_client,
+    model_client=qwen_client,
     trigger=goto_query,
+    config=LLMConfig(),
     component_name="go_to_x",
 )
-
 goto.set_component_prompt(
-    template="""From the given metadata, extract coordinates and provide
-    the coordinates in the following json format:\n {"position": coordinates}"""
+    template=(
+        "The user asks you to go to a place. Use the available tools to "
+        "look up the place's location in memory. Pass the place name to "
+        "the locate tool as the ``concept`` argument. User asked: {{goto_query}}"
+    )
 )
+memory.register_tools_on(goto, tools=["locate"], send_tool_response_to_model=False)
 
 
-# pre-process the output before publishing to a topic of msg_type PoseStamped
-def llm_answer_to_goal_point(output: str) -> Optional[np.ndarray]:
-    # extract the json part of the output string (including brackets)
-    # one can use sophisticated regex parsing here but we'll keep it simple
-    json_string = output[output.find("{") : output.rfind("}") + 1]
-    # load the string as a json and extract position coordinates
-    # if there is an error, return None, i.e. no output would be published to goal_point
-    try:
-        json_dict = json.loads(json_string)
-        coordinates = np.fromstring(json_dict["position"], sep=",", dtype=np.float64)
-        print("Coordinates Extracted:", coordinates)
-        if coordinates.shape[0] < 2 or coordinates.shape[0] > 3:
-            return
-        elif (
-            coordinates.shape[0] == 2
-        ):  # sometimes LLMs avoid adding the zeros of z-dimension
-            coordinates = np.append(coordinates, 0)
-        return coordinates
-    except Exception:
+_LOCATION_RE = re.compile(r"Location:\s*\(([^)]+)\)")
+
+
+def locate_text_to_goal_point(output: str) -> Optional[np.ndarray]:
+    """Pull the centroid coordinates out of Memory.locate's text output."""
+    match = _LOCATION_RE.search(output)
+    if not match:
         return
+    try:
+        coords = np.fromstring(match.group(1), sep=",", dtype=np.float64)
+    except ValueError:
+        return
+    if coords.shape[0] == 2:
+        coords = np.append(coords, 0.0)
+    if coords.shape[0] != 3:
+        return
+    return coords
 
 
-goto.add_publisher_preprocessor(goal_point, llm_answer_to_goal_point)
+goto.add_publisher_preprocessor(goal_point, locate_text_to_goal_point)
 
-# Define a semantic router between a generic LLM component, VQA MLLM component and Go-to-X component
+
+### Semantic router (uses ChromaDB for the route embeddings) ###
 goto_route = Route(
     routes_to=goto_query,
     samples=[
@@ -257,7 +272,6 @@ goto_route = Route(
         "Go to hallway",
     ],
 )
-
 llm_route = Route(
     routes_to=llm_query,
     samples=[
@@ -268,7 +282,6 @@ llm_route = Route(
         "Whats up?",
     ],
 )
-
 mllm_route = Route(
     routes_to=mllm_query,
     samples=[
@@ -277,40 +290,55 @@ mllm_route = Route(
         "Whats in front of you?",
         "Where are we",
         "Do you see any people?",
-        "How many things are infront of you?",
+        "How many things are in front of you?",
         "Is this room occupied?",
     ],
 )
 
-router_config = SemanticRouterConfig(router_name="go-to-router", distance_func="l2")
-# Initialize the router component
 router = SemanticRouter(
     inputs=[query_topic],
     routes=[llm_route, goto_route, mllm_route],
     default_route=llm_route,
-    config=router_config,
+    config=SemanticRouterConfig(router_name="go-to-router", distance_func="l2"),
     db_client=chroma_client,
     component_name="router",
 )
 
-# Launch the components
+
+### Per-component fallback strategies ###
+all_components = [
+    mllm,
+    llm,
+    goto,
+    introspector,
+    memory,
+    router,
+    speech_to_text,
+    text_to_speech,
+    vision,
+]
+for component in all_components:
+    component.on_fail(
+        action=Action(component.restart),
+        max_retries=2,
+    )
+    component.fallback_rate = 1 / 10  # 0.1 Hz -- check for failures every 10s
+
+
+### Launch (multi-process) ###
 launcher = Launcher()
+launcher.enable_ui(
+    inputs=[query_topic, audio_in], outputs=[detections_topic, query_answer, goal_point]
+)
 launcher.add_pkg(
-    components=[
-        mllm,
-        llm,
-        goto,
-        introspector,
-        map,
-        router,
-        speech_to_text,
-        text_to_speech,
-        vision,
-    ],
+    components=all_components,
     package_name="automatika_embodied_agents",
     multiprocessing=True,
 )
-launcher.on_fail(action_name="restart")
-launcher.fallback_rate = 1 / 10  # 0.1 Hz or 10 seconds
+# Process-level crash recovery: respawn any multi-process component whose
+# process exits unexpectedly, up to ``max_retries`` times.
+launcher.on_process_fail(max_retries=3)
 launcher.bringup()
 ```
+
+With these modifications, the same complex agent graph from [Complete Agent](../foundation/complete-agent.md) runs **as nine isolated processes**, each with its own restart policy and its own process-level safety net. A model-server outage triggers a component restart; an unrecoverable process exit triggers a process respawn. The graph as a whole keeps running.

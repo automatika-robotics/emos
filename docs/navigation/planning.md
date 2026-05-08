@@ -42,7 +42,7 @@ Planner can be used with all four available Run Types:
   - `Topic(name="/map", msg_type="OccupancyGrid", qos_profile=QoSConfig(durability=TRANSIENT_LOCAL))`
 
 * - goal_point
-  - [`nav_msgs.msg.Odometry`](https://docs.ros.org/en/noetic/api/nav_msgs/html/msg/Odometry.html), [`geometry_msgs.msg.PoseStamped`](http://docs.ros.org/en/jade/api/geometry_msgs/html/msg/PoseStamped.html), [`geometry_msgs.msg.PointStamped`](http://docs.ros.org/en/jade/api/geometry_msgs/html/msg/PointStamped.html)
+  - [`nav_msgs.msg.Odometry`](https://docs.ros.org/en/noetic/api/nav_msgs/html/msg/Odometry.html), [`geometry_msgs.msg.PoseStamped`](http://docs.ros.org/en/jade/api/geometry_msgs/html/msg/PoseStamped.html), [`geometry_msgs.msg.PointStamped`](http://docs.ros.org/en/jade/api/geometry_msgs/html/msg/PointStamped.html), `automatika_embodied_agents.msg.Detections`, `automatika_embodied_agents.msg.PointsOfInterest`, `automatika_embodied_agents.msg.Trackings`
   - 1
   - `Topic(name="/goal", msg_type="PointStamped")`
 
@@ -54,6 +54,10 @@ Planner can be used with all four available Run Types:
 
 :::{note}
 `goal_point` input is only used if the Planner is running as TIMED or EVENT Component. In the other two types, the goal point is provided in the service request or the action goal.
+:::
+
+:::{tip}
+**Detections, Points-of-Interest, and Trackings as goals.** The Planner accepts `Detections`, `PointsOfInterest`, and `Trackings` messages from EmbodiedAgents directly on the `goal_point` input. These carry pixel-space coordinates from ML models; when paired with an RGBD source, the depth channel is used to project pixel coordinates to averaged world-space coordinates via camera intrinsics, so a Vision component can drive the Planner without an intermediate `Pose` topic. See [Cortex with Navigation](../recipes/planning-and-manipulation/cortex-navigation.md) and [Multimodal Planning](../recipes/planning-and-manipulation/planning-models.md) for the patterns.
 :::
 
 ## Outputs

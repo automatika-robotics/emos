@@ -4,5 +4,6 @@ sphinx-autodoc2
 sphinx-copybutton
 sphinx-design
 sphinx-sitemap
+sphinxcontrib-mermaid>=1.0.0
 myst-parser
 linkify-it-py

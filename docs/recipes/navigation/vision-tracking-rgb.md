@@ -11,6 +11,7 @@ In this tutorial we will create a vision-based target following navigation syste
 Based on the type of the camera used on your robot, you need to install and launch its respective ROS 2 node provided by the manufacturer.
 
 To run and test this example on your development machine, you can use your webcam along with the `usb_cam` package:
+
 ```shell
 sudo apt install ros-<ros2-distro>-usb-cam
 ros2 run usb_cam usb_cam_node_exe
@@ -30,6 +31,7 @@ After installing both packages, you can start `roboml` to serve the model later 
 ```shell
 roboml-resp
 ```
+
 ```{tip}
 Save the IP of the machine running `roboml` as we will use it later in our model client.
 ```
@@ -50,12 +52,13 @@ Now let's configure the model we want to use for detections/tracking and the mod
 ```python
 object_detection = VisionModel(
     name="object_detection",
-    checkpoint="rtmdet_tiny_8xb32-300e_coco",
+    checkpoint="PekingU/rtdetr_r50vd_coco_o365",
 )
 roboml_detection = RoboMLRESPClient(object_detection, host='127.0.0.1', logging_level="warn")
   # 127.0.0.1 should be replaced by the IP of the machine running roboml.
 ```
-The model is configured with a name and a checkpoint (any checkpoint from the mmdetection framework can be used, see [available checkpoints](https://github.com/open-mmlab/mmdetection?tab=readme-ov-file#overview-of-benchmark-and-model-zoo)). In this example, we have chosen a model checkpoint trained on the MS COCO dataset which has over 80 [classes](https://github.com/amikelive/coco-labels/blob/master/coco-labels-2014_2017.txt) of commonly found objects.
+
+The model is configured with a name and a checkpoint. RoboML's `VisionModel` works with any [HuggingFace Transformers object detection model](https://huggingface.co/models?pipeline_tag=object-detection) (RT-DETR, DETR, Grounding DINO, YOLOS, etc.). In this example we use the RT-DETR checkpoint pretrained on COCO + Objects365, which covers over 80 [classes](https://github.com/amikelive/coco-labels/blob/master/coco-labels-2014_2017.txt) of commonly found objects.
 
 ---
 
@@ -95,6 +98,7 @@ vision = Vision(
     component_name="detection_component",
 )
 ```
+
 The component inputs/outputs are defined to get the images from the camera topic and provide both detections and trackings. The `trigger` of the component is set to the image input topic so the component works in an Event-Based runtype and provides a new detection/tracking on each new image.
 
 In the component configuration, the parameter `enable_visualization` is set to `True` to get a visualization of the output on an additional pop-up window for debugging purposes. The `threshold` parameter (confidence threshold for object detection) is set to `0.5`.
@@ -137,19 +141,19 @@ See more details about the robot configuration in the [Point Navigation](point-n
 
 To implement the target following system we will use the `Controller` component to generate the tracking commands and the `DriveManager` to handle the safe communication with the robot driver.
 
-We select the vision follower method parameters by importing the config class `VisionRGBFollowerConfig` (see default parameters in the [Algorithms](../../advanced/algorithms.md) reference), then configure both our components:
+The controller selects between path-following (e.g. `DWA`) and vision-following modes via its **algorithm**. We pick `ControllersID.VISION_IMG` for an RGB-only follower (the RGB and RGBD followers are sibling controllers with their own configs -- see [Vision Tracking with Depth](vision-tracking-depth.md) for the RGBD path).
 
 ```python
 from kompass.components import Controller, ControllerConfig, DriveManager
-from kompass.control import VisionRGBFollowerConfig
+from kompass.control import ControllersID, VisionRGBFollowerConfig
 
 # Set the controller component configuration
 config = ControllerConfig(loop_rate=10.0, ctrl_publish_type="Sequence", control_time_step=0.3)
 
-# Init the controller
-controller = Controller(
-    component_name="my_controller", config=config
-)
+# Init the controller and pick the RGB-only vision follower
+controller = Controller(component_name="my_controller", config=config)
+controller.algorithm = ControllersID.VISION_IMG
+
 # Set the vision tracking input to either the detections or trackings topic
 controller.inputs(vision_tracking=detections_topic)
 
@@ -162,6 +166,7 @@ controller.algorithms_config = vision_follower_config
 # Init the drive manager with the default parameters
 driver = DriveManager(component_name="my_driver")
 ```
+
 Here we selected a loop rate for the controller of `10Hz` and a control step for generating the commands of `0.3s`, and we selected to send the commands sequentially as they get computed. The vision follower is configured with a `control_horizon` equal to three future control time steps and a `target_search_pause` equal to 6 control time steps. We also chose to disable the search, meaning that the tracking action would end when the robot loses the target.
 
 ```{tip}
@@ -182,12 +187,16 @@ launcher = Launcher()
 # setup agents as a package in the launcher and add the vision component
 launcher.add_pkg(
     components=[vision],
+    package_name="automatika_embodied_agents",
+    multiprocessing=True,
     ros_log_level="warn",
 )
 
 # setup the navigation components in the launcher
-launcher.kompass(
+launcher.add_pkg(
     components=[controller, driver],
+    package_name="kompass",
+    multiprocessing=True,
 )
 # Set the robot config for all components
 launcher.robot = my_robot
@@ -219,7 +228,7 @@ from kompass.robot import (
     RobotType,
     RobotConfig,
 )
-from kompass.control import VisionRGBFollowerConfig
+from kompass.control import ControllersID, VisionRGBFollowerConfig
 from kompass.ros import Launcher
 
 # RGB camera input topic is set to the compressed image topic
@@ -231,7 +240,7 @@ trackings_topic = Topic(name="trackings", msg_type="Trackings")
 
 object_detection = VisionModel(
     name="object_detection",
-    checkpoint="rtmdet_tiny_8xb32-300e_coco",
+    checkpoint="PekingU/rtdetr_r50vd_coco_o365",
 )
 roboml_detection = RoboMLRESPClient(object_detection, host='127.0.0.1', logging_level="warn")
 
@@ -264,8 +273,9 @@ config = ControllerConfig(
     loop_rate=10.0, ctrl_publish_type="Sequence", control_time_step=0.3
 )
 
-# Init the controller
+# Init the controller and pick the RGB-only vision follower
 controller = Controller(component_name="my_controller", config=config)
+controller.algorithm = ControllersID.VISION_IMG
 controller.inputs(vision_tracking=detections_topic)
 
 # Set the vision follower configuration
@@ -280,10 +290,14 @@ driver = DriveManager(component_name="my_driver")
 launcher = Launcher()
 launcher.add_pkg(
     components=[vision],
+    package_name="automatika_embodied_agents",
+    multiprocessing=True,
     ros_log_level="warn",
 )
-launcher.kompass(
+launcher.add_pkg(
     components=[controller, driver],
+    package_name="kompass",
+    multiprocessing=True,
 )
 launcher.robot = my_robot
 launcher.bringup()

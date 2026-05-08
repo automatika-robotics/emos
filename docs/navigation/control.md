@@ -108,7 +108,7 @@ EMOS includes several production-ready control plugins suited for different envi
 
 - {material-regular}`speed;1.2em;sd-text-primary` **[DWA](../advanced/algorithms.md)** — Dynamic Window Approach. Sample-based collision avoidance with GPU support. Considers kinematics to find optimal velocity.
 
-- {material-regular}`visibility;1.2em;sd-text-primary` **[VisionFollower](../advanced/algorithms.md)** — Vision target following controller. Steers the robot to keep a visual target centered using RGB or depth data.
+- {material-regular}`visibility;1.2em;sd-text-primary` **[VisionFollower](../advanced/algorithms.md)** — Vision target following controllers. Steer the robot to keep a visual target centered using RGB or depth data.
 
 See the [Algorithms Reference](../advanced/algorithms.md) for detailed descriptions of each algorithm.
 

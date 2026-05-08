@@ -1,3 +1,19 @@
+/* === Mermaid handwritten font ===
+   Box and text colours are pinned via the diagram's per-diagram
+   %%{init}%% directive plus classDef declarations */
+@import url('https://fonts.googleapis.com/css2?family=Architects+Daughter&family=Caveat&display=swap');
+
+.mermaid svg text,
+.mermaid .nodeLabel,
+.mermaid .edgeLabel,
+.mermaid .nodeLabel p,
+.mermaid foreignObject span {
+    font-family: 'Architects Daughter', 'Caveat', system-ui, sans-serif !important;
+    font-size: 19px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.02em !important;
+}
+
 /* === Theme Colors === */
 :root {
     --automatika-primary: #E83F3F;

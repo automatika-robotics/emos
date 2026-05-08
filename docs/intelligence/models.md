@@ -35,22 +35,16 @@ Clients in EmbodiedAgents take as input a **model** or **vector database (DB)** 
   - Provides an interface for loading and running LeRobot policies -- vision-language-action (VLA) models trained for robotic manipulation tasks. Supports automatic extraction of feature and action specifications directly from dataset metadata, as well as flexible configuration of policy behavior. The policy can be instantiated from any compatible LeRobot checkpoint hosted on HuggingFace, making it easy to load pretrained models such as `smolvla_base` or others. This wrapper must be used with the gRPC-based **LeRobotClient**.
 
 * - **RoboBrain2**
-  - [RoboBrain 2.0 by BAAI](https://github.com/FlagOpen/RoboBrain2.0) supports interactive reasoning with long-horizon planning and closed-loop feedback, spatial perception for precise point and bbox prediction from complex instructions, and temporal perception for future trajectory estimation. Checkpoint defaults to `"BAAI/RoboBrain2.0-7B"`, with larger variants available [here](https://huggingface.co/collections/BAAI/robobrain20-6841eeb1df55c207a4ea0036). This wrapper can be used with any of the RoboML clients.
+  - [RoboBrain 2.0 by BAAI](https://github.com/FlagOpen/RoboBrain2.0) supports interactive reasoning with long-horizon planning and closed-loop feedback, spatial perception for precise point and bbox prediction from complex instructions, and temporal perception for future trajectory estimation. Checkpoint defaults to `"BAAI/RoboBrain2.0-3B"`; larger variants (7B, 32B) are at the same [collection](https://huggingface.co/collections/BAAI/robobrain20-6841eeb1df55c207a4ea0036). This wrapper can be used with any of the RoboML clients.
 
 * - **Whisper**
-  - OpenAI's automatic speech recognition (ASR) model with various sizes (e.g., `"small"`, `"large-v3"`, etc.). Available on the [RoboML](https://github.com/automatika-robotics/roboml) platform and can be used with any RoboML client. Recommended: **RoboMLWSClient**.
+  - OpenAI's automatic speech recognition (ASR) model served via [faster-whisper](https://github.com/SYSTRAN/faster-whisper). Default checkpoint `"small.en"`; configurable `compute_type` (`"int8"`, `"float16"`, `"float32"`). Available on the [RoboML](https://github.com/automatika-robotics/roboml) platform and can be used with any RoboML client. Recommended: **RoboMLWSClient**.
 
-* - **SpeechT5**
-  - Microsoft's model for TTS synthesis. Configurable voice selection. Available on the [RoboML](https://github.com/automatika-robotics/roboml) platform and can be used with any RoboML client. Recommended: **RoboMLWSClient**.
-
-* - **Bark**
-  - SunoAI's Bark TTS model. Allows a selection of [voices](https://suno-ai.notion.site/8b8e8749ed514b0cbf3f699013548683?v=bc67cff786b04b50b3ceb756fd05f68c). Available on the [RoboML](https://github.com/automatika-robotics/roboml) platform and can be used with any RoboML client. Recommended: **RoboMLWSClient**.
-
-* - **MeloTTS**
-  - MyShell's multilingual TTS model. Configure via `language` (e.g., `"JP"`) and `speaker_id` (e.g., `"JP-1"`). Available on the [RoboML](https://github.com/automatika-robotics/roboml) platform and can be used with any RoboML client. Recommended: **RoboMLWSClient**.
+* - **TransformersTTS**
+  - A unified wrapper for HuggingFace Transformers TTS models. Automatically detects whether to use generative inference (Bark, SpeechT5) or forward-only inference (VITS). Default checkpoint `"facebook/mms-tts-eng"`; other examples include `"suno/bark-small"` (Bark) and `"microsoft/speecht5_tts"` (SpeechT5, paired with `vocoder_checkpoint="microsoft/speecht5_hifigan"`). For Bark, `voice` selects a voice preset (e.g. `"v2/en_speaker_6"`). Available on the [RoboML](https://github.com/automatika-robotics/roboml) platform and can be used with any RoboML client. Recommended: **RoboMLWSClient**.
 
 * - **VisionModel**
-  - A generic wrapper for object detection and tracking models available on [MMDetection](https://github.com/open-mmlab/mmdetection). Supports optional tracking, configurable thresholds, and deployment with TensorRT. Available on the [RoboML](https://github.com/automatika-robotics/roboml) platform and can be used with any RoboML client. Recommended: **RoboMLRESPClient**.
+  - A generic wrapper for object detection and tracking models from [HuggingFace Transformers](https://huggingface.co/models?pipeline_tag=object-detection) (RT-DETR, DETR, Grounding DINO, YOLOS, etc.). Default checkpoint `"PekingU/rtdetr_r50vd_coco_o365"`. Tracking via [ByteTrack](https://github.com/roboflow/trackers) is included; enable with `setup_trackers=True` and tune via `tracking_distance_threshold`. Available on the [RoboML](https://github.com/automatika-robotics/roboml) platform and can be used with any RoboML client. Recommended: **RoboMLRESPClient**.
 ```
 
 ## Built-in Local Models

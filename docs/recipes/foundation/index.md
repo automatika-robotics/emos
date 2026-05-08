@@ -30,25 +30,25 @@ Run LLMs, VLMs, STT, and TTS entirely on-device — no server required.
 Shape agent behavior with dynamic Jinja2 templates at the topic or component level.
 :::
 
-:::{grid-item-card} {material-regular}`map;1.2em;sd-text-primary` Semantic Map
+:::{grid-item-card} {material-regular}`memory;1.2em;sd-text-primary` Spatio-Temporal Memory
 :link: semantic-map
 :link-type: doc
 
-Give your robot spatio-temporal memory backed by a Vector DB.
+Give your robot a graph-backed spatio-temporal memory built on [eMEM](https://github.com/automatika-robotics/emem) -- indexed simultaneously by meaning, location, and time.
 :::
 
 :::{grid-item-card} {material-regular}`near_me;1.2em;sd-text-primary` GoTo Navigation
 :link: goto-navigation
 :link-type: doc
 
-Navigate to locations from natural language commands.
+Turn *"go to the kitchen"* into a `PoseStamped` goal -- an LLM with Memory tools, plus a regex preprocessor.
 :::
 
 :::{grid-item-card} {material-regular}`build;1.2em;sd-text-primary` Tool Calling
 :link: tool-calling
 :link-type: doc
 
-Give the LLM access to executable functions so it can act on the world.
+Generalise the tool calling pattern: write your own Python function as the LLM's tool, with full control over the schema and the published output.
 :::
 
 :::{grid-item-card} {material-regular}`alt_route;1.2em;sd-text-primary` Semantic Routing

@@ -4,15 +4,23 @@ on:
   push:
     branches: [main]
     paths:
+      - "stack/emos-cli"
       - "stack/emos-cli/**"
+      - "stack/sugarcoat"
       - "stack/sugarcoat/**"
+      - "stack/embodied-agents"
       - "stack/embodied-agents/**"
+      - "stack/kompass"
       - "stack/kompass/**"
   pull_request:
     paths:
+      - "stack/emos-cli"
       - "stack/emos-cli/**"
+      - "stack/sugarcoat"
       - "stack/sugarcoat/**"
+      - "stack/embodied-agents"
       - "stack/embodied-agents/**"
+      - "stack/kompass"
       - "stack/kompass/**"
   workflow_dispatch:
 

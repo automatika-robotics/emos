@@ -47,6 +47,9 @@ recipes/foundation/complete-agent
 :caption: Planning & Manipulation
 
 recipes/planning-and-manipulation/index
+recipes/planning-and-manipulation/cortex-agent
+recipes/planning-and-manipulation/cortex-memory
+recipes/planning-and-manipulation/cortex-navigation
 recipes/planning-and-manipulation/planning-models
 recipes/planning-and-manipulation/vla-manipulation
 recipes/planning-and-manipulation/event-driven-vla
@@ -73,6 +76,8 @@ recipes/events-and-resilience/index
 recipes/events-and-resilience/multiprocessing
 recipes/events-and-resilience/fallback-recipes
 recipes/events-and-resilience/event-driven-cognition
+recipes/events-and-resilience/visualizing-system-graph
+recipes/events-and-resilience/internal-state-events
 recipes/events-and-resilience/external-reflexes
 recipes/events-and-resilience/cross-component-events
 recipes/events-and-resilience/composed-events
@@ -99,6 +104,8 @@ concepts/web-ui
 
 intelligence/overview
 intelligence/ai-components
+intelligence/cortex
+intelligence/memory
 intelligence/clients
 intelligence/models
 ```

@@ -32,7 +32,7 @@ from agents.config import SpeechToTextConfig
 audio_in = Topic(name="audio0", msg_type="Audio")
 text_query = Topic(name="text0", msg_type="String")
 
-s2t_config = SpeechToTextConfig(enable_vad=True,     # option to listen for speech through the microphone, set to False if usign web UI
+s2t_config = SpeechToTextConfig(enable_vad=True,     # option to listen for speech through the microphone, set to False if using web UI
                                 enable_wakeword=True) # option to invoke the component with a wakeword like 'hey jarvis', set to False if using web UI
 ```
 
@@ -97,7 +97,7 @@ text_answer = Topic(name="text1", msg_type="String")
 qwen_vl = OllamaModel(name="qwen_vl", checkpoint="qwen2.5vl:latest")
 qwen_client = OllamaClient(qwen_vl)
 
-mllm_config = VLMConfig(stream=True)  # Other inference specific paramters can be provided here
+mllm_config = VLMConfig(stream=True)  # Other inference specific parameters can be provided here
 
 # Define an VLM component
 mllm = VLM(
@@ -122,7 +122,7 @@ Notice that the template is a jinja2 template string, where the actual name of t
 
 ## TextToSpeech Component
 
-The TextToSpeech component setup will be very similar to the SpeechToText component. We will once again use a RoboML client, this time with the SpeechT5 model (opensource model from Microsoft). Furthermore, this component can be configured to play audio on a playback device available onboard the robot. We will utilize this option through our config. An output topic is optional for this component as we will be playing the audio directly on device.
+The TextToSpeech component setup will be very similar to the SpeechToText component. We will once again use a RoboML client, this time with the unified `TransformersTTS` wrapper. RoboML serves any HuggingFace Transformers TTS model -- VITS, Bark, SpeechT5, SeamlessM4T, etc. -- through a single class; here we keep the default checkpoint, [Facebook's MMS-TTS-eng (VITS)](https://huggingface.co/facebook/mms-tts-eng), which is fast and lightweight enough to run comfortably on-device. The component can be configured to play audio on a playback device available onboard the robot, which we will utilize through our config. An output topic is optional for this component as we will be playing the audio directly on device.
 
 ```{note}
 In order to utilize _play_on_device_ you need to install a couple of dependencies as follows: `pip install soundfile sounddevice`
@@ -130,7 +130,7 @@ In order to utilize _play_on_device_ you need to install a couple of dependencie
 
 ```python
 from agents.config import TextToSpeechConfig
-from agents.models import SpeechT5
+from agents.models import TransformersTTS
 
 # config for asynchronously playing audio on device
 t2s_config = TextToSpeechConfig(play_on_device=True, stream=True)  # Set play_on_device to false if using the web UI
@@ -138,13 +138,13 @@ t2s_config = TextToSpeechConfig(play_on_device=True, stream=True)  # Set play_on
 # Uncomment the following line for receiving output on the web UI
 # audio_out = Topic(name="audio_out", msg_type="Audio")
 
-speecht5 = SpeechT5(name="speecht5")
-roboml_speecht5 = RoboMLWSClient(speecht5)
+vits = TransformersTTS(name="vits")  # default checkpoint: facebook/mms-tts-eng
+roboml_vits = RoboMLWSClient(vits)
 text_to_speech = TextToSpeech(
     inputs=[text_answer],
     outputs=[],  # use outputs=[audio_out] for receiving answers on web UI
     trigger=text_answer,
-    model_client=roboml_speecht5,
+    model_client=roboml_vits,
     config=t2s_config,
     component_name="text_to_speech"
 )
@@ -174,7 +174,7 @@ Et voila! We have setup a graph of three components in less than 50 lines of wel
 from agents.components import VLM, SpeechToText, TextToSpeech
 from agents.config import SpeechToTextConfig, TextToSpeechConfig, VLMConfig
 from agents.clients import OllamaClient, RoboMLWSClient
-from agents.models import Whisper, SpeechT5, OllamaModel
+from agents.models import Whisper, TransformersTTS, OllamaModel
 from agents.ros import Topic, Launcher
 
 audio_in = Topic(name="audio0", msg_type="Audio")
@@ -183,7 +183,7 @@ text_query = Topic(name="text0", msg_type="String")
 whisper = Whisper(name="whisper")  # Custom model init params can be provided here
 roboml_whisper = RoboMLWSClient(whisper)
 
-s2t_config = SpeechToTextConfig(enable_vad=True,     # option to listen for speech through the microphone, set to False if usign web UI
+s2t_config = SpeechToTextConfig(enable_vad=True,     # option to listen for speech through the microphone, set to False if using web UI
                                 enable_wakeword=True) # option to invoke the component with a wakeword like 'hey jarvis', set to False if using web UI
 
 speech_to_text = SpeechToText(
@@ -200,7 +200,7 @@ text_answer = Topic(name="text1", msg_type="String")
 
 qwen_vl = OllamaModel(name="qwen_vl", checkpoint="qwen2.5vl:latest")
 qwen_client = OllamaClient(qwen_vl)
-mllm_config = VLMConfig(stream=True)  # Other inference specific paramters can be provided here
+mllm_config = VLMConfig(stream=True)  # Other inference specific parameters can be provided here
 
 mllm = VLM(
     inputs=[text_query, image0],
@@ -216,13 +216,13 @@ t2s_config = TextToSpeechConfig(play_on_device=True, stream=True)  # Set play_on
 # Uncomment the following line for receiving output on the web UI
 # audio_out = Topic(name="audio_out", msg_type="Audio")
 
-speecht5 = SpeechT5(name="speecht5")
-roboml_speecht5 = RoboMLWSClient(speecht5)
+vits = TransformersTTS(name="vits")  # default checkpoint: facebook/mms-tts-eng
+roboml_vits = RoboMLWSClient(vits)
 text_to_speech = TextToSpeech(
     inputs=[text_answer],
     outputs=[],  # use outputs=[audio_out] for receiving answers on web UI
     trigger=text_answer,
-    model_client=roboml_speecht5,
+    model_client=roboml_vits,
     config=t2s_config,
     component_name="text_to_speech"
 )

@@ -59,7 +59,7 @@ RoboML is an aggregator library that provides a model serving apparatus for loca
 
 The RoboBrain models are gated repositories on HuggingFace. To avoid "model not authorized" or `401 Client Error` messages:
 
-1. **Agree to Terms:** You must sign in to your HuggingFace account and accept the license terms on the [model's repository page](https://huggingface.co/BAAI/RoboBrain2.0-7B).
+1. **Agree to Terms:** You must sign in to your HuggingFace account and accept the license terms on the [model's repository page](https://huggingface.co/BAAI/RoboBrain2.0-3B) (or the variant you choose).
 2. **Authenticate Locally:** Ensure your environment is authenticated by running `huggingface-cli login` in your terminal and entering your access token.
 ```
 
@@ -102,7 +102,7 @@ config = VLMConfig(task="grounding")
 
 # initialize the component
 go_to_x = VLM(
-    inputs=[llm_output, rgbd],
+    inputs=[llm_output, rgbd0],
     outputs=[grounding_output],
     model_client=robobrain_client,
     trigger=llm_output,
@@ -150,7 +150,7 @@ my_robot = RobotConfig(
 Now we can add our default components. Our component of interest is the _planning_ component, that plots a path to the goal point. We will give the output topic from our VLM component as the goal point topic to the planning component.
 
 ```{important}
-While planning components typically require goal points as `Pose` or `PoseStamped` messages in world space, EMOS also accepts `Detection` and `PointOfInterest` messages from EmbodiedAgents. These contain pixel-space coordinates identified by ML models. When generated from RGBD inputs, the associated depth images are included, enabling EMOS to automatically convert pixel-space points to averaged world-space coordinates using camera intrinsics.
+The Kompass Planner accepts `Detections`, `PointsOfInterest`, and `Trackings` messages from EmbodiedAgents directly as goal-point inputs. These contain pixel-space coordinates identified by ML models. When generated from RGBD inputs, the associated depth images enable Kompass to automatically convert pixel-space points to averaged world-space coordinates using camera intrinsics. See [Planning](../../navigation/planning.md) for the supported input types.
 ```
 
 ```python
@@ -188,18 +188,24 @@ Learn the details of point navigation in EMOS using the step-by-step [Point Navi
 Now we will launch our Go-to-X component and navigation components using the same launcher.
 
 ```python
-from kompass.launcher import Launcher
+from kompass.ros import Launcher
 
 launcher = Launcher()
 
 # Add the intelligence components
-launcher.add_pkg(components=[sentence_parser, go_to_x], ros_log_level="warn",
-                 package_name="automatika_embodied_agents",
-                 executable_entry_point="executable",
-                 multiprocessing=True)
+launcher.add_pkg(
+    components=[sentence_parser, go_to_x],
+    package_name="automatika_embodied_agents",
+    multiprocessing=True,
+    ros_log_level="warn",
+)
 
 # Add the navigation components
-launcher.kompass(components=[planner, controller, mapper, driver])
+launcher.add_pkg(
+    components=[planner, controller, mapper, driver],
+    package_name="kompass",
+    multiprocessing=True,
+)
 
 # Set the robot config for all components as defined above and bring up
 launcher.robot = my_robot
@@ -233,7 +239,7 @@ from kompass.components import (
     DriveManager,
     LocalMapper,
 )
-from kompass.launcher import Launcher
+from kompass.ros import Launcher
 
 
 # Start a Llama3.2 based llm component using ollama client
@@ -305,13 +311,19 @@ driver = DriveManager(component_name="drive_manager")
 launcher = Launcher()
 
 # Add the intelligence components
-launcher.add_pkg(components=[sentence_parser, go_to_x], ros_log_level="warn",
-                 package_name="automatika_embodied_agents",
-                 executable_entry_point="executable",
-                 multiprocessing=True)
+launcher.add_pkg(
+    components=[sentence_parser, go_to_x],
+    package_name="automatika_embodied_agents",
+    multiprocessing=True,
+    ros_log_level="warn",
+)
 
 # Add the navigation components
-launcher.kompass(components=[planner, controller, mapper, driver])
+launcher.add_pkg(
+    components=[planner, controller, mapper, driver],
+    package_name="kompass",
+    multiprocessing=True,
+)
 
 # Set the robot config for all components as defined above and bring up
 launcher.robot = my_robot

@@ -58,12 +58,7 @@ The CLI will:
 5. Install kompass-core with GPU acceleration support
 6. Build all packages with colcon and install them into `/opt/ros/{distro}/`
 
-After installation, EMOS packages are available whenever you source ROS2. You can run recipes directly:
-
-```bash
-source /opt/ros/jazzy/setup.bash
-python3 ~/emos/recipes/my_recipe/recipe.py
-```
+After installation, EMOS packages are available whenever you source `/opt/ros/<distro>/setup.bash`. See [Running Recipes](running-recipes.md) for how to launch a recipe -- directly with `python` or via the `emos run` flow.
 
 **Requirements:** A working ROS2 installation (Humble, Jazzy, or Kilted).
 
@@ -90,13 +85,7 @@ pixi run setup
 
 This pulls ROS2 Jazzy and all dependencies as pre-built packages from [RoboStack](https://robostack.github.io/) and conda-forge, installs kompass-core with GPU acceleration, then builds the EMOS packages with colcon.
 
-To enter the environment and run recipes:
-
-```bash
-pixi shell
-source install/setup.sh
-python3 ~/emos/recipes/my_recipe/recipe.py
-```
+See [Running Recipes](running-recipes.md) for how to launch a recipe -- directly from a `pixi shell` or via the `emos run` flow.
 
 **Requirements:** Linux (amd64 or arm64). No root, Docker, or ROS2 needed.
 
@@ -263,13 +252,13 @@ If sensor verification fails during `emos run`, see [Troubleshooting](troublesho
 EMOS is agnostic to model serving platforms. You need at least one of the following available on your network:
 
 - {material-regular}`download;1.2em;sd-text-primary` **[Ollama](https://ollama.com)** Recommended for local inference.
-- {material-regular}`smart_toy;1.2em;sd-text-primary` **[RoboML](https://github.com/automatika-robotics/robo-ml)** Automatika's own model serving layer.
-- {material-regular}`api;1.2em;sd-text-primary` **OpenAI API-compatible servers** e.g. [llama.cpp](https://github.com/ggml-org/llama.cpp), [vLLM](https://github.com/vllm-project/vllm), [SGLang](https://github.com/sgl-project/sglang).
+- {material-regular}`smart_toy;1.2em;sd-text-primary` **[RoboML](https://github.com/automatika-robotics/robo-ml)** Automatika's own open-source model serving package for quick prototyping.
+- {material-regular}`api;1.2em;sd-text-primary` **OpenAI API-compatible fast inference servers** e.g. [llama.cpp](https://github.com/ggml-org/llama.cpp), [vLLM](https://github.com/vllm-project/vllm), [SGLang](https://github.com/sgl-project/sglang).
 - {material-regular}`precision_manufacturing;1.2em;sd-text-primary` **[LeRobot](https://github.com/huggingface/lerobot)** For Vision-Language-Action (VLA) models.
-- {material-regular}`cloud;1.2em;sd-text-primary` **Cloud endpoints** HuggingFace Inference Endpoints, OpenAI, etc.
+- {material-regular}`cloud;1.2em;sd-text-primary` **Cloud endpoints** e.g. OpenAI, Claude, HuggingFace Inference etc. using an API key.
 
 ```{tip}
-For larger models, run the serving platform on a GPU-equipped machine on your local network rather than directly on the robot.
+For larger models, run the serving platform on a GPU-equipped machine on your local network, or use a cloud endpoint, rather than running models directly on the robot.
 ```
 
 ## Updating
@@ -284,6 +273,7 @@ The CLI detects your installation mode and updates accordingly:
 
 - **Container mode:** pulls the latest image and recreates the container.
 - **Native mode:** pulls the latest source, rebuilds, and re-installs packages into `/opt/ros/{distro}/`.
+- **Pixi mode:** runs `git pull` and `git submodule update` in the EMOS repository you cloned at install time, refreshes the pixi environment (`pixi install`), and rebuilds the EMOS packages (`pixi run setup`).
 
 ## Installing from Source (Developer Setup)
 

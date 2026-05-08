@@ -159,6 +159,7 @@ python3 my_first_recipe.py
 ```bash
 cd ~/automatika/emos                   # the EMOS repo where you ran `pixi install`
 pixi shell
+source install/setup.sh                # adds the EMOS packages built by `pixi run setup` to your env
 python3 my_first_recipe.py
 ```
 

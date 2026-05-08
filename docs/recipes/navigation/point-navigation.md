@@ -259,3 +259,10 @@ Congratulations! You have created a full production-grade navigation recipe.
 * **[Vision Tracking with RGB](vision-tracking-rgb.md)**: Replace the Pure Pursuit controller with a Vision Follower to chase targets.
 * **[Vision Tracking with Depth](vision-tracking-depth.md)**: Extend RGB tracking with depth sensing for more robust following.
 * **[Runtime Model Fallback](../events-and-resilience/fallback-recipes.md)**: Learn how to make your recipe robust by automatically restarting components if they crash.
+
+---
+
+```{tip}
+**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+```
+

@@ -237,3 +237,10 @@ For the long-running case -- where Cortex *should* dispatch a Kompass action ser
 - {doc}`Cortex Driving the Full Stack <cortex-navigation>` -- the showcase tutorial. Cortex orchestrates a navigation stack, vision, memory, and speech to handle compound natural-language goals like *"go to the kitchen and tell me what's on the counter"*.
 - {doc}`Memory and Cortex <cortex-memory>` -- add a graph-backed spatio-temporal memory so Cortex can reason over past observations and the robot's own internal state.
 - {doc}`Cortex concept page <../../intelligence/cortex>` -- the full reference for the planning loop, the confirmation step, RAG, async goal monitoring, and the Cortex-as-Monitor architecture.
+
+---
+
+```{tip}
+**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+```
+

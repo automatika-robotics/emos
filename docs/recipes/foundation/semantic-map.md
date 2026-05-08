@@ -304,3 +304,10 @@ launcher.bringup()
 - {doc}`Memory and Cortex <../planning-and-manipulation/cortex-memory>` — once you've built a memory, *reason* over it. Cortex auto-discovers all of Memory's retrieval tools and answers questions in plain English: *"where did you last see the cat?"*, *"summarise the last episode"*, *"is the kitchen messy right now?"*.
 - {doc}`Cortex: The Agentic Harness <../planning-and-manipulation/cortex-agent>` — the Cortex introduction, if you haven't met it yet.
 - {doc}`Memory concept page <../../intelligence/memory>` — the full architectural reference for eMEM: nodes, edges, tiers, consolidation, the ten retrieval tools.
+
+---
+
+```{tip}
+**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+```
+

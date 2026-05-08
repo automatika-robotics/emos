@@ -236,3 +236,10 @@ launcher = Launcher()
 launcher.add_pkg(components=[player, referee])
 launcher.bringup()
 ```
+
+---
+
+```{tip}
+**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+```
+

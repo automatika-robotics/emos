@@ -381,3 +381,10 @@ In this single recipe, we have assembled a fully capable embodied agent with the
 This is the EMOS developer experience: a sophisticated, multi-capability embodied agent defined entirely in a single Python script. Every component -- perception, reasoning, memory, navigation, and speech -- is wired together through Topics and launched with one call to `bringup()`. The same recipe runs on any robot that EMOS supports, from wheeled AMRs to quadrupeds, without modification.
 
 To run this same graph in **multi-process mode with fault tolerance**, see [Multiprocessing & Fault Tolerance](../events-and-resilience/multiprocessing.md). For runtime resilience -- fallback logic, recovery maneuvers, algorithm switching -- see the [Events & Actions](../../concepts/events-and-actions.md) documentation.
+
+---
+
+```{tip}
+**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+```
+

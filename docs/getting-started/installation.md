@@ -114,15 +114,39 @@ See the [CLI Reference](cli.md) for the full list of commands.
 | ROS2 already installed, system-level integration    | **Native**       |
 | No root, no Docker, any Linux distro                | **Pixi**         |
 
-## Start the Dashboard
+## Reach the Dashboard
 
-After installation finishes, start the EMOS dashboard for a graphical, zero-touch experience:
+During installation you were asked whether to enable the EMOS dashboard as a systemd service. Pick the path you chose below.
+
+### If you enabled the systemd service (recommended)
+
+The dashboard is already running and will come up automatically at every boot. The installer printed the access details once -- a six-digit pairing code, the URLs the dashboard is reachable at, and a scannable QR code. Open any of the URLs in a browser, enter the code, and the browser is paired for ~90 days.
+
+If you missed the install output (or you've already paired and just need the URLs again), reprint the access summary at any time:
 
 ```bash
 emos serve
 ```
 
-The first launch prints a six-digit pairing code, the URLs the dashboard is reachable at, and a QR code. Open any of the URLs in a browser, enter the code once, and the browser is paired for ~90 days. The installer also offers to set up a systemd unit so the dashboard comes up automatically at boot.
+When the dashboard is already running as a service, `emos serve` detects that and just shows the URLs and management commands -- it does not try to bind a second instance. Manage the service directly with:
+
+```bash
+systemctl status emos-dashboard.service
+systemctl restart emos-dashboard.service
+journalctl -u emos-dashboard.service -f
+```
+
+If you've lost the original pairing code, issue a fresh one with `emos config rotate-pairing`.
+
+### If you skipped the systemd service
+
+Start the dashboard manually whenever you want to use it:
+
+```bash
+emos serve
+```
+
+The first launch prints the pairing code, URLs, and QR code. The process runs in the foreground and stops when you `Ctrl-C` it. You can enable the service later with `emos serve install-service`.
 
 ```{seealso}
 [Dashboard](dashboard.md) — full walkthrough of pairing, recipes, and run console

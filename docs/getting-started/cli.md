@@ -51,28 +51,11 @@ emos run vision_follower      # launch it (blocks until exit)
 
 ## Running Recipes
 
-`emos run <name>` adapts to the install mode:
+`emos run <name>` adapts to the install mode -- starting the container in container mode, sourcing ROS in native, activating the pixi env in pixi -- before exec-ing the recipe and streaming logs to `~/emos/logs/<recipe>_<timestamp>.log`. Logs are also visible from the dashboard's [Run console](dashboard.md#run-console).
 
-- **Container mode** — starts the EMOS Docker container, configures the RMW (Zenoh by default), verifies sensor topics, executes the recipe inside the container.
-- **Native / pixi mode** — verifies the ROS 2 environment, configures the RMW, verifies sensor topics, executes the recipe directly on the host.
-- **Licensed mode** — uses the licensed deployment image with a sensor manifest from the robot package; otherwise identical to container mode.
+For the full guide to writing, dropping in, and launching custom recipes (including the install-mode pitfalls of running them directly via `python`), see [Running Recipes](running-recipes.md).
 
-In native or pixi mode you can also run recipes without the CLI:
-
-```bash
-# Native: source the system ROS install
-source /opt/ros/jazzy/setup.bash
-python3 ~/emos/recipes/my_recipe/recipe.py
-
-# Pixi: enter the project shell first
-pixi shell
-source install/setup.sh
-python3 ~/emos/recipes/my_recipe/recipe.py
-```
-
-All output is streamed to your terminal and saved to `~/emos/logs/<recipe>_<timestamp>.log`. Logs are also visible from the dashboard's [Run console](dashboard.md#run-console).
-
-## Writing Custom Recipes
+## Recipe Layout
 
 A recipe is a directory under `~/emos/recipes/` with the following structure:
 
@@ -80,7 +63,7 @@ A recipe is a directory under `~/emos/recipes/` with the following structure:
 ~/emos/recipes/
   my_recipe/
     recipe.py          # Main entry point (required)
-    manifest.json      # Optional Zenoh / display-name / description
+    manifest.json      # Optional: Zenoh config / display name / description
 ```
 
 ### `manifest.json`
@@ -101,44 +84,7 @@ A recipe is a directory under `~/emos/recipes/` with the following structure:
 Sensor requirements are auto-extracted from `recipe.py` by parsing `Topic(name=..., msg_type=...)` declarations. You don't need to list them in the manifest. Run `emos info <recipe>` (or open the recipe in the dashboard) to see the inferred requirements.
 ```
 
-### `recipe.py`
-
-A standard EMOS Python script:
-
-```python
-from agents.clients.ollama import OllamaClient
-from agents.components import VLM
-from agents.models import OllamaModel
-from agents.ros import Topic, Launcher
-
-text_in  = Topic(name="text0",     msg_type="String")
-image_in = Topic(name="image_raw", msg_type="Image")
-text_out = Topic(name="text1",     msg_type="String")
-
-model  = OllamaModel(name="qwen_vl", checkpoint="qwen2.5vl:latest")
-client = OllamaClient(model)
-
-vlm = VLM(
-    inputs=[text_in, image_in],
-    outputs=[text_out],
-    model_client=client,
-    trigger=text_in,
-)
-
-launcher = Launcher()
-launcher.add_pkg(components=[vlm])
-launcher.bringup()
-```
-
-### Verifying your custom recipe
-
-```bash
-emos ls               # confirm it appears
-emos info my_recipe   # check sensor requirements
-emos run my_recipe    # launch it
-```
-
-It will also show up in the dashboard's **Recipes → Installed** tab automatically.
+For the full walkthrough -- writing the recipe, dropping it in, verifying discovery, and launching it via `emos run` or the dashboard -- see [Running Recipes](running-recipes.md).
 
 ## Command Reference
 

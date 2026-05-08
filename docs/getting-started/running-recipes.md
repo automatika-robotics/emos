@@ -8,14 +8,14 @@ Once you have a recipe in hand -- whether you wrote it from a tutorial or pulled
 
 When you are **developing** a recipe -- writing it, tweaking parameters, debugging a bad output -- you want the tightest edit-run-debug loop possible. When somebody **runs** a finished recipe in production, they want sensor checks, persistent logs, and a dashboard they can manage from a browser without ever opening a terminal. EMOS gives you one flow for each.
 
-|                          | Development                                              | Production                                                                                 |
-| :----------------------- | :------------------------------------------------------- | :----------------------------------------------------------------------------------------- |
-| **Who it's for**         | The recipe author iterating on the script.               | An operator -- often a non-developer -- running a finished recipe on a robot.              |
-| **How to launch**        | `python recipe.py`                                       | `emos run <name>` from a terminal, or click **Run** on the recipe card in the dashboard.   |
-| **Environment setup**    | You source ROS / activate the EMOS env yourself.         | The CLI activates the right environment for your install mode (Native / Pixi / Container). |
-| **Pre-launch checks**    | None -- the script crashes if a sensor topic is missing. | Pre-flight check that every sensor topic the recipe declares is actually publishing.       |
-| **Logs**                 | Stream to the terminal. No retention.                    | Stream to the terminal **and** persist to `~/emos/logs/<name>_<ts>.log`.                   |
-| **Dashboard visibility** | None.                                                    | The recipe is on the **Recipes → Installed** tab and every run is tracked in run history.  |
+|                          | Development                                              | Production                                                                                   |
+| :----------------------- | :------------------------------------------------------- | :------------------------------------------------------------------------------------------- |
+| **Who it's for**         | The recipe author iterating on the script.               | An operator -- often a non-developer -- running a finished recipe on a robot.                |
+| **How to launch**        | `python recipe.py`                                       | `emos run <name>` from a terminal, or click **Run** on the recipe card in the dashboard.     |
+| **Environment setup**    | You source ROS / activate the EMOS env yourself.         | The CLI activates the right environment for your install mode (Native / Pixi / Container).   |
+| **Pre-launch checks**    | None -- the script crashes if a sensor topic is missing. | Pre-flight check that every sensor topic the recipe declares is actually publishing.         |
+| **Logs**                 | Stream to the terminal. No retention.                    | Stream to the terminal **and** persist to `~/emos/logs/<name>_<ts>.log`.                     |
+| **Dashboard visibility** | The recipe doesn't show up on the dashboard.             | A card on the **Recipes → Installed** tab, ready for an operator to launch from the browser. |
 
 In short: ship the script with `python` while you're shaping it; drop it into `~/emos/recipes/` once it's solid and hand it to an operator (or your future self) to run via `emos run` or the dashboard.
 
@@ -69,7 +69,7 @@ emos info my_recipe      # inferred sensor topics, suggested drivers
 emos run my_recipe
 ```
 
-Open the dashboard in a browser: the recipe is on the **Recipes → Installed** tab, and the active run appears in the run console with live log streaming. You can also start the run from the dashboard itself -- click the recipe card and **Run**.
+Open the dashboard in a browser: the recipe now shows up on the **Recipes → Installed** tab. From there, an operator can click **Run** to launch it directly from the browser, with the live log console and run history filling in as the recipe progresses. The terminal path stays available too -- `emos run my_recipe` does the same execution and writes the same log file to `~/emos/logs/`, just driven from a shell instead of the GUI.
 
 ---
 
@@ -83,8 +83,8 @@ The two flows behave differently across install modes. The production flow is mo
 | **Pixi**            | From the EMOS repo directory: `pixi shell`, then `source install/setup.sh`, then `python3 recipe.py`.                                                                                        | Works -- the CLI activates the pixi env and sources the colcon overlay for you. |
 | **Container (OSS)** | **Does not work from the host shell.** The `agents`, `kompass`, and `ros_sugar` Python packages live inside the container. To iterate directly, `docker exec -it emos-container bash` first. | Works -- the CLI runs the recipe inside the container.                          |
 
-```{important}
-Only `emos run` populates the dashboard's run history. A recipe started via direct `python` runs locally without any communication to the dashboard daemon. If you want the run to appear in the dashboard, launch it via `emos run` (terminal) or by clicking **Run** on the recipe card.
+```{tip}
+The dashboard's **in-browser live log console and run history** light up when you launch a recipe from the dashboard's **Run** button -- the daemon owns the run end-to-end and streams progress straight to the browser. Terminal launches (`emos run` or direct `python`) are equally valid; they stream output to your shell and write the same log file to `~/emos/logs/`. Pick the surface that fits the moment: dashboard for hands-off monitoring from a browser, terminal when you're already in one.
 ```
 
 ---

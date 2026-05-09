@@ -1,6 +1,7 @@
 package server
 
 import (
+	"sync"
 	"testing"
 	"time"
 )
@@ -88,45 +89,104 @@ func TestJobUpdateBroadcasts(t *testing.T) {
 	}
 }
 
-func TestJobUpdateFinishedClosesBus(t *testing.T) {
+func TestJobUpdateFinishedSignalsDone(t *testing.T) {
+	// New contract (issue #4): on terminal status, Done() fires and the
+	// final event is delivered through the bus -- the bus is NOT closed.
 	js := NewJobs()
 	j := js.New("j", "pull", "x")
 	sub := j.Subscribe()
+	done := j.Done()
 
 	j.Update(JobStatusFinished, 1.0, "done")
 
-	// First event: the finished update.
+	// Bus must deliver the terminal event.
 	select {
 	case evt := <-sub:
 		if evt.Status != JobStatusFinished {
-			t.Fatalf("first event = %+v, want finished", evt)
+			t.Fatalf("event = %+v, want finished", evt)
 		}
 	case <-time.After(time.Second):
 		t.Fatalf("no finished event delivered")
 	}
 
-	// The bus closes ~2s after the terminal event. Wait for it.
-	closed := false
-	deadline := time.Now().Add(4 * time.Second)
-	for time.Now().Before(deadline) {
-		select {
-		case _, ok := <-sub:
-			if !ok {
-				closed = true
-			}
-		default:
-			time.Sleep(50 * time.Millisecond)
-		}
-		if closed {
-			break
-		}
+	// Done() must fire promptly after Update returns.
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatalf("Done() did not fire after terminal status")
 	}
-	if !closed {
-		t.Fatalf("bus channel not closed after terminal status")
-	}
-	// FinishedAt must be set.
+
 	if j.Snapshot().FinishedAt.IsZero() {
 		t.Fatalf("FinishedAt not set on terminal update")
+	}
+}
+
+func TestJobBusNeverClosesAfterTerminal(t *testing.T) {
+	// Regression for issue #4. The pre-fix code closed the bus channel
+	// 2s after a terminal Update, opening a window where a concurrent
+	// Update could `send on closed channel` panic. The new contract is
+	// that the bus stays open for the lifetime of the process; subscribers
+	// learn termination through Done(). Pin that here.
+	js := NewJobs()
+	j := js.New("j", "pull", "x")
+	sub := j.Subscribe()
+
+	j.Update(JobStatusFinished, 1.0, "done")
+	<-sub // drain the terminal event
+
+	select {
+	case <-j.Done():
+	case <-time.After(time.Second):
+		t.Fatalf("Done() did not fire")
+	}
+
+	// Wait well past the old 2 s sleep window. The channel must still
+	// be open: a default branch fires only on an open-but-empty channel,
+	// while a closed channel would deliver `(zero, false)` immediately.
+	time.Sleep(150 * time.Millisecond)
+	select {
+	case _, ok := <-sub:
+		if !ok {
+			t.Fatalf("bus was closed after terminal status; new contract says it must stay open")
+		}
+		t.Fatalf("unexpected event after drain")
+	default:
+		// open and empty -- correct.
+	}
+}
+
+func TestConcurrentTerminalUpdatesDoNotPanic(t *testing.T) {
+	// Issue #4 regression: under the old code, two concurrent Update()
+	// calls that both hit a terminal status could race the goroutine
+	// that closed the bus, producing either `send on closed channel` or
+	// `close of closed channel` panics. The new code routes terminal
+	// notification through context.CancelFunc, which is idempotent.
+	for trial := 0; trial < 50; trial++ {
+		js := NewJobs()
+		j := js.New("j", "pull", "x")
+
+		var wg sync.WaitGroup
+		const goroutines = 16
+		for i := 0; i < goroutines; i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				if i%2 == 0 {
+					j.Update(JobStatusFinished, 1.0, "done")
+				} else {
+					j.Update(JobStatusFailed, 0, "boom")
+				}
+			}(i)
+		}
+		wg.Wait()
+
+		// Done must have fired, and the bus must still be readable
+		// (open-empty or open-with-pending-events) without panicking.
+		select {
+		case <-j.Done():
+		case <-time.After(time.Second):
+			t.Fatalf("trial %d: Done() did not fire after %d concurrent terminal updates", trial, goroutines)
+		}
 	}
 }
 

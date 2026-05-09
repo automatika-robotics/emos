@@ -34,12 +34,23 @@ type JobView struct {
 //
 // Job embeds JobView for the user-visible state and adds the synchronisation
 // primitives that must never leave the package by value.
+//
+// Lifecycle vs. cancel:
+//   - lifecycle is the job's *terminal* signal. It's cancelled in Update()
+//     when the job transitions to JobStatusFinished or JobStatusFailed.
+//     Subscribers select on lifecycle.Done() to learn when no more events
+//	   will arrive.
+//   - cancel is the worker's operational cancellation, wired so the
+//     HTTP DELETE /jobs/{id} handler can abort an in-flight
+//     download. Independent of lifecycle.
 type Job struct {
 	JobView
 
-	mu     sync.Mutex
-	bus    chan JobEvent
-	cancel context.CancelFunc // populated when the job worker accepts a context
+	mu           sync.Mutex
+	bus          chan JobEvent
+	cancel       context.CancelFunc // populated when the job worker accepts a context
+	lifecycle    context.Context    // cancelled on terminal status
+	lifecycleEnd context.CancelFunc
 }
 
 // SetCancel registers a cancel func to be invoked by Job.Cancel. Called by
@@ -101,25 +112,28 @@ func (j *Job) Update(status JobStatus, progress float64, message string) {
 	default:
 	}
 	if status == JobStatusFinished || status == JobStatusFailed {
-		// Allow the channel to drain, then close.
-		go func() {
-			time.Sleep(2 * time.Second)
-			j.mu.Lock()
-			defer j.mu.Unlock()
-			select {
-			case <-j.bus:
-			default:
-			}
-			close(j.bus)
-		}()
+		// Signal terminal status to subscribers via the lifecycle context.
+		// Idempotent: lifecycleEnd is a context.CancelFunc.
+		j.lifecycleEnd()
 	}
 }
 
-// Subscribe returns the events channel; closes when the job is done.
+// Subscribe returns the events channel. The channel is never closed;
+// subscribers MUST select on Done() to learn when the job has reached a
+// terminal status and no more events will arrive.
 func (j *Job) Subscribe() <-chan JobEvent {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	return j.bus
+}
+
+// Done returns a channel that is closed when the job reaches a terminal
+// status (Finished or Failed). Subscribers pair this with the events channel
+// from Subscribe() to know when to stop reading.
+func (j *Job) Done() <-chan struct{} {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.lifecycle.Done()
 }
 
 // Snapshot returns a lock-free copy of the user-visible state for JSON
@@ -144,6 +158,7 @@ func NewJobs() *Jobs {
 
 // New starts tracking a job and returns it; caller drives Updates from a goroutine.
 func (js *Jobs) New(id, kind, target string) *Job {
+	lifecycleCtx, lifecycleEnd := context.WithCancel(context.Background())
 	j := &Job{
 		JobView: JobView{
 			ID:        id,
@@ -152,7 +167,9 @@ func (js *Jobs) New(id, kind, target string) *Job {
 			Status:    JobStatusRunning,
 			StartedAt: time.Now(),
 		},
-		bus: make(chan JobEvent, 16),
+		bus:          make(chan JobEvent, 16),
+		lifecycle:    lifecycleCtx,
+		lifecycleEnd: lifecycleEnd,
 	}
 	js.mu.Lock()
 	js.all[id] = j

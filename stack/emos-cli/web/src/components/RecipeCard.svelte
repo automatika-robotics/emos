@@ -22,8 +22,10 @@
     busy?: boolean;
   } = $props();
 
-  // Manifest info exists only on local recipes; we feature-detect.
-  let local = $derived('manifest' in recipe ? (recipe as LocalRecipe) : null);
+  // Distinguish local recipes from catalog (remote) ones via `has_recipe_py`,
+  // which the backend always serializes for LocalRecipe (no `omitempty`) and
+  // never sends for RemoteRecipe.
+  let local = $derived('has_recipe_py' in recipe ? (recipe as LocalRecipe) : null);
   // Both LocalRecipe and RemoteRecipe now use {name: slug, display_name: human}.
   let title = $derived(
     ('display_name' in recipe && recipe.display_name) || recipe.name

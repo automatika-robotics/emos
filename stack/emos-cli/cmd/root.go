@@ -35,6 +35,7 @@ func Execute() error {
 func init() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(installCmd)
+	rootCmd.AddCommand(uninstallCmd)
 	rootCmd.AddCommand(updateCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(lsCmd)

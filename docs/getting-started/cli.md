@@ -7,6 +7,7 @@ The `emos` CLI manages installation, recipes, the dashboard daemon, and device c
 | Command            | Description                                                 |
 | :----------------- | :---------------------------------------------------------- |
 | `emos install`     | Install EMOS (interactive mode selection)                   |
+| `emos uninstall`   | Remove EMOS (mode-aware cleanup)                            |
 | `emos update`      | Update EMOS to the latest version                           |
 | `emos status`      | Show installation status                                    |
 | `emos serve`       | Run the dashboard daemon (REST API + web UI)                |
@@ -112,13 +113,44 @@ The installer offers, at the end, to:
 The pixi install path is currently driven from the EMOS repo (`pixi run setup`) rather than `emos install --mode pixi`. See [Installation](installation.md#deployment-modes).
 ```
 
+### `emos uninstall`
+
+```bash
+sudo emos uninstall                       # interactive
+sudo emos uninstall --yes                 # non-interactive
+sudo emos uninstall --keep-data           # preserve recipes + logs
+sudo emos uninstall --keep-config         # preserve dashboard auth state
+sudo emos uninstall --remove-image        # also docker rmi (container / licensed)
+```
+
+Stops the dashboard service and runs mode-specific cleanup. By default also removes `~/emos/recipes`, `~/emos/logs`, and `~/.config/emos`.
+
+| Flag             | Default | Description                                                                                  |
+| :--------------- | :------ | :------------------------------------------------------------------------------------------- |
+| `--keep-data`    | `false` | Preserve `~/emos/recipes` and `~/emos/logs`.                                                 |
+| `--keep-config`  | `false` | Preserve `~/.config/emos` (keeps device name + dashboard pairing across reinstall).          |
+| `--remove-image` | `false` | Also `docker rmi` the EMOS image (container / licensed modes only; preserved by default).    |
+| `-y`, `--yes`    | `false` | Skip the confirmation prompt.                                                                |
+
+Mode-specific behavior:
+
+- **Container / licensed:** `docker stop` + `docker rm` the EMOS container; licensed also removes the container auto-restart unit and `~/emos/robot/`.
+- **Native:** removes the build workspace and `pip uninstall`s `kompass-core`. EMOS package files in `/opt/ros/<distro>/` are co-mingled with ROS by colcon and **cannot** be cleanly removed -- the command prints the manual `rm` commands rather than running them, so you can review and apply if you want.
+- **Pixi:** removes `.pixi/`, `build/`, `install/`, `log/` under the EMOS repo directory. The cloned repo itself is preserved.
+
+The CLI binary at `/usr/local/bin/emos` is never removed automatically -- a running process can't reliably unlink itself. The command prints the `sudo rm` one-liner for you.
+
+```{tip}
+Run `emos uninstall` before switching install modes (e.g. native -> pixi). It clears auth tokens and mode-specific state that would otherwise carry over and confuse the new install.
+```
+
 ### `emos update`
 
 ```bash
 emos update
 ```
 
-Detects the install mode and updates accordingly. Container mode pulls the latest image and recreates the container; native mode pulls the latest source, rebuilds, and re-installs into `/opt/ros/{distro}/`.
+Detects the install mode and updates accordingly. Container mode pulls the latest image and recreates the container; native mode pulls the latest source, rebuilds, and re-installs into `/opt/ros/{distro}/`; pixi mode runs `git pull`, refreshes the pixi env (`pixi install`), and rebuilds the EMOS packages (`pixi run setup`).
 
 ### `emos status`
 

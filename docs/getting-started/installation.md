@@ -97,11 +97,11 @@ See the [CLI Reference](cli.md) for the full list of commands.
 
 ## Which Mode Should I Choose?
 
-| Scenario                                            | Recommended Mode |
-| :-------------------------------------------------- | :--------------- |
-| No ROS2 on host, quick evaluation                   | **Container**    |
-| ROS2 already installed, system-level integration    | **Native**       |
-| No root, no Docker, any Linux distro                | **Pixi**         |
+| Scenario                                         | Recommended Mode |
+| :----------------------------------------------- | :--------------- |
+| No ROS2 on host, quick evaluation                | **Container**    |
+| ROS2 already installed, system-level integration | **Native**       |
+| No root, no Docker, any Linux distro             | **Pixi**         |
 
 ## Reach the Dashboard
 
@@ -274,6 +274,30 @@ The CLI detects your installation mode and updates accordingly:
 - **Container mode:** pulls the latest image and recreates the container.
 - **Native mode:** pulls the latest source, rebuilds, and re-installs packages into `/opt/ros/{distro}/`.
 - **Pixi mode:** runs `git pull` and `git submodule update` in the EMOS repository you cloned at install time, refreshes the pixi environment (`pixi install`), and rebuilds the EMOS packages (`pixi run setup`).
+
+## Uninstalling
+
+To remove EMOS from a device:
+
+```bash
+sudo emos uninstall
+```
+
+After confirming, the CLI:
+
+- Runs mode-specific cleanup:
+  - **Container mode:** removes the Docker container. The image is preserved unless `--remove-image` is passed.
+  - **Native mode:** The CLI prints the manual `rm` commands so you can clean them ROS packages yourself if you want.
+  - **Pixi mode:** removes `.pixi/`, `build/`, `install/`, `log/` under your EMOS clone. The cloned repo itself is preserved.
+- Removes `~/emos/recipes`, `~/emos/logs`, and `~/.config/emos` (installed recipes, run logs, and dashboard auth state).
+
+Pass `--keep-data` to preserve `~/emos/recipes` and `~/emos/logs`. Pass `--keep-config` to preserve `~/.config/emos` (so previously paired browsers remain valid). Pass `-y` / `--yes` to skip the confirmation prompt.
+
+The CLI binary at `/usr/local/bin/emos` is never removed automatically. The command prints the one-liner you can run after the process exits.
+
+```{tip}
+Use `emos uninstall` before switching install modes (e.g. native -> pixi). It clears auth tokens and mode-specific state that would otherwise carry over and confuse the new install.
+```
 
 ## Installing from Source (Developer Setup)
 

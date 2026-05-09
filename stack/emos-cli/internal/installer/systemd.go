@@ -22,6 +22,12 @@ type SystemdUnit struct {
 	ExecStart   string
 	ExecStop    string
 	Restart     string   // "always", "on-failure", ""
+	RestartSec  int      // seconds between Restart= attempts. 0 → systemd default (100ms).
+	// StartLimitBurst and StartLimitIntervalSec widen systemd's start-rate
+	// guard. The defaults (5 attempts in 10s) are too tight for a unit that
+	// depends on the network coming up
+	StartLimitBurst       int // 0 → systemd default (5).
+	StartLimitIntervalSec int // 0 → systemd default (10s).
 	User        string   // "" → run as root
 	Environment []string
 	// Hardening is a list of `Key=Value` directives emitted verbatim in
@@ -44,9 +50,18 @@ func (u SystemdUnit) Render() string {
 	if len(u.Wants) > 0 {
 		b.WriteString("Wants=" + strings.Join(u.Wants, " ") + "\n")
 	}
+	if u.StartLimitBurst > 0 {
+		b.WriteString(fmt.Sprintf("StartLimitBurst=%d\n", u.StartLimitBurst))
+	}
+	if u.StartLimitIntervalSec > 0 {
+		b.WriteString(fmt.Sprintf("StartLimitIntervalSec=%d\n", u.StartLimitIntervalSec))
+	}
 	b.WriteString("\n[Service]\n")
 	if u.Restart != "" {
 		b.WriteString("Restart=" + u.Restart + "\n")
+	}
+	if u.RestartSec > 0 {
+		b.WriteString(fmt.Sprintf("RestartSec=%d\n", u.RestartSec))
 	}
 	if u.User != "" {
 		b.WriteString("User=" + u.User + "\n")
@@ -165,8 +180,13 @@ func DashboardUnit(binaryPath, runAsUser string, port int) SystemdUnit {
 		Wants:       []string{"network-online.target"},
 		ExecStart:   fmt.Sprintf("%s serve --addr :%d", binaryPath, port),
 		Restart:     "on-failure",
-		User:        runAsUser,
-		Hardening:   hardening,
+		// Boot-time hardening: space retries by 5s and tolerate up to 10
+		// attempts over a 5-minute window.
+		RestartSec:            5,
+		StartLimitBurst:       10,
+		StartLimitIntervalSec: 300,
+		User:                  runAsUser,
+		Hardening:             hardening,
 	}
 }
 

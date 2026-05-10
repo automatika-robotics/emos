@@ -16,6 +16,7 @@ import (
 // setup.sh must be sourced before running ROS commands.
 type PixiStrategy struct {
 	projectDir string
+	pixiBin    string // resolved absolute path to the pixi binary;
 	extraEnv   []string
 }
 
@@ -23,10 +24,59 @@ func NewPixiStrategy(projectDir string) *PixiStrategy {
 	return &PixiStrategy{projectDir: projectDir}
 }
 
+// resolvePixi finds the pixi binary in priority order:
+//  1. PATH (works in interactive shells).
+//  2. ~/.pixi/bin/pixi (the pixi installer's standard target).
+//  3. /usr/local/bin/pixi (system-wide installs).
+//
+// Returns an absolute path or an error with the locations checked.
+func resolvePixi() (string, error) {
+	if p, err := exec.LookPath("pixi"); err == nil {
+		return p, nil
+	}
+	var checked []string
+	if home, err := os.UserHomeDir(); err == nil {
+		p := filepath.Join(home, ".pixi", "bin", "pixi")
+		checked = append(checked, p)
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p, nil
+		}
+	}
+	checked = append(checked, "/usr/local/bin/pixi")
+	if st, err := os.Stat("/usr/local/bin/pixi"); err == nil && !st.IsDir() {
+		return "/usr/local/bin/pixi", nil
+	}
+	return "", fmt.Errorf(
+		"pixi not found in PATH or %v -- install it from https://pixi.sh",
+		checked,
+	)
+}
+
+// ensurePixi populates s.pixiBin once on first use. Idempotent.
+func (s *PixiStrategy) ensurePixi() error {
+	if s.pixiBin != "" {
+		return nil
+	}
+	bin, err := resolvePixi()
+	if err != nil {
+		return err
+	}
+	s.pixiBin = bin
+	return nil
+}
+
 // pixiRun executes a command inside the pixi environment, with the
 // strategy's per-run env additions stamped onto the resulting *exec.Cmd.
 func (s *PixiStrategy) pixiRun(shellCmd string) *exec.Cmd {
-	cmd := exec.Command("pixi", "run", "--manifest-path",
+	_ = s.ensurePixi() // resolution errors are surfaced by PrepareEnvironment
+	bin := s.pixiBin
+	if bin == "" {
+		// Fall through with the bare name so exec produces a clear
+		// "executable file not found" rather than a panic. Should be
+		// unreachable in normal flow because PrepareEnvironment runs first.
+		bin = "pixi"
+	}
+	cmd := exec.Command(bin, "run", "--manifest-path",
 		filepath.Join(s.projectDir, "pixi.toml"),
 		"bash", "-c", shellCmd)
 	cmd.Dir = s.projectDir
@@ -42,11 +92,10 @@ func (s *PixiStrategy) sourceCmd() string {
 func (s *PixiStrategy) PrepareEnvironment() error {
 	ui.Header("PIXI ENVIRONMENT SETUP")
 
-	// Check pixi binary
-	if _, err := exec.LookPath("pixi"); err != nil {
-		return fmt.Errorf("pixi not found in PATH — install it from https://pixi.sh")
+	if err := s.ensurePixi(); err != nil {
+		return err
 	}
-	ui.Success("pixi binary found.")
+	ui.Success("pixi binary: " + s.pixiBin)
 
 	// Check project dir and pixi.toml
 	pixiToml := filepath.Join(s.projectDir, "pixi.toml")

@@ -64,6 +64,7 @@ func init() {
 func runUninstall(cmd *cobra.Command, args []string) error {
 	ui.Banner(config.Version)
 	ui.Header("EMOS UNINSTALL")
+	warnIfSudo()
 
 	cfg := config.LoadConfig()
 	if cfg == nil || !cfg.IsInstalled() {

@@ -233,6 +233,7 @@ var configRotatePairingCmd = &cobra.Command{
 	Use:   "rotate-pairing",
 	Short: "Generate a new pairing code (existing browsers stay paired)",
 	Run: func(cmd *cobra.Command, args []string) {
+		warnIfSudo()
 		auth, err := server.NewAuthForCLI()
 		if err != nil {
 			ui.Error("Could not load auth state: " + err.Error())

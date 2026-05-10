@@ -316,6 +316,7 @@ var serveInstallServiceCmd = &cobra.Command{
 	Use:   "install-service",
 	Short: "Install a systemd unit that starts the dashboard at boot",
 	Run: func(cmd *cobra.Command, args []string) {
+		warnIfSudo()
 		bin, err := os.Executable()
 		if err != nil {
 			ui.Error("Could not determine emos binary path: " + err.Error())

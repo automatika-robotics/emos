@@ -45,6 +45,9 @@ func (s *Server) buildRouter() http.Handler {
 		r.Post("/auth/pair", s.handleAuthPair)
 		r.Get("/auth/me", s.handleAuthMe)
 
+		// --- Admin (loopback-only) ---
+		r.Post("/admin/reload-auth", s.handleAdminReloadAuth)
+
 		// --- Authenticated surface (Bearer header) ---
 		r.Group(func(r chi.Router) {
 			r.Use(s.auth.AuthRequired)

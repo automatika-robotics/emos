@@ -3,9 +3,11 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -246,7 +248,30 @@ var configRotatePairingCmd = &cobra.Command{
 		}
 		ui.Success("New pairing code (shown once): " + code)
 		ui.Faint("Save it now — it is not stored in plaintext on disk.")
+
+		// The on-disk config is now updated. Push the new hash into the
+		// running daemon's in-memory state so the new code validates at
+		// /pair without requiring a service restart.
+		if notifyDaemonReloadAuth() {
+			ui.Faint("Dashboard daemon reloaded; the new code is now active.")
+		} else {
+			ui.Faint("Dashboard daemon not reachable on localhost. The new code becomes active when the dashboard service is (re)started.")
+		}
 	},
+}
+
+// notifyDaemonReloadAuth POSTs to the dashboard's loopback-only admin
+// reload endpoint.
+func notifyDaemonReloadAuth() bool {
+	port := config.DashboardPort()
+	url := fmt.Sprintf("http://127.0.0.1:%d/api/v1/admin/reload-auth", port)
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Post(url, "application/json", nil)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode >= 200 && resp.StatusCode < 300
 }
 
 // --- TLS ----------------------------------------------------------------

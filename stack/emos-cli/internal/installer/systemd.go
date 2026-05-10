@@ -21,15 +21,15 @@ type SystemdUnit struct {
 	Wants       []string
 	ExecStart   string
 	ExecStop    string
-	Restart     string   // "always", "on-failure", ""
-	RestartSec  int      // seconds between Restart= attempts. 0 → systemd default (100ms).
+	Restart     string // "always", "on-failure", ""
+	RestartSec  int    // seconds between Restart= attempts. 0 → systemd default (100ms).
 	// StartLimitBurst and StartLimitIntervalSec widen systemd's start-rate
 	// guard. The defaults (5 attempts in 10s) are too tight for a unit that
 	// depends on the network coming up
-	StartLimitBurst       int // 0 → systemd default (5).
-	StartLimitIntervalSec int // 0 → systemd default (10s).
-	User        string   // "" → run as root
-	Environment []string
+	StartLimitBurst       int    // 0 → systemd default (5).
+	StartLimitIntervalSec int    // 0 → systemd default (10s).
+	User                  string // "" → run as root
+	Environment           []string
 	// Hardening is a list of `Key=Value` directives emitted verbatim in
 	// the [Service] section before ExecStart. Used for sandboxing knobs
 	// like NoNewPrivileges, ProtectSystem, PrivateTmp, ReadWritePaths.

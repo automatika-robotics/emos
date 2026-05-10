@@ -39,7 +39,7 @@ type JobView struct {
 //   - lifecycle is the job's *terminal* signal. It's cancelled in Update()
 //     when the job transitions to JobStatusFinished or JobStatusFailed.
 //     Subscribers select on lifecycle.Done() to learn when no more events
-//	   will arrive.
+//     will arrive.
 //   - cancel is the worker's operational cancellation, wired so the
 //     HTTP DELETE /jobs/{id} handler can abort an in-flight
 //     download. Independent of lifecycle.

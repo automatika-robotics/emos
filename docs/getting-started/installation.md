@@ -58,12 +58,7 @@ The CLI will:
 5. Install kompass-core with GPU acceleration support
 6. Build all packages with colcon and install them into `/opt/ros/{distro}/`
 
-After installation, EMOS packages are available whenever you source ROS2. You can run recipes directly:
-
-```bash
-source /opt/ros/jazzy/setup.bash
-python3 ~/emos/recipes/my_recipe/recipe.py
-```
+After installation, EMOS packages are available whenever you source `/opt/ros/<distro>/setup.bash`. See [Running Recipes](running-recipes.md) for how to launch a recipe -- directly with `python` or via the `emos run` flow.
 
 **Requirements:** A working ROS2 installation (Humble, Jazzy, or Kilted).
 
@@ -90,13 +85,7 @@ pixi run setup
 
 This pulls ROS2 Jazzy and all dependencies as pre-built packages from [RoboStack](https://robostack.github.io/) and conda-forge, installs kompass-core with GPU acceleration, then builds the EMOS packages with colcon.
 
-To enter the environment and run recipes:
-
-```bash
-pixi shell
-source install/setup.sh
-python3 ~/emos/recipes/my_recipe/recipe.py
-```
+See [Running Recipes](running-recipes.md) for how to launch a recipe -- directly from a `pixi shell` or via the `emos run` flow.
 
 **Requirements:** Linux (amd64 or arm64). No root, Docker, or ROS2 needed.
 
@@ -108,21 +97,45 @@ See the [CLI Reference](cli.md) for the full list of commands.
 
 ## Which Mode Should I Choose?
 
-| Scenario                                            | Recommended Mode |
-| :-------------------------------------------------- | :--------------- |
-| No ROS2 on host, quick evaluation                   | **Container**    |
-| ROS2 already installed, system-level integration    | **Native**       |
-| No root, no Docker, any Linux distro                | **Pixi**         |
+| Scenario                                         | Recommended Mode |
+| :----------------------------------------------- | :--------------- |
+| No ROS2 on host, quick evaluation                | **Container**    |
+| ROS2 already installed, system-level integration | **Native**       |
+| No root, no Docker, any Linux distro             | **Pixi**         |
 
-## Start the Dashboard
+## Reach the Dashboard
 
-After installation finishes, start the EMOS dashboard for a graphical, zero-touch experience:
+During installation you were asked whether to enable the EMOS dashboard as a systemd service. Pick the path you chose below.
+
+### If you enabled the systemd service (recommended)
+
+The dashboard is already running and will come up automatically at every boot. The installer printed the access details once -- a six-digit pairing code, the URLs the dashboard is reachable at, and a scannable QR code. Open any of the URLs in a browser, enter the code, and the browser is paired for ~90 days.
+
+If you missed the install output (or you've already paired and just need the URLs again), reprint the access summary at any time:
 
 ```bash
 emos serve
 ```
 
-The first launch prints a six-digit pairing code, the URLs the dashboard is reachable at, and a QR code. Open any of the URLs in a browser, enter the code once, and the browser is paired for ~90 days. The installer also offers to set up a systemd unit so the dashboard comes up automatically at boot.
+When the dashboard is already running as a service, `emos serve` detects that and just shows the URLs and management commands -- it does not try to bind a second instance. Manage the service directly with:
+
+```bash
+systemctl status emos-dashboard.service
+systemctl restart emos-dashboard.service
+journalctl -u emos-dashboard.service -f
+```
+
+If you've lost the original pairing code, issue a fresh one with `emos config rotate-pairing`.
+
+### If you skipped the systemd service
+
+Start the dashboard manually whenever you want to use it:
+
+```bash
+emos serve
+```
+
+The first launch prints the pairing code, URLs, and QR code. The process runs in the foreground and stops when you `Ctrl-C` it. You can enable the service later with `emos serve install-service`.
 
 ```{seealso}
 [Dashboard](dashboard.md) — full walkthrough of pairing, recipes, and run console
@@ -163,6 +176,7 @@ Install the driver package and launch it directly:
 ```bash
 sudo apt install ros-jazzy-usb-cam
 source /opt/ros/jazzy/setup.bash
+export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 run usb_cam usb_cam_node_exe
 ```
 
@@ -208,6 +222,10 @@ If a specific driver package isn't available on RoboStack, you can still install
 
 ::::
 
+```{important}
+Match the driver's RMW implementation to the one your recipe uses, or the driver's topics won't be visible to it. EMOS recipes default to **Zenoh** -- set `export RMW_IMPLEMENTATION=rmw_zenoh_cpp` in the shell where you launch the driver. If the recipe overrides this (e.g. `emos run <recipe> --rmw rmw_cyclonedds_cpp`), export the same value instead.
+```
+
 ### Verifying Sensors
 
 Before running a recipe, confirm your sensors are publishing:
@@ -234,13 +252,13 @@ If sensor verification fails during `emos run`, see [Troubleshooting](troublesho
 EMOS is agnostic to model serving platforms. You need at least one of the following available on your network:
 
 - {material-regular}`download;1.2em;sd-text-primary` **[Ollama](https://ollama.com)** Recommended for local inference.
-- {material-regular}`smart_toy;1.2em;sd-text-primary` **[RoboML](https://github.com/automatika-robotics/robo-ml)** Automatika's own model serving layer.
-- {material-regular}`api;1.2em;sd-text-primary` **OpenAI API-compatible servers** e.g. [llama.cpp](https://github.com/ggml-org/llama.cpp), [vLLM](https://github.com/vllm-project/vllm), [SGLang](https://github.com/sgl-project/sglang).
+- {material-regular}`smart_toy;1.2em;sd-text-primary` **[RoboML](https://github.com/automatika-robotics/robo-ml)** Automatika's own open-source model serving package for quick prototyping.
+- {material-regular}`api;1.2em;sd-text-primary` **OpenAI API-compatible fast inference servers** e.g. [llama.cpp](https://github.com/ggml-org/llama.cpp), [vLLM](https://github.com/vllm-project/vllm), [SGLang](https://github.com/sgl-project/sglang).
 - {material-regular}`precision_manufacturing;1.2em;sd-text-primary` **[LeRobot](https://github.com/huggingface/lerobot)** For Vision-Language-Action (VLA) models.
-- {material-regular}`cloud;1.2em;sd-text-primary` **Cloud endpoints** HuggingFace Inference Endpoints, OpenAI, etc.
+- {material-regular}`cloud;1.2em;sd-text-primary` **Cloud endpoints** e.g. OpenAI, Claude, HuggingFace Inference etc. using an API key.
 
 ```{tip}
-For larger models, run the serving platform on a GPU-equipped machine on your local network rather than directly on the robot.
+For larger models, run the serving platform on a GPU-equipped machine on your local network, or use a cloud endpoint, rather than running models directly on the robot.
 ```
 
 ## Updating
@@ -255,6 +273,31 @@ The CLI detects your installation mode and updates accordingly:
 
 - **Container mode:** pulls the latest image and recreates the container.
 - **Native mode:** pulls the latest source, rebuilds, and re-installs packages into `/opt/ros/{distro}/`.
+- **Pixi mode:** runs `git pull` and `git submodule update` in the EMOS repository you cloned at install time, refreshes the pixi environment (`pixi install`), and rebuilds the EMOS packages (`pixi run setup`).
+
+## Uninstalling
+
+To remove EMOS from a device:
+
+```bash
+sudo emos uninstall
+```
+
+After confirming, the CLI:
+
+- Runs mode-specific cleanup:
+  - **Container mode:** removes the Docker container. The image is preserved unless `--remove-image` is passed.
+  - **Native mode:** The CLI prints the manual `rm` commands so you can clean them ROS packages yourself if you want.
+  - **Pixi mode:** removes `.pixi/`, `build/`, `install/`, `log/` under your EMOS clone. The cloned repo itself is preserved.
+- Removes `~/emos/recipes`, `~/emos/logs`, and `~/.config/emos` (installed recipes, run logs, and dashboard auth state).
+
+Pass `--keep-data` to preserve `~/emos/recipes` and `~/emos/logs`. Pass `--keep-config` to preserve `~/.config/emos` (so previously paired browsers remain valid). Pass `-y` / `--yes` to skip the confirmation prompt.
+
+The CLI binary at `/usr/local/bin/emos` is never removed automatically. The command prints the one-liner you can run after the process exits.
+
+```{tip}
+Use `emos uninstall` before switching install modes (e.g. native -> pixi). It clears auth tokens and mode-specific state that would otherwise carry over and confuse the new install.
+```
 
 ## Installing from Source (Developer Setup)
 

@@ -309,3 +309,10 @@ The key insight is that **the same three hooks** work everywhere in EMOS:
 | `on_system_fail` | External dependency is lost | API key revoked | Motor controller resets |
 
 Each hook accepts an `Action` (or list of actions) and an optional `max_retries` parameter. This consistency means you can apply the same resilience patterns regardless of which layer you're working in.
+
+---
+
+```{tip}
+**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+```
+

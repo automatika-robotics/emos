@@ -342,3 +342,10 @@ launcher.bringup()
 ```
 
 With these modifications, the same complex agent graph from [Complete Agent](../foundation/complete-agent.md) runs **as nine isolated processes**, each with its own restart policy and its own process-level safety net. A model-server outage triggers a component restart; an unrecoverable process exit triggers a process respawn. The graph as a whole keeps running.
+
+---
+
+```{tip}
+**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+```
+

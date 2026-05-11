@@ -7,6 +7,7 @@ The `emos` CLI manages installation, recipes, the dashboard daemon, and device c
 | Command            | Description                                                 |
 | :----------------- | :---------------------------------------------------------- |
 | `emos install`     | Install EMOS (interactive mode selection)                   |
+| `emos uninstall`   | Remove EMOS (mode-aware cleanup)                            |
 | `emos update`      | Update EMOS to the latest version                           |
 | `emos status`      | Show installation status                                    |
 | `emos serve`       | Run the dashboard daemon (REST API + web UI)                |
@@ -51,28 +52,11 @@ emos run vision_follower      # launch it (blocks until exit)
 
 ## Running Recipes
 
-`emos run <name>` adapts to the install mode:
+`emos run <name>` adapts to the install mode -- starting the container in container mode, sourcing ROS in native, activating the pixi env in pixi -- before exec-ing the recipe and streaming logs to `~/emos/logs/<recipe>_<timestamp>.log`. Logs are also visible from the dashboard's [Run console](dashboard.md#run-console).
 
-- **Container mode** — starts the EMOS Docker container, configures the RMW (Zenoh by default), verifies sensor topics, executes the recipe inside the container.
-- **Native / pixi mode** — verifies the ROS 2 environment, configures the RMW, verifies sensor topics, executes the recipe directly on the host.
-- **Licensed mode** — uses the licensed deployment image with a sensor manifest from the robot package; otherwise identical to container mode.
+For the full guide to writing, dropping in, and launching custom recipes (including the install-mode pitfalls of running them directly via `python`), see [Running Recipes](running-recipes.md).
 
-In native or pixi mode you can also run recipes without the CLI:
-
-```bash
-# Native: source the system ROS install
-source /opt/ros/jazzy/setup.bash
-python3 ~/emos/recipes/my_recipe/recipe.py
-
-# Pixi: enter the project shell first
-pixi shell
-source install/setup.sh
-python3 ~/emos/recipes/my_recipe/recipe.py
-```
-
-All output is streamed to your terminal and saved to `~/emos/logs/<recipe>_<timestamp>.log`. Logs are also visible from the dashboard's [Run console](dashboard.md#run-console).
-
-## Writing Custom Recipes
+## Recipe Layout
 
 A recipe is a directory under `~/emos/recipes/` with the following structure:
 
@@ -80,7 +64,7 @@ A recipe is a directory under `~/emos/recipes/` with the following structure:
 ~/emos/recipes/
   my_recipe/
     recipe.py          # Main entry point (required)
-    manifest.json      # Optional Zenoh / display-name / description
+    manifest.json      # Optional: Zenoh config / display name / description
 ```
 
 ### `manifest.json`
@@ -101,44 +85,7 @@ A recipe is a directory under `~/emos/recipes/` with the following structure:
 Sensor requirements are auto-extracted from `recipe.py` by parsing `Topic(name=..., msg_type=...)` declarations. You don't need to list them in the manifest. Run `emos info <recipe>` (or open the recipe in the dashboard) to see the inferred requirements.
 ```
 
-### `recipe.py`
-
-A standard EMOS Python script:
-
-```python
-from agents.clients.ollama import OllamaClient
-from agents.components import VLM
-from agents.models import OllamaModel
-from agents.ros import Topic, Launcher
-
-text_in  = Topic(name="text0",     msg_type="String")
-image_in = Topic(name="image_raw", msg_type="Image")
-text_out = Topic(name="text1",     msg_type="String")
-
-model  = OllamaModel(name="qwen_vl", checkpoint="qwen2.5vl:latest")
-client = OllamaClient(model)
-
-vlm = VLM(
-    inputs=[text_in, image_in],
-    outputs=[text_out],
-    model_client=client,
-    trigger=text_in,
-)
-
-launcher = Launcher()
-launcher.add_pkg(components=[vlm])
-launcher.bringup()
-```
-
-### Verifying your custom recipe
-
-```bash
-emos ls               # confirm it appears
-emos info my_recipe   # check sensor requirements
-emos run my_recipe    # launch it
-```
-
-It will also show up in the dashboard's **Recipes → Installed** tab automatically.
+For the full walkthrough -- writing the recipe, dropping it in, verifying discovery, and launching it via `emos run` or the dashboard -- see [Running Recipes](running-recipes.md).
 
 ## Command Reference
 
@@ -166,13 +113,44 @@ The installer offers, at the end, to:
 The pixi install path is currently driven from the EMOS repo (`pixi run setup`) rather than `emos install --mode pixi`. See [Installation](installation.md#deployment-modes).
 ```
 
+### `emos uninstall`
+
+```bash
+sudo emos uninstall                       # interactive
+sudo emos uninstall --yes                 # non-interactive
+sudo emos uninstall --keep-data           # preserve recipes + logs
+sudo emos uninstall --keep-config         # preserve dashboard auth state
+sudo emos uninstall --remove-image        # also docker rmi (container / licensed)
+```
+
+Stops the dashboard service and runs mode-specific cleanup. By default also removes `~/emos/recipes`, `~/emos/logs`, and `~/.config/emos`.
+
+| Flag             | Default | Description                                                                                  |
+| :--------------- | :------ | :------------------------------------------------------------------------------------------- |
+| `--keep-data`    | `false` | Preserve `~/emos/recipes` and `~/emos/logs`.                                                 |
+| `--keep-config`  | `false` | Preserve `~/.config/emos` (keeps device name + dashboard pairing across reinstall).          |
+| `--remove-image` | `false` | Also `docker rmi` the EMOS image (container / licensed modes only; preserved by default).    |
+| `-y`, `--yes`    | `false` | Skip the confirmation prompt.                                                                |
+
+Mode-specific behavior:
+
+- **Container / licensed:** `docker stop` + `docker rm` the EMOS container; licensed also removes the container auto-restart unit and `~/emos/robot/`.
+- **Native:** removes the build workspace and `pip uninstall`s `kompass-core`. EMOS package files in `/opt/ros/<distro>/` are co-mingled with ROS by colcon and **cannot** be cleanly removed -- the command prints the manual `rm` commands rather than running them, so you can review and apply if you want.
+- **Pixi:** removes `.pixi/`, `build/`, `install/`, `log/` under the EMOS repo directory. The cloned repo itself is preserved.
+
+The CLI binary at `/usr/local/bin/emos` is never removed automatically -- a running process can't reliably unlink itself. The command prints the `sudo rm` one-liner for you.
+
+```{tip}
+Run `emos uninstall` before switching install modes (e.g. native -> pixi). It clears auth tokens and mode-specific state that would otherwise carry over and confuse the new install.
+```
+
 ### `emos update`
 
 ```bash
 emos update
 ```
 
-Detects the install mode and updates accordingly. Container mode pulls the latest image and recreates the container; native mode pulls the latest source, rebuilds, and re-installs into `/opt/ros/{distro}/`.
+Detects the install mode and updates accordingly. Container mode pulls the latest image and recreates the container; native mode pulls the latest source, rebuilds, and re-installs into `/opt/ros/{distro}/`; pixi mode runs `git pull`, refreshes the pixi env (`pixi install`), and rebuilds the EMOS packages (`pixi run setup`).
 
 ### `emos status`
 

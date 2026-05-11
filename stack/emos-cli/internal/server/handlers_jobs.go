@@ -63,6 +63,7 @@ func (s *Server) handleJobLogs(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 	bus := j.Subscribe()
+	done := j.Done()
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
 
@@ -70,15 +71,25 @@ func (s *Server) handleJobLogs(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-ctx.Done():
 			return
+		case <-done:
+			// Job hit a terminal status. Drain anything still in the
+			// bus, then send "end".
+			for {
+				select {
+				case evt := <-bus:
+					if err := stream.SendNamed("status", evt); err != nil {
+						return
+					}
+				default:
+					_ = stream.SendNamed("end", j.Snapshot())
+					return
+				}
+			}
 		case <-heartbeat.C:
 			if err := stream.Heartbeat(); err != nil {
 				return
 			}
-		case evt, ok := <-bus:
-			if !ok {
-				_ = stream.SendNamed("end", j.Snapshot())
-				return
-			}
+		case evt := <-bus:
 			if err := stream.SendNamed("status", evt); err != nil {
 				return
 			}

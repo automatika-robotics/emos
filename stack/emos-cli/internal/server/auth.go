@@ -96,6 +96,22 @@ func NewAuth(bypass bool) (*Auth, error) {
 // FreshPairingCode returns the just-generated code if this process generated it.
 func (a *Auth) FreshPairingCode() string { return a.freshCode }
 
+// Reload re-reads the pairing-code hash from disk and updates the in-memory
+// state.
+//
+// Returns an error if the on-disk config can't be read.
+func (a *Auth) Reload() error {
+	cfg := config.LoadConfig()
+	if cfg == nil {
+		return fmt.Errorf("config not on disk")
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.state.PairingCodeHash = cfg.Auth.PairingCodeHash
+	a.state.PairingCreated = cfg.Auth.PairingCreated
+	return nil
+}
+
 // RegeneratePairingCode replaces the stored code (revoking any in-flight
 // pair attempt). Returns the new plaintext code.
 func (a *Auth) RegeneratePairingCode() (string, error) {
@@ -345,4 +361,3 @@ func hmacToken(key []byte, token string) string {
 	mac.Write([]byte(token))
 	return hex.EncodeToString(mac.Sum(nil))
 }
-

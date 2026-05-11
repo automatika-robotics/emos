@@ -280,3 +280,10 @@ launcher.bringup()
 - {doc}`Tool Calling <tool-calling>` — generalises this pattern. Instead of registering Memory's pre-defined tools, write your own Python function as a custom tool and register it with `goto.register_tool(...)`.
 - {doc}`Complete Agent <complete-agent>` — drops this Go-to-X pattern into a full multi-modal agent (speech I/O + vision + memory + Q&A + routing) defined in one Python script.
 - {doc}`Cortex Driving the Full Stack <../planning-and-manipulation/cortex-navigation>` — the agentic-harness version: drop a [Cortex](../../intelligence/cortex.md) component on top of Memory and the navigation stack and the robot handles compound natural-language goals like *"go to the kitchen and tell me what's on the counter"* with no orchestration code from you.
+
+---
+
+```{tip}
+**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+```
+

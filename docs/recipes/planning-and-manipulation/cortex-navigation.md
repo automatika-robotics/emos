@@ -319,3 +319,10 @@ That entire stack of orchestration is replaced by the auto-discovery, the two-ph
 - {doc}`Memory and Cortex <cortex-memory>` -- the same agentic harness focused entirely on memory: episodic consolidation, entity tracking, interoception layers, and how Cortex reasons over them.
 - {doc}`Cortex: The Agentic Harness <cortex-agent>` -- the introductory tutorial if you want to start with a smaller graph before scaling up to navigation.
 - {doc}`Visualizing the System Graph <../events-and-resilience/visualizing-system-graph>` -- watch the System Graph render Cortex's tool palette and the goal-status events flowing through it.
+
+---
+
+```{tip}
+**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+```
+

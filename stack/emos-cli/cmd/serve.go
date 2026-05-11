@@ -316,6 +316,7 @@ var serveInstallServiceCmd = &cobra.Command{
 	Use:   "install-service",
 	Short: "Install a systemd unit that starts the dashboard at boot",
 	Run: func(cmd *cobra.Command, args []string) {
+		warnIfSudo()
 		bin, err := os.Executable()
 		if err != nil {
 			ui.Error("Could not determine emos binary path: " + err.Error())
@@ -330,13 +331,29 @@ var serveInstallServiceCmd = &cobra.Command{
 		if user == "" {
 			user = os.Getenv("USER")
 		}
+
+		// Initialise auth state on disk BEFORE starting the unit so we can
+		// surface the freshly-generated pairing code in the CLI output. The
+		// daemon then reads the same hash from disk on startup.
+		freshCode := ""
+		if auth, authErr := server.NewAuthForCLI(); authErr == nil {
+			freshCode = auth.FreshPairingCode()
+		} else {
+			ui.Warn("Could not pre-initialise auth state: " + authErr.Error())
+		}
+
 		unit := installer.DashboardUnit(bin, user, config.DashboardPort())
 		if err := unit.Install(true, true); err != nil {
 			ui.Error("Install failed: " + err.Error())
 			os.Exit(1)
 		}
-		ui.Success("Dashboard service installed and started.")
-		ui.Info("Manage with: sudo systemctl {status,restart,stop} " + unit.Name)
+
+		fmt.Println()
+		PrintDashboardAccessSummary(
+			fmt.Sprintf(":%d", config.DashboardPort()),
+			"install",
+			freshCode,
+		)
 	},
 }
 

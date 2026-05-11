@@ -315,3 +315,10 @@ And within the custom-function pattern itself:
 |---|---|
 | `True` (this recipe) | The LLM should *react* to the tool's output -- compose a sentence, decide what to do next, ask a follow-up. Conversational and reasoning agents. |
 | `False` ([GoTo Navigation](goto-navigation.md)) | The tool's return value is what should be published. You're using the LLM to extract structured arguments, and the function does the real work. |
+
+---
+
+```{tip}
+**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+```
+

@@ -235,3 +235,10 @@ This recipe creates the same pipeline as the [Conversational Agent](conversation
 - [Fallback Recipes](../events-and-resilience/fallback-recipes.md) for using local models as automatic fallbacks when a remote server fails.
 - [Conversational Agent](conversational-agent.md) for the server-based version using Ollama and RoboML.
 ```
+
+---
+
+```{tip}
+**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+```
+

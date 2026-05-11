@@ -100,6 +100,58 @@ func TestDashboardUnitHardening(t *testing.T) {
 	}
 }
 
+func TestDashboardUnitBootHardening(t *testing.T) {
+	// The boot-time hardening (StartLimit*/RestartSec) is what makes the
+	// unit tolerant to a slow-coming-up network at reboot. Regression check:
+	// StartLimitBurst and StartLimitIntervalSec MUST be in [Unit] (systemd
+	// rejects them silently in [Service] for new units), RestartSec MUST be
+	// in [Service] alongside Restart=.
+	u := DashboardUnit("/usr/local/bin/emos", "", 8765)
+	body := u.Render()
+
+	unitIdx := strings.Index(body, "[Unit]")
+	serviceIdx := strings.Index(body, "[Service]")
+	if unitIdx < 0 || serviceIdx < 0 || unitIdx > serviceIdx {
+		t.Fatalf("missing or misordered [Unit]/[Service] sections; got body=\n%s", body)
+	}
+	unitSection := body[unitIdx:serviceIdx]
+	serviceSection := body[serviceIdx:]
+
+	for _, want := range []string{"StartLimitBurst=10", "StartLimitIntervalSec=300"} {
+		if !strings.Contains(unitSection, want) {
+			t.Errorf("[Unit] missing %q\n--- got [Unit] ---\n%s", want, unitSection)
+		}
+		// Must NOT also be in [Service] (systemd rejects them there in
+		// modern versions).
+		if strings.Contains(serviceSection, want) {
+			t.Errorf("%q must live only in [Unit]; also found in [Service]", want)
+		}
+	}
+	if !strings.Contains(serviceSection, "RestartSec=5") {
+		t.Errorf("[Service] missing RestartSec=5\n--- got [Service] ---\n%s", serviceSection)
+	}
+}
+
+func TestSystemdUnitOmitsZeroLimits(t *testing.T) {
+	// Other units (e.g. ContainerUnit) leave the boot-hardening fields at
+	// their zero value. Render() must not emit StartLimit*/RestartSec when
+	// they're 0 -- otherwise systemd parses garbage like "RestartSec=0" as
+	// "restart immediately" and we'd accidentally regress existing units.
+	u := SystemdUnit{
+		Name:        "test.service",
+		Description: "Test",
+		ExecStart:   "/bin/true",
+		Restart:     "always",
+		// RestartSec, StartLimitBurst, StartLimitIntervalSec all 0.
+	}
+	body := u.Render()
+	for _, forbidden := range []string{"RestartSec=", "StartLimitBurst=", "StartLimitIntervalSec="} {
+		if strings.Contains(body, forbidden) {
+			t.Errorf("unit with zero-valued limits emitted %q\n--- got ---\n%s", forbidden, body)
+		}
+	}
+}
+
 func TestContainerUnitHardening(t *testing.T) {
 	u := ContainerUnit("emos")
 	body := u.Render()

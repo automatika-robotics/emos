@@ -277,3 +277,10 @@ This is the part of the design that makes eMEM-on-Cortex an actual cognitive sys
 - {doc}`Cortex: The Agentic Harness <cortex-agent>` — the introductory tutorial focused on Cortex's auto-discovery and tool surface, without Memory.
 - {doc}`Memory concept page <../../intelligence/memory>` — the full architectural reference for eMEM.
 - [eMEM on GitHub](https://github.com/automatika-robotics/emem) — the underlying memory library, including a standalone testing harness with a MiniGrid environment and a ReAct agent that exercises memory's tools end-to-end.
+
+---
+
+```{tip}
+**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+```
+

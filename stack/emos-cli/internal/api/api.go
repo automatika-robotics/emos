@@ -71,10 +71,29 @@ func ListRecipes() ([]Recipe, error) {
 		return nil, fmt.Errorf("could not connect to the recipes API: %w", err)
 	}
 	defer resp.Body.Close()
+	return parseRecipesResponse(resp)
+}
+
+// parseRecipesResponse validates and decodes a /recipes catalog response.
+func parseRecipesResponse(resp *http.Response) ([]Recipe, error) {
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read recipes API response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf(
+			"recipe catalog unavailable (HTTP %d). The service may be down or upgrading -- try again later",
+			resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "json") {
+		return nil, fmt.Errorf(
+			"recipe catalog returned a non-JSON response. The service may be down or upgrading -- try again later")
+	}
 
 	var recipes []Recipe
-	if err := json.NewDecoder(resp.Body).Decode(&recipes); err != nil {
-		return nil, fmt.Errorf("invalid recipes API response: %w", err)
+	if err := json.Unmarshal(body, &recipes); err != nil {
+		return nil, fmt.Errorf(
+			"recipe catalog returned an unexpected response. The service may be down or upgrading -- try again later")
 	}
 	return recipes, nil
 }

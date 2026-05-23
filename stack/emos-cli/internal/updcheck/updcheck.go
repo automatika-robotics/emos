@@ -24,6 +24,12 @@ import (
 // Lives under config.ConfigDir.
 const cacheFileName = "update-cache.json"
 
+// DefaultRefreshInterval is the cadence at which both the CLI's
+// RefreshIfStale TTL and the daemon's background ticker consult GitHub
+// for the latest release tag. 6h sits well under the unauthenticated
+// rate limit for Github.
+const DefaultRefreshInterval = 6 * time.Hour
+
 // httpClient bounds the GitHub lookup. The CLI runs interactively and the
 // daemon refreshes asynchronously, so a slow response only stalls one
 // goroutine.

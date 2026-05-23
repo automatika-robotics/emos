@@ -20,16 +20,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// updateCheckTTL bounds how often the CLI hits GitHub for the cached
-// "latest release" value. Currently set to 6h to not irritate the rate-limiter
-const updateCheckTTL = 6 * time.Hour
-
 // printUpdateAvailable consults the cached latest-release tag and, if it
 // names a strictly newer version than this binary, prints a one-line
 // nudge. Silent on dev builds, or when no value is cached yet or on parse
-// failures. Called by `emos status` and `emos version`
+// failures. Called by `emos status` and `emos version`.
 func printUpdateAvailable() {
-	latest, ok := updcheck.RefreshIfStale(updateCheckTTL)
+	latest, ok := updcheck.RefreshIfStale(updcheck.DefaultRefreshInterval)
 	if !ok || !updcheck.IsNewer(config.Version, latest) {
 		return
 	}

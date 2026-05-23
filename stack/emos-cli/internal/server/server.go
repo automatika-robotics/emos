@@ -12,10 +12,12 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/tlsca"
+	"github.com/automatika-robotics/emos-cli/internal/updcheck"
 )
 
 // Options configures the daemon at boot.
@@ -48,6 +50,34 @@ type Server struct {
 	httpServer *http.Server
 	mdns       *mdnsRegistrations
 	tlsInfo    *tlsca.Info // nil when serving plain HTTP
+
+	// updates caches the latest release tag for /info to surface. Empty
+	// until the first successful refresh; refreshed by a goroutine spawned
+	// in Run().
+	updates updateState
+}
+
+// updateState is the daemon's in-memory copy of the latest release tag.
+// Mutated only from the refresh goroutine; read by /info via Snapshot().
+type updateState struct {
+	mu        sync.RWMutex
+	latest    string // GitHub tag with the leading "v" stripped; "" before first success
+	checkedAt time.Time
+}
+
+// Snapshot returns a copy of the current update state.
+func (u *updateState) Snapshot() (latest string, checkedAt time.Time) {
+	u.mu.RLock()
+	defer u.mu.RUnlock()
+	return u.latest, u.checkedAt
+}
+
+// set is called by the refresh goroutine on a successful Latest() lookup.
+func (u *updateState) set(latest string) {
+	u.mu.Lock()
+	u.latest = latest
+	u.checkedAt = time.Now()
+	u.mu.Unlock()
 }
 
 // New constructs a Server with all subsystems initialised. The pairing code,
@@ -136,6 +166,10 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 	}
 
+	// Background loop that refreshes the cached "latest release" tag.
+	// Tied to ctx so it exits cleanly with the rest of the daemon.
+	go s.refreshUpdatesLoop(ctx)
+
 	errCh := make(chan error, 1)
 	go func() {
 		s.log.Info("dashboard listening", "addr", s.opts.Addr, "scheme", s.Scheme())
@@ -170,6 +204,42 @@ func (s *Server) Run(ctx context.Context) error {
 // PairingCode returns the freshly-generated pairing code (one-time per process)
 // for the CLI to display, or "" if pairing was already configured.
 func (s *Server) PairingCode() string { return s.auth.FreshPairingCode() }
+
+// refreshUpdatesLoop calls updcheck.Latest() at startup and on a ticker.
+// Exits when ctx is cancelled, which happens at daemon shutdown.
+func (s *Server) refreshUpdatesLoop(ctx context.Context) {
+	s.tryRefreshUpdates(ctx)
+
+	ticker := time.NewTicker(updcheck.DefaultRefreshInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.tryRefreshUpdates(ctx)
+		}
+	}
+}
+
+// tryRefreshUpdates performs a single best-effort GitHub releases lookup.
+// Skipped entirely when connectivity is known-offline (avoids burning a
+// fetch on a slow-failing DNS during early boot, when network-online
+// hasn't actually settled yet).
+func (s *Server) tryRefreshUpdates(ctx context.Context) {
+	if !s.conn.Online(ctx) {
+		s.log.Debug("update check skipped: offline")
+		return
+	}
+	fetchCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	latest, err := updcheck.Latest(fetchCtx)
+	if err != nil {
+		s.log.Debug("update check failed", "err", err)
+		return
+	}
+	s.updates.set(latest)
+}
 
 // modeOrUnknown returns the install mode for diagnostics, or "unknown"
 // when there's no install (no config or a pre-install stub).

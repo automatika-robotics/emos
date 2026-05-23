@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Wifi, WifiOff, RefreshCw, KeyRound } from 'lucide-svelte';
+  import { Wifi, WifiOff, RefreshCw, KeyRound, ArrowUpCircle } from 'lucide-svelte';
   import { useInfo, useCapabilities, useConnectivity, useRobot } from '$lib/queries';
   import { api } from '$lib/api';
   import { clearToken } from '$lib/auth';
@@ -40,7 +40,21 @@
     <div class="surface p-5 space-y-2">
       <div class="text-xs uppercase tracking-wider text-emos-text-3">EMOS</div>
       <div class="grid grid-cols-2 gap-y-1 text-sm">
-        <div class="text-emos-text-3">version</div><div class="font-mono">{$info.data?.version ?? '—'}</div>
+        <div class="text-emos-text-3">version</div>
+        <div class="font-mono flex items-center gap-2">
+          <span>{$info.data?.version ?? '—'}</span>
+          {#if $info.data?.update_available && $info.data?.latest_version}
+            <a
+              href={`https://github.com/automatika-robotics/emos/releases/tag/v${$info.data.latest_version}`}
+              target="_blank"
+              rel="noopener"
+              class="pill pill-good text-[0.7rem]"
+              title="A newer release of EMOS is available"
+            >
+              <ArrowUpCircle size={12} /> v{$info.data.latest_version}
+            </a>
+          {/if}
+        </div>
         <div class="text-emos-text-3">uptime</div><div class="font-mono">{$info.data?.uptime ?? '—'}</div>
         <div class="text-emos-text-3">install</div><div>{$info.data?.mode ?? '—'}</div>
         <div class="text-emos-text-3">ros</div><div>{$info.data?.ros_distro ?? '—'}</div>

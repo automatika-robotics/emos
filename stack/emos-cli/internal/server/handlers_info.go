@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
+	"github.com/automatika-robotics/emos-cli/internal/updcheck"
 )
 
 // handleHealth is a cheap liveness probe for systemd, the dashboard, and any
@@ -50,6 +51,14 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 		if s.cfg.LicenseKey != "" {
 			resp["license_present"] = true
 		}
+	}
+	// NOTE: Latest release tag is populated by the background refresh goroutine
+	// in server.go. Stays absent until the first successful fetch so a
+	// schema-aware client (the SPA) can distinguish "no value yet" from
+	// "up-to-date".
+	if latest, _ := s.updates.Snapshot(); latest != "" {
+		resp["latest_version"] = latest
+		resp["update_available"] = updcheck.IsNewer(config.Version, latest)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

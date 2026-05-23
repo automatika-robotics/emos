@@ -19,6 +19,7 @@ var statusCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		ui.Banner(config.Version)
 		ui.StatusCard(config.Version)
+		printUpdateAvailable()
 
 		cfg := config.LoadConfig()
 		if !cfg.IsInstalled() {

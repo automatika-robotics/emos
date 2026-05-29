@@ -44,6 +44,10 @@ export interface Info {
   recipes_dir: string;
   logs_dir: string;
   home_dir: string;
+  // Populated by the daemon's background release-check loop. Absent until
+  // the first successful refresh; absent on offline boots.
+  latest_version?: string;
+  update_available?: boolean;
 }
 
 export interface Capabilities {

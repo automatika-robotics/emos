@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,15 +9,29 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"strings"
+	"time"
 
 	"github.com/automatika-robotics/emos-cli/internal/api"
 	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/container"
 	"github.com/automatika-robotics/emos-cli/internal/installer"
 	"github.com/automatika-robotics/emos-cli/internal/ui"
+	"github.com/automatika-robotics/emos-cli/internal/updcheck"
 	"github.com/spf13/cobra"
 )
+
+// printUpdateAvailable consults the cached latest-release tag and, if it
+// names a strictly newer version than this binary, prints a one-line
+// nudge. Silent on dev builds, or when no value is cached yet or on parse
+// failures. Called by `emos status` and `emos version`.
+func printUpdateAvailable() {
+	latest, ok := updcheck.RefreshIfStale(updcheck.DefaultRefreshInterval)
+	if !ok || !updcheck.IsNewer(config.Version, latest) {
+		return
+	}
+	ui.Faint(fmt.Sprintf("→ Update available: v%s (current v%s) -- run 'emos update'",
+		latest, config.Version))
+}
 
 var updateCmd = &cobra.Command{
 	Use:   "update",
@@ -74,13 +89,24 @@ func selfUpdateCLI() (bool, error) {
 
 	ui.Info("Checking for CLI updates...")
 
-	// Fetch latest release info
-	resp, err := http.Get(config.ReleasesURL())
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	latestVersion, err := updcheck.Latest(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to check releases: %w", err)
 	}
-	defer resp.Body.Close()
+	if latestVersion == config.Version {
+		ui.Success("CLI is already up to date (v" + config.Version + ")")
+		return false, nil
+	}
 
+	// We still need the asset list to find the right per-arch binary, so
+	// hit /releases/latest a second time
+	resp, err := http.Get(config.ReleasesURL())
+	if err != nil {
+		return false, fmt.Errorf("failed to fetch release assets: %w", err)
+	}
+	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		return false, fmt.Errorf("GitHub API returned %d", resp.StatusCode)
 	}
@@ -94,12 +120,6 @@ func selfUpdateCLI() (bool, error) {
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
 		return false, fmt.Errorf("failed to parse release: %w", err)
-	}
-
-	latestVersion := strings.TrimPrefix(release.TagName, "v")
-	if latestVersion == config.Version {
-		ui.Success("CLI is already up to date (v" + config.Version + ")")
-		return false, nil
 	}
 
 	// Find the binary for current architecture

@@ -103,6 +103,53 @@ func TestHandleCapabilities(t *testing.T) {
 	}
 }
 
+// /info MUST omit latest_version / update_available before the daemon's
+// background refresh goroutine has successfully populated the cache --
+// otherwise an offline-first boot leaks a stale `false` to the SPA.
+func TestHandleInfo_OmitsUpdateFields_BeforeRefresh(t *testing.T) {
+	s := newTestServer(t, false)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/info", nil)
+	rec := httpServe(t, s, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body map[string]any
+	jsonBody(t, rec, &body)
+	for _, key := range []string{"latest_version", "update_available"} {
+		if _, ok := body[key]; ok {
+			t.Errorf("%s present before first refresh: %+v", key, body)
+		}
+	}
+}
+
+func TestHandleInfo_EmitsUpdateFields_AfterRefresh(t *testing.T) {
+	s := newTestServer(t, false)
+	// Pretend the background goroutine has succeeded; current config.Version
+	// is a real X.Y.Z baked at build time, and we name a guaranteed-newer
+	// tag so the IsNewer check returns true regardless of the build tag.
+	s.updates.set("999.0.0")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/info", nil)
+	rec := httpServe(t, s, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body map[string]any
+	jsonBody(t, rec, &body)
+	if body["latest_version"] != "999.0.0" {
+		t.Errorf("latest_version = %v, want 999.0.0", body["latest_version"])
+	}
+	// update_available may be true (baked version < 999.0.0) or false
+	// (running under `go test` where config.Version is unset/"dev"), but
+	// the FIELD must be present once latest_version is known so the SPA
+	// has something to gate on.
+	if _, ok := body["update_available"]; !ok {
+		t.Errorf("update_available missing despite latest_version=%v: %+v",
+			body["latest_version"], body)
+	}
+}
+
 func TestHandleConnectivitySnapshot(t *testing.T) {
 	s := newTestServer(t, false)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/connectivity", nil)

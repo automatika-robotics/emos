@@ -25,6 +25,7 @@ var versionCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		ui.Banner(config.Version)
 		ui.StatusCard(config.Version)
+		printUpdateAvailable()
 	},
 }
 

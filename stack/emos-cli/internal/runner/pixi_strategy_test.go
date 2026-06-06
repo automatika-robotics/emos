@@ -42,64 +42,9 @@ func makeFakePixi(t *testing.T, path string) string {
 	return abs
 }
 
-func TestResolvePixi_FromPath(t *testing.T) {
-	tmp := t.TempDir()
-	binDir := filepath.Join(tmp, "bin")
-	fakeBin := makeFakePixi(t, filepath.Join(binDir, "pixi"))
-
-	withEnv(t, map[string]string{
-		"PATH": binDir,
-		"HOME": tmp, // make sure ~/.pixi/bin doesn't accidentally win
-	})
-
-	got, err := resolvePixi()
-	if err != nil {
-		t.Fatalf("resolvePixi err = %v, want nil", err)
-	}
-	if got != fakeBin {
-		t.Errorf("resolvePixi = %q, want %q (from PATH)", got, fakeBin)
-	}
-}
-
-func TestResolvePixi_FallsBackToHome(t *testing.T) {
-	// PATH has nothing useful; the binary lives at ~/.pixi/bin/pixi (where
-	// the pixi installer puts it). This is the systemd-mode case the
-	// reviewer hit.
-	tmp := t.TempDir()
-	emptyPath := filepath.Join(tmp, "empty-path")
-	_ = os.MkdirAll(emptyPath, 0755)
-
-	homeDir := filepath.Join(tmp, "home")
-	expected := makeFakePixi(t, filepath.Join(homeDir, ".pixi", "bin", "pixi"))
-
-	withEnv(t, map[string]string{
-		"PATH": emptyPath,
-		"HOME": homeDir,
-	})
-
-	got, err := resolvePixi()
-	if err != nil {
-		t.Fatalf("resolvePixi err = %v, want nil", err)
-	}
-	if got != expected {
-		t.Errorf("resolvePixi = %q, want %q (from ~/.pixi/bin)", got, expected)
-	}
-}
-
-func TestResolvePixi_NotFound(t *testing.T) {
-	tmp := t.TempDir()
-	emptyPath := filepath.Join(tmp, "empty-path")
-	_ = os.MkdirAll(emptyPath, 0755)
-
-	withEnv(t, map[string]string{
-		"PATH": emptyPath,
-		"HOME": filepath.Join(tmp, "no-pixi-here"),
-	})
-
-	if _, err := resolvePixi(); err == nil {
-		t.Fatalf("resolvePixi err = nil, want failure when pixi missing everywhere")
-	}
-}
+// Pixi binary resolution moved to internal/installer; the resolver's own
+// tests live there (installer/pixi_test.go). This file keeps the
+// strategy-level caching test, which exercises ensurePixi.
 
 func TestEnsurePixi_CachesResult(t *testing.T) {
 	tmp := t.TempDir()

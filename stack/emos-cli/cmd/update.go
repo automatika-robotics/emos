@@ -269,6 +269,13 @@ func updatePixi(cfg *config.EMOSConfig) error {
 		return fmt.Errorf("pixi project dir not set")
 	}
 
+	pixiBin, err := installer.ResolvePixi()
+	if err != nil {
+		ui.Error("pixi is required to update a pixi-mode install but was not found.")
+		fmt.Println("  Install it with: " + installer.PixiInstallHint)
+		return err
+	}
+
 	fmt.Println("  Updating EMOS pixi workspace...")
 	fmt.Println()
 
@@ -292,7 +299,7 @@ func updatePixi(cfg *config.EMOSConfig) error {
 
 	// Reinstall dependencies
 	ui.Info("Updating pixi environment...")
-	pixiInstall := exec.Command("pixi", "install")
+	pixiInstall := exec.Command(pixiBin, "install")
 	pixiInstall.Dir = projectDir
 	pixiInstall.Stdout = os.Stdout
 	pixiInstall.Stderr = os.Stderr
@@ -302,7 +309,7 @@ func updatePixi(cfg *config.EMOSConfig) error {
 
 	// Rebuild
 	ui.Info("Rebuilding EMOS packages...")
-	pixiSetup := exec.Command("pixi", "run", "setup")
+	pixiSetup := exec.Command(pixiBin, "run", "setup")
 	pixiSetup.Dir = projectDir
 	pixiSetup.Stdout = os.Stdout
 	pixiSetup.Stderr = os.Stderr

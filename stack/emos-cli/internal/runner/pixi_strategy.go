@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
+	"github.com/automatika-robotics/emos-cli/internal/installer"
 	"github.com/automatika-robotics/emos-cli/internal/ui"
 )
 
@@ -24,40 +25,14 @@ func NewPixiStrategy(projectDir string) *PixiStrategy {
 	return &PixiStrategy{projectDir: projectDir}
 }
 
-// resolvePixi finds the pixi binary in priority order:
-//  1. PATH (works in interactive shells).
-//  2. ~/.pixi/bin/pixi (the pixi installer's standard target).
-//  3. /usr/local/bin/pixi (system-wide installs).
-//
-// Returns an absolute path or an error with the locations checked.
-func resolvePixi() (string, error) {
-	if p, err := exec.LookPath("pixi"); err == nil {
-		return p, nil
-	}
-	var checked []string
-	if home, err := os.UserHomeDir(); err == nil {
-		p := filepath.Join(home, ".pixi", "bin", "pixi")
-		checked = append(checked, p)
-		if st, err := os.Stat(p); err == nil && !st.IsDir() {
-			return p, nil
-		}
-	}
-	checked = append(checked, "/usr/local/bin/pixi")
-	if st, err := os.Stat("/usr/local/bin/pixi"); err == nil && !st.IsDir() {
-		return "/usr/local/bin/pixi", nil
-	}
-	return "", fmt.Errorf(
-		"pixi not found in PATH or %v -- install it from https://pixi.sh",
-		checked,
-	)
-}
-
-// ensurePixi populates s.pixiBin once on first use. Idempotent.
+// ensurePixi populates s.pixiBin once on first use. Idempotent. Pixi
+// resolution lives in internal/installer so the install/update/run paths
+// agree on where the binary is.
 func (s *PixiStrategy) ensurePixi() error {
 	if s.pixiBin != "" {
 		return nil
 	}
-	bin, err := resolvePixi()
+	bin, err := installer.ResolvePixi()
 	if err != nil {
 		return err
 	}

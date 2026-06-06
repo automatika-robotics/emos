@@ -109,6 +109,7 @@ var (
 	LogsDir     string
 	LicenseFile string
 	ConfigFile  string
+	PixiDir string // Pixi installation location
 )
 
 func Init() {
@@ -118,6 +119,16 @@ func Init() {
 	LogsDir = filepath.Join(HomeDir, "emos", "logs")
 	LicenseFile = filepath.Join(ConfigDir, "license.key")
 	ConfigFile = filepath.Join(ConfigDir, "config.json")
+	PixiDir = pixiDataDir()
+}
+
+// pixiDataDir resolves the canonical pixi-install root, honouring
+// $XDG_DATA_HOME and falling back to ~/.local/share/emos.
+func pixiDataDir() string {
+	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
+		return filepath.Join(xdg, "emos")
+	}
+	return filepath.Join(HomeDir, ".local", "share", "emos")
 }
 
 // PublicImageTag returns the full public image reference for a given ROS distro.
@@ -201,6 +212,12 @@ func SetDeviceName(name string) error {
 
 func InstallerURL() string {
 	return "https://raw.githubusercontent.com/" + GitHubOrg + "/" + GitHubRepo + "/main/stack/emos-cli/scripts/install.sh"
+}
+
+// RepoURL returns the public EMOS git repository URL, cloned for pixi-mode
+// installs.
+func RepoURL() string {
+	return "https://github.com/" + GitHubOrg + "/" + GitHubRepo + ".git"
 }
 
 func ReleasesURL() string {

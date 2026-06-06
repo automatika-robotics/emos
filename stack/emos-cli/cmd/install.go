@@ -24,14 +24,14 @@ var (
 
 var installCmd = &cobra.Command{
 	Use:   "install [license-key]",
-	Short: "Install EMOS (container, native, or licensed mode)",
+	Short: "Install EMOS (container, native, pixi, or licensed mode)",
 	Args:  cobra.MaximumNArgs(1),
 	RunE:  runInstall,
 }
 
 func init() {
 	installCmd.Flags().StringVar(&installModeFlag, "mode", "",
-		"Installation mode: container, native, or licensed")
+		"Installation mode: container, native, pixi, or licensed")
 	installCmd.Flags().StringVar(&installDistroFlag, "distro", "",
 		"ROS 2 distribution (jazzy, humble, kilted)")
 }
@@ -50,6 +50,8 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return installOSSContainer()
 	case "native":
 		return installNative()
+	case "pixi":
+		return installPixi()
 	case "licensed":
 		key := ui.Input("Enter your EMOS license key", "")
 		if key == "" {
@@ -59,7 +61,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	case "":
 		// Show interactive menu
 	default:
-		return fmt.Errorf("unknown mode: %s (use container, native, or licensed)", installModeFlag)
+		return fmt.Errorf("unknown mode: %s (use container, native, pixi, or licensed)", installModeFlag)
 	}
 
 	fmt.Println("  Welcome to EMOS - The Embodied Operating System")
@@ -69,6 +71,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	choice := ui.Select("Select installation mode:", []string{
 		"Container Install         (No ROS required - runs in Docker)",
 		"Native Install            (Requires existing ROS 2 installation)",
+		"Pixi Install              (Self-contained ROS via pixi - no system ROS needed)",
 		"I have an EMOS License Key",
 	})
 
@@ -78,6 +81,8 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	case 1:
 		return installNative()
 	case 2:
+		return installPixi()
+	case 3:
 		key := ui.Input("Enter your EMOS license key", "")
 		if key == "" {
 			return fmt.Errorf("license key is required")
@@ -239,6 +244,106 @@ func installNative() error {
 	ui.Faint("EMOS packages are now installed in /opt/ros/" + chosen.Distro + "/")
 	ui.Faint("You can run recipes directly: python3 ~/emos/recipes/<recipe>/recipe.py")
 	ui.Faint("Or use the CLI: emos pull <recipe> && emos run <recipe>")
+	offerDashboardAutoStart()
+	return nil
+}
+
+func installPixi() error {
+	// Pixi is required for this mode; fail early with install guidance.
+	pixiBin, err := installer.ResolvePixi()
+	if err != nil {
+		ui.Error("pixi is required for a pixi-mode install but was not found.")
+		fmt.Println()
+		fmt.Println("  Install it with:")
+		fmt.Println("    " + installer.PixiInstallHint)
+		fmt.Println()
+		fmt.Println("  Then restart your shell and re-run 'emos install'.")
+		return fmt.Errorf("pixi not found")
+	}
+	ui.Success("pixi detected: " + pixiBin)
+
+	projectDir := config.PixiDir
+
+	// Clear any prior workspace at the canonical location.
+	if _, err := os.Stat(projectDir); err == nil {
+		if _, e := os.Stat(filepath.Join(projectDir, "pixi.toml")); e == nil {
+			ui.Warn("An existing pixi workspace was found at " + projectDir)
+			if !ui.Confirm("Reinstall? This removes and re-clones the workspace.") {
+				return fmt.Errorf("aborted by user")
+			}
+		}
+		if err := os.RemoveAll(projectDir); err != nil {
+			return fmt.Errorf("failed to clear %s: %w", projectDir, err)
+		}
+	}
+
+	os.MkdirAll(config.ConfigDir, 0755)
+	if err := os.MkdirAll(filepath.Dir(projectDir), 0755); err != nil {
+		return fmt.Errorf("failed to create install directory: %w", err)
+	}
+	// User data dirs are shared across modes.
+	os.MkdirAll(config.RecipesDir, 0755)
+	os.MkdirAll(config.LogsDir, 0755)
+
+	ui.Header("CLONING EMOS WORKSPACE")
+	ui.Faint("Target: " + projectDir)
+	if err := ui.Spinner("Cloning EMOS repository...", func() error {
+		c := exec.Command("git", "clone", "--depth", "1", config.RepoURL(), projectDir)
+		if out, err := c.CombinedOutput(); err != nil {
+			return fmt.Errorf("%s", strings.TrimSpace(string(out)))
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("git clone failed: %w", err)
+	}
+	if err := ui.Spinner("Fetching stack submodules...", func() error {
+		c := exec.Command("git", "submodule", "update", "--init", "--depth", "1")
+		c.Dir = projectDir
+		if out, err := c.CombinedOutput(); err != nil {
+			return fmt.Errorf("%s", strings.TrimSpace(string(out)))
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("submodule init failed: %w", err)
+	}
+
+	// Resolve the env and build the stack.
+	ui.Header("BUILDING EMOS PACKAGES (pixi)")
+	ui.Faint("This can take 10-20 minutes on a first install.")
+
+	pixiInstall := exec.Command(pixiBin, "install")
+	pixiInstall.Dir = projectDir
+	pixiInstall.Stdout = os.Stdout
+	pixiInstall.Stderr = os.Stderr
+	if err := pixiInstall.Run(); err != nil {
+		return fmt.Errorf("pixi install failed: %w", err)
+	}
+
+	pixiSetup := exec.Command(pixiBin, "run", "setup")
+	pixiSetup.Dir = projectDir
+	pixiSetup.Stdout = os.Stdout
+	pixiSetup.Stderr = os.Stderr
+	if err := pixiSetup.Run(); err != nil {
+		return fmt.Errorf("pixi run setup failed: %w", err)
+	}
+
+	// Re-save the full struct here so the canonical fields are authoritative
+	// and any existing fields (auth, name) are preserved.
+	cfg := config.LoadConfig()
+	if cfg == nil {
+		cfg = &config.EMOSConfig{}
+	}
+	cfg.Mode = config.ModePixi
+	cfg.ROSDistro = "jazzy"
+	cfg.PixiProjectDir = projectDir
+	if err := config.SaveConfig(cfg); err != nil {
+		ui.Warn("Failed to save config: " + err.Error())
+	}
+
+	fmt.Println()
+	ui.SuccessBox("EMOS installed successfully (pixi mode)!")
+	ui.Faint("Workspace: " + projectDir)
+	ui.Faint("Run recipes with: emos pull <recipe> && emos run <recipe>")
 	offerDashboardAutoStart()
 	return nil
 }

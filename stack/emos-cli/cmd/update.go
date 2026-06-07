@@ -335,6 +335,7 @@ func updatePixi(cfg *config.EMOSConfig) error {
 	ui.Info("Updating pixi environment...")
 	pixiInstall := exec.Command(pixiBin, "install")
 	pixiInstall.Dir = projectDir
+	pixiInstall.Env = pixiBuildEnv()
 	pixiInstall.Stdout = os.Stdout
 	pixiInstall.Stderr = os.Stderr
 	if err := pixiInstall.Run(); err != nil {
@@ -345,6 +346,7 @@ func updatePixi(cfg *config.EMOSConfig) error {
 	ui.Info("Rebuilding EMOS packages...")
 	pixiSetup := exec.Command(pixiBin, "run", "setup")
 	pixiSetup.Dir = projectDir
+	pixiSetup.Env = pixiBuildEnv()
 	pixiSetup.Stdout = os.Stdout
 	pixiSetup.Stderr = os.Stderr
 	if err := pixiSetup.Run(); err != nil {

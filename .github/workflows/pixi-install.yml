@@ -40,6 +40,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     name: Pixi Install / ${{ matrix.os }}
 
+    # scikit-build-core: ignore pixi's unknown config settings (for pixi > 0.66).
+    env:
+      SKBUILD_STRICT_CONFIG: "false"
+
     steps:
       - uses: actions/checkout@v4
         with:

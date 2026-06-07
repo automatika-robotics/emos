@@ -248,6 +248,11 @@ func installNative() error {
 	return nil
 }
 
+// pixiBuildEnv adds SKBUILD_STRICT_CONFIG=false so scikit-build-core ignores pixi's unknown config settings.
+func pixiBuildEnv() []string {
+	return append(os.Environ(), "SKBUILD_STRICT_CONFIG=false")
+}
+
 func installPixi() error {
 	// Pixi is required for this mode; fail early with install guidance.
 	pixiBin, err := installer.ResolvePixi()
@@ -315,6 +320,7 @@ func installPixi() error {
 
 	pixiInstall := exec.Command(pixiBin, "install")
 	pixiInstall.Dir = projectDir
+	pixiInstall.Env = pixiBuildEnv()
 	pixiInstall.Stdout = os.Stdout
 	pixiInstall.Stderr = os.Stderr
 	if err := pixiInstall.Run(); err != nil {
@@ -323,6 +329,7 @@ func installPixi() error {
 
 	pixiSetup := exec.Command(pixiBin, "run", "setup")
 	pixiSetup.Dir = projectDir
+	pixiSetup.Env = pixiBuildEnv()
 	pixiSetup.Stdout = os.Stdout
 	pixiSetup.Stderr = os.Stderr
 	if err := pixiSetup.Run(); err != nil {

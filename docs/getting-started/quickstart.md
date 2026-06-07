@@ -157,9 +157,9 @@ python3 my_first_recipe.py
 :::{tab-item} Pixi
 
 ```bash
-cd ~/automatika/emos                   # the EMOS repo where you ran `pixi install`
-pixi shell
-source install/setup.sh                # adds the EMOS packages built by `pixi run setup` to your env
+# Activate the EMOS pixi env without leaving your recipe's directory
+pixi shell --manifest-path ~/.local/share/emos/pixi.toml
+source ~/.local/share/emos/install/setup.sh   # adds the built EMOS packages to your env
 python3 my_first_recipe.py
 ```
 

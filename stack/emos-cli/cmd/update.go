@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/automatika-robotics/emos-cli/internal/api"
@@ -294,22 +295,40 @@ func updatePixi(cfg *config.EMOSConfig) error {
 	fmt.Println("  Updating EMOS pixi workspace...")
 	fmt.Println()
 
+	// Preserve user-added pixi dependencies across the git pull: stash the
+	// manifest, pull, then reapply.
+	stashed := gitTreeDirty(projectDir, "pixi.toml", "pixi.lock")
+	if stashed {
+		if err := runGit(projectDir, "stash", "push", "-m",
+			"emos-update: preserve local pixi deps", "--", "pixi.toml", "pixi.lock"); err != nil {
+			return fmt.Errorf("could not preserve local pixi dependencies: %w", err)
+		}
+		ui.Info("Preserved local pixi dependencies for the update.")
+	}
+
 	// Pull latest source
 	if err := ui.Spinner("Pulling latest source...", func() error {
-		cmd := exec.Command("git", "pull")
-		cmd.Dir = projectDir
-		return cmd.Run()
+		return runGit(projectDir, "pull")
 	}); err != nil {
 		return fmt.Errorf("git pull failed: %w", err)
 	}
 
 	// Update submodules
 	if err := ui.Spinner("Updating submodules...", func() error {
-		cmd := exec.Command("git", "submodule", "update", "--init", "--depth", "1")
-		cmd.Dir = projectDir
-		return cmd.Run()
+		return runGit(projectDir, "submodule", "update", "--init", "--depth", "1")
 	}); err != nil {
 		return fmt.Errorf("submodule update failed: %w", err)
+	}
+
+	// Reapply the preserved dependencies.
+	if stashed {
+		if err := runGit(projectDir, "stash", "pop"); err != nil {
+			ui.Error("Your local pixi dependencies could not be reapplied -- this release changed pixi.toml.")
+			fmt.Println("  Resolve the conflict in " + projectDir + "/pixi.toml" +
+				" (your changes are saved via `git stash`), then run 'emos update' again.")
+			return fmt.Errorf("pixi manifest conflict during update")
+		}
+		ui.Success("Reapplied local pixi dependencies.")
 	}
 
 	// Reinstall dependencies
@@ -334,6 +353,29 @@ func updatePixi(cfg *config.EMOSConfig) error {
 
 	fmt.Println()
 	ui.SuccessBox("EMOS pixi workspace updated successfully!")
+	return nil
+}
+
+// gitTreeDirty reports whether any of the given paths have uncommitted changes
+// in the repository at dir.
+func gitTreeDirty(dir string, paths ...string) bool {
+	args := append([]string{"status", "--porcelain", "--"}, paths...)
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	return len(strings.TrimSpace(string(out))) > 0
+}
+
+// runGit runs a git command in dir, folding stderr into the returned error.
+func runGit(dir string, args ...string) error {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git %s: %s", strings.Join(args, " "), strings.TrimSpace(string(out)))
+	}
 	return nil
 }
 

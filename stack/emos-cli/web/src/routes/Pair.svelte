@@ -84,9 +84,8 @@
     </div>
 
     <p class="text-sm text-emos-text-2 mb-6 leading-relaxed">
-      Enter the six-digit pairing code shown when EMOS started.
-      It was printed in the terminal and saved to
-      <code class="kbd">~/.config/emos/pairing.txt</code>.
+      Enter the six-digit pairing code printed in the robot's terminal when the
+      EMOS dashboard started.
     </p>
 
     <div class="flex justify-between gap-1.5 sm:gap-2 mb-4" onpaste={onPaste}>

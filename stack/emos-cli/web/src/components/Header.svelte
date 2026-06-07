@@ -8,23 +8,25 @@
   const info = useInfo();
   const robot = useRobot();
 
-  // Title priority: a real robot manifest (model/name from licensed deployment)
-  // wins; otherwise we use the friendly device identity from /info; the OS
-  // hostname is a final fallback for legacy installs that haven't computed
-  // an identity yet.
+  // Title priority: the device's unique EMOS name (/info) is the primary
+  // identity. A licensed manifest's explicit name wins if present;
+  // the robot model (e.g. from a plugin) shows in the subtitle. Hostname is the
+  // final fallback.
   let title = $derived(
     $robot.data?.name ||
-      $robot.data?.model ||
       $info.data?.name ||
+      $robot.data?.model ||
       $info.data?.hostname ||
       'EMOS'
   );
   let subtitle = $derived(
     $robot.data?.serial
       ? `Serial ${$robot.data.serial}`
-      : $info.data
-        ? `${$info.data.platform} · ${$info.data.mode ?? 'unconfigured'}`
-        : 'connecting…'
+      : $robot.data?.model
+        ? `${$robot.data.model}${$robot.data.vendor ? ` · ${$robot.data.vendor}` : ''}`
+        : $info.data
+          ? `${$info.data.platform} · ${$info.data.mode ?? 'unconfigured'}`
+          : 'connecting…'
   );
 
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);

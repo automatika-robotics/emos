@@ -14,6 +14,8 @@ export const keys = {
   recipesLocal: ['recipes', 'local'] as const,
   recipesRemote: ['recipes', 'remote'] as const,
   recipeDetail: (name: string) => ['recipes', 'detail', name] as const,
+  pluginsRemote: ['plugins', 'remote'] as const,
+  pluginActive: ['plugins', 'active'] as const,
   runs: ['runs'] as const,
   run: (id: string) => ['runs', id] as const,
   jobs: ['jobs'] as const,
@@ -71,6 +73,32 @@ export const useRecipeDetail = (name: string) =>
     queryKey: keys.recipeDetail(name),
     queryFn: () => api.recipeDetail(name),
     enabled: !!name,
+  });
+
+export const usePluginsRemote = () =>
+  createQuery({
+    queryKey: keys.pluginsRemote,
+    queryFn: api.pluginsRemote,
+    retry: (count, err) => {
+      if (err instanceof ApiException && err.code === 'offline') return false;
+      return count < 1;
+    },
+    staleTime: 30_000,
+  });
+
+export const usePluginActive = () =>
+  createQuery({
+    queryKey: keys.pluginActive,
+    // 404 means no plugin installed — model that as null, not an error.
+    queryFn: async () => {
+      try {
+        return await api.pluginActive();
+      } catch (err) {
+        if (err instanceof ApiException && err.status === 404) return null;
+        throw err;
+      }
+    },
+    staleTime: 10_000,
   });
 
 export const useRuns = () =>
@@ -133,6 +161,27 @@ export function useDeleteRecipe() {
   return createMutation({
     mutationFn: (name: string) => api.recipeDelete(name),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.recipesLocal }),
+  });
+}
+
+export function useInstallPlugin() {
+  const qc = useQueryClient();
+  return createMutation({
+    // 202: the install job was registered. Plugins.svelte watches the jobs
+    // list and refreshes the active plugin when the job finishes.
+    mutationFn: (slug: string) => api.pluginInstall(slug),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.jobs }),
+  });
+}
+
+export function useRemovePlugin() {
+  const qc = useQueryClient();
+  return createMutation({
+    mutationFn: () => api.pluginRemove(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.pluginActive });
+      qc.invalidateQueries({ queryKey: keys.robot });
+    },
   });
 }
 

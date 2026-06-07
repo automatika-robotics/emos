@@ -68,14 +68,35 @@
     <div class="surface p-5 space-y-2">
       <div class="text-xs uppercase tracking-wider text-emos-text-3">Robot</div>
       {#if $robot.data}
+        {#if $robot.data.image_url}
+          <img
+            src={$robot.data.image_url}
+            alt={$robot.data.model ?? $robot.data.name ?? 'robot'}
+            class="mx-auto max-h-40 object-contain py-2"
+            loading="lazy"
+          />
+        {/if}
         <div class="grid grid-cols-2 gap-y-1 text-sm">
           {#if $robot.data.name}<div class="text-emos-text-3">name</div><div>{$robot.data.name}</div>{/if}
+          {#if $robot.data.vendor}<div class="text-emos-text-3">vendor</div><div>{$robot.data.vendor}</div>{/if}
           {#if $robot.data.model}<div class="text-emos-text-3">model</div><div>{$robot.data.model}</div>{/if}
           {#if $robot.data.serial}<div class="text-emos-text-3">serial</div><div class="font-mono">{$robot.data.serial}</div>{/if}
           {#if $robot.data.kinematics}<div class="text-emos-text-3">kinematics</div><div>{$robot.data.kinematics}</div>{/if}
-          {#if $robot.data.plugin}<div class="text-emos-text-3">plugin</div><div class="font-mono">{$robot.data.plugin}</div>{/if}
+          {#if $robot.data.plugin}<div class="text-emos-text-3">entry point</div><div class="font-mono truncate" title={$robot.data.plugin}>{$robot.data.plugin}</div>{/if}
           <div class="text-emos-text-3">source</div><div>{$robot.data.source}</div>
         </div>
+        {#if $robot.data.actions?.length}
+          <div class="text-sm pt-1">
+            <span class="text-emos-text-3">actions: </span>
+            {#each $robot.data.actions as a (a)}<span class="pill mr-1">{a}</span>{/each}
+          </div>
+        {/if}
+        {#if $robot.data.events?.length}
+          <div class="text-sm">
+            <span class="text-emos-text-3">events: </span>
+            {#each $robot.data.events as e (e)}<span class="pill mr-1">{e}</span>{/each}
+          </div>
+        {/if}
       {:else}
         <p class="text-sm text-emos-text-3">
           No robot identity is exposed by this device. Generic dashboard.

@@ -108,6 +108,9 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		uninstallPixiMode(cfg)
 	}
 
+	// Robot-plugin workspace is not user data, always remove it.
+	removePathQuiet("plugin workspace", config.WorkspaceDir)
+
 	// Common cleanup.
 	if !uninstallKeepData {
 		removePathQuiet("recipes", config.RecipesDir)
@@ -178,6 +181,9 @@ func printRemovalPlan(cfg *config.EMOSConfig) {
 		}
 	}
 
+	if cfg.Plugin != nil {
+		ui.Faint("  - robot plugin workspace: " + config.WorkspaceDir)
+	}
 	if !uninstallKeepData {
 		ui.Faint("  - " + config.RecipesDir)
 		ui.Faint("  - " + config.LogsDir)

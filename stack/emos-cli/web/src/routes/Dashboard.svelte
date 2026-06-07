@@ -42,8 +42,8 @@
     <div>
       <div class="text-xs uppercase tracking-wider text-emos-text-3">EMOS Console</div>
       <h2 class="text-2xl md:text-3xl font-semibold tracking-tight">
-        {#if $robot.data?.name || $robot.data?.model}
-          {$robot.data.name ?? $robot.data.model}
+        {#if $robot.data?.name}
+          {$robot.data.name}
         {:else if $info.data?.name}
           {$info.data.name}
         {:else if $info.data}
@@ -54,7 +54,7 @@
       </h2>
       <div class="text-sm text-emos-text-3 mt-1">
         {#if $robot.data}
-          {$robot.data.kinematics ?? 'robot'}{$robot.data.serial ? ` · ${$robot.data.serial}` : ''}
+          {$robot.data.model ?? $robot.data.kinematics ?? 'robot'}{$robot.data.vendor ? ` · ${$robot.data.vendor}` : ''}{$robot.data.serial ? ` · ${$robot.data.serial}` : ''}
         {:else if $info.data}
           {$info.data.platform} · {$info.data.mode ?? 'unconfigured'} · ROS {$info.data.ros_distro ?? '—'}
         {/if}

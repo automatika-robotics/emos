@@ -44,5 +44,6 @@ func init() {
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(mapCmd)
+	rootCmd.AddCommand(pluginCmd)
 	// serveCmd registers in init() within serve.go
 }

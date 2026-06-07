@@ -31,7 +31,19 @@ type EMOSConfig struct {
 	ImageTag       string      `json:"image_tag,omitempty"`
 	WorkspacePath  string      `json:"workspace_path,omitempty"`
 	PixiProjectDir string      `json:"pixi_project_dir,omitempty"`
+	Plugin         *PluginInfo `json:"plugin,omitempty"`
 	Auth           AuthState   `json:"auth"`
+}
+
+// PluginInfo records the single active robot plugin (a robot runs one plugin
+// at a time).
+type PluginInfo struct {
+	Slug        string    `json:"slug"`
+	EntryPoint  string    `json:"entry_point"` // module:ClassName
+	Repo        string    `json:"repo"`
+	Ref         string    `json:"ref,omitempty"`       // empty = tracks the default branch
+	ImageURL    string    `json:"image_url,omitempty"` // portal-served robot picture, if any
+	InstalledAt time.Time `json:"installed_at,omitempty"`
 }
 
 // DefaultDashboardPort is the bind port used when EMOSConfig.Port is unset.
@@ -100,16 +112,19 @@ const (
 	APIBaseURL          = "https://support-api.automatikarobotics.com/api"
 	CredentialsEndpoint = APIBaseURL + "/registrations/credentials"
 	RecipesEndpoint     = APIBaseURL + "/recipes"
+	PluginsEndpoint     = APIBaseURL + "/plugins"
 )
 
 var (
-	HomeDir     string
-	ConfigDir   string
-	RecipesDir  string
-	LogsDir     string
-	LicenseFile string
-	ConfigFile  string
-	PixiDir string // Pixi installation location
+	HomeDir            string
+	ConfigDir          string
+	RecipesDir         string
+	LogsDir            string
+	LicenseFile        string
+	ConfigFile         string
+	PixiDir            string // Pixi installation location
+	WorkspaceDir       string // ~/emos/workspace: plugin source
+	PluginDescribeFile string // cached inspect output of the active plugin
 )
 
 func Init() {
@@ -120,7 +135,16 @@ func Init() {
 	LicenseFile = filepath.Join(ConfigDir, "license.key")
 	ConfigFile = filepath.Join(ConfigDir, "config.json")
 	PixiDir = pixiDataDir()
+	WorkspaceDir = filepath.Join(HomeDir, "emos", "workspace")
+	PluginDescribeFile = filepath.Join(ConfigDir, "plugin-describe.json")
 }
+
+// PluginSrcDir is where robot-plugin sources are cloned (one subdir per
+// plugin).
+func PluginSrcDir() string { return filepath.Join(WorkspaceDir, "src") }
+
+// PluginOverlayDir is the colcon overlay the plugin is built into.
+func PluginOverlayDir() string { return filepath.Join(WorkspaceDir, "install") }
 
 // pixiDataDir resolves the canonical pixi-install root, honouring
 // $XDG_DATA_HOME and falling back to ~/.local/share/emos.

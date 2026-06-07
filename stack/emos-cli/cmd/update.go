@@ -15,6 +15,7 @@ import (
 	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/container"
 	"github.com/automatika-robotics/emos-cli/internal/installer"
+	"github.com/automatika-robotics/emos-cli/internal/plugin"
 	"github.com/automatika-robotics/emos-cli/internal/ui"
 	"github.com/automatika-robotics/emos-cli/internal/updcheck"
 	"github.com/spf13/cobra"
@@ -65,18 +66,32 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	ui.Info("Current mode: " + string(cfg.Mode))
 	fmt.Println()
 
+	var modeErr error
 	switch cfg.Mode {
 	case config.ModeOSSContainer:
-		return updateOSSContainer(cfg)
+		modeErr = updateOSSContainer(cfg)
 	case config.ModeLicensed:
-		return updateLicensed(cfg)
+		modeErr = updateLicensed(cfg)
 	case config.ModeNative:
-		return updateNative(cfg)
+		modeErr = updateNative(cfg)
 	case config.ModePixi:
-		return updatePixi(cfg)
+		modeErr = updatePixi(cfg)
 	default:
 		return fmt.Errorf("unknown mode: %s", cfg.Mode)
 	}
+	if modeErr != nil {
+		return modeErr
+	}
+
+	// Pull the active robot plugin to its latest commit and rebuild it.
+	if cfg.Plugin != nil {
+		fmt.Println()
+		ui.Header("UPDATING ROBOT PLUGIN")
+		if err := plugin.Update(cfg, os.Stdout); err != nil {
+			ui.Warn("Plugin update failed: " + err.Error())
+		}
+	}
+	return nil
 }
 
 // selfUpdateCLI checks for a newer CLI release and replaces the current binary.

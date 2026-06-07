@@ -3,6 +3,7 @@ package container
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -107,6 +108,34 @@ func RunWithArgs(name, image string, args []string) error {
 	fullArgs = append(fullArgs, "--name", name, image)
 	_, err := run(fullArgs...)
 	return err
+}
+
+// ephemeralArgs builds the `docker run --rm` argument list shared by the
+// streaming and capturing variants. The image entrypoint sources the ROS stack before execing the command.
+func ephemeralArgs(image, command string) []string {
+	return []string{
+		"run", "--rm",
+		"-v", os.Getenv("HOME") + "/emos:/emos",
+		"--user", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
+		"-e", "HOME=/tmp",
+		image,
+		"bash", "-c", command,
+	}
+}
+
+// RunEphemeral runs a one-off command in a throwaway container and streams its
+// combined output to out.
+func RunEphemeral(image, command string, out io.Writer) error {
+	cmd := docker(ephemeralArgs(image, command)...)
+	cmd.Stdout = out
+	cmd.Stderr = out
+	return cmd.Run()
+}
+
+// RunEphemeralCapture runs a one-off command in a throwaway container and
+// returns its trimmed stdout (stderr is folded into the error).
+func RunEphemeralCapture(image, command string) (string, error) {
+	return run(ephemeralArgs(image, command)...)
 }
 
 func Exec(name, command string) (string, error) {

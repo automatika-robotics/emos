@@ -59,9 +59,15 @@ func (s *PixiStrategy) pixiRun(shellCmd string) *exec.Cmd {
 	return cmd
 }
 
-// sourceCmd returns the shell snippet that sources the colcon install overlay.
+// sourceCmd returns the shell snippet that sources the colcon install overlay,
+// plus the robot-plugin overlay when a plugin is installed.
 func (s *PixiStrategy) sourceCmd() string {
-	return "source " + filepath.Join(s.projectDir, "install", "setup.sh")
+	cmd := "source " + filepath.Join(s.projectDir, "install", "setup.sh")
+	overlay := filepath.Join(config.PluginOverlayDir(), "setup.sh")
+	if _, err := os.Stat(overlay); err == nil {
+		cmd += " && source " + overlay
+	}
+	return cmd
 }
 
 func (s *PixiStrategy) PrepareEnvironment() error {

@@ -34,7 +34,14 @@ func (s *NativeStrategy) envFor(cmd *exec.Cmd) {
 }
 
 func (s *NativeStrategy) sourceCmd() string {
-	return "source " + filepath.Join("/opt/ros", s.rosDistro, "setup.bash")
+	cmd := "source " + filepath.Join("/opt/ros", s.rosDistro, "setup.bash")
+	// Source the robot-plugin overlay after the stack so recipes can import
+	// the active plugin. Absent until a plugin is installed.
+	overlay := filepath.Join(config.PluginOverlayDir(), "setup.bash")
+	if _, err := os.Stat(overlay); err == nil {
+		cmd += " && source " + overlay
+	}
+	return cmd
 }
 
 func (s *NativeStrategy) PrepareEnvironment() error {

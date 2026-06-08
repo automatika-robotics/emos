@@ -293,9 +293,7 @@ func installPixi() error {
 	ui.Header("CLONING EMOS WORKSPACE")
 	ui.Faint("Target: " + projectDir)
 	if err := ui.Spinner("Cloning EMOS repository...", func() error {
-		// TODO(test-only): clone feature/plugins until pixi-first-class is on
-		// main. REVERT this --branch arg before merging.
-		c := exec.Command("git", "clone", "--depth", "1", "--branch", "feature/plugins", config.RepoURL(), projectDir)
+		c := exec.Command("git", "clone", "--depth", "1", config.RepoURL(), projectDir)
 		if out, err := c.CombinedOutput(); err != nil {
 			return fmt.Errorf("%s", strings.TrimSpace(string(out)))
 		}

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { link, path } from '$lib/router';
-  import { LayoutDashboard, BookMarked, Activity, Cpu, BookOpen, ExternalLink } from 'lucide-svelte';
+  import { LayoutDashboard, BookMarked, Plug, Activity, Cpu, BookOpen, ExternalLink } from 'lucide-svelte';
   import Logo from './Logo.svelte';
   import { useInfo } from '$lib/queries';
 
@@ -9,6 +9,7 @@
   const items = [
     { href: '/', label: 'Console', icon: LayoutDashboard },
     { href: '/recipes', label: 'Recipes', icon: BookMarked },
+    { href: '/plugins', label: 'Plugins', icon: Plug },
     { href: '/runs', label: 'Runs', icon: Activity },
     { href: '/system', label: 'System', icon: Cpu },
   ];

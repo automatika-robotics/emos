@@ -9,12 +9,14 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/automatika-robotics/emos-cli/internal/api"
 	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/container"
 	"github.com/automatika-robotics/emos-cli/internal/installer"
+	"github.com/automatika-robotics/emos-cli/internal/plugin"
 	"github.com/automatika-robotics/emos-cli/internal/ui"
 	"github.com/automatika-robotics/emos-cli/internal/updcheck"
 	"github.com/spf13/cobra"
@@ -65,18 +67,32 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	ui.Info("Current mode: " + string(cfg.Mode))
 	fmt.Println()
 
+	var modeErr error
 	switch cfg.Mode {
 	case config.ModeOSSContainer:
-		return updateOSSContainer(cfg)
+		modeErr = updateOSSContainer(cfg)
 	case config.ModeLicensed:
-		return updateLicensed(cfg)
+		modeErr = updateLicensed(cfg)
 	case config.ModeNative:
-		return updateNative(cfg)
+		modeErr = updateNative(cfg)
 	case config.ModePixi:
-		return updatePixi(cfg)
+		modeErr = updatePixi(cfg)
 	default:
 		return fmt.Errorf("unknown mode: %s", cfg.Mode)
 	}
+	if modeErr != nil {
+		return modeErr
+	}
+
+	// Pull the active robot plugin to its latest commit and rebuild it.
+	if cfg.Plugin != nil {
+		fmt.Println()
+		ui.Header("UPDATING ROBOT PLUGIN")
+		if err := plugin.Update(cfg, os.Stdout); err != nil {
+			ui.Warn("Plugin update failed: " + err.Error())
+		}
+	}
+	return nil
 }
 
 // selfUpdateCLI checks for a newer CLI release and replaces the current binary.
@@ -269,31 +285,57 @@ func updatePixi(cfg *config.EMOSConfig) error {
 		return fmt.Errorf("pixi project dir not set")
 	}
 
+	pixiBin, err := installer.ResolvePixi()
+	if err != nil {
+		ui.Error("pixi is required to update a pixi-mode install but was not found.")
+		fmt.Println("  Install it with: " + installer.PixiInstallHint)
+		return err
+	}
+
 	fmt.Println("  Updating EMOS pixi workspace...")
 	fmt.Println()
 
+	// Preserve user-added pixi dependencies across the git pull: stash the
+	// manifest, pull, then reapply.
+	stashed := gitTreeDirty(projectDir, "pixi.toml", "pixi.lock")
+	if stashed {
+		if err := runGit(projectDir, "stash", "push", "-m",
+			"emos-update: preserve local pixi deps", "--", "pixi.toml", "pixi.lock"); err != nil {
+			return fmt.Errorf("could not preserve local pixi dependencies: %w", err)
+		}
+		ui.Info("Preserved local pixi dependencies for the update.")
+	}
+
 	// Pull latest source
 	if err := ui.Spinner("Pulling latest source...", func() error {
-		cmd := exec.Command("git", "pull")
-		cmd.Dir = projectDir
-		return cmd.Run()
+		return runGit(projectDir, "pull")
 	}); err != nil {
 		return fmt.Errorf("git pull failed: %w", err)
 	}
 
 	// Update submodules
 	if err := ui.Spinner("Updating submodules...", func() error {
-		cmd := exec.Command("git", "submodule", "update", "--init", "--depth", "1")
-		cmd.Dir = projectDir
-		return cmd.Run()
+		return runGit(projectDir, "submodule", "update", "--init", "--depth", "1")
 	}); err != nil {
 		return fmt.Errorf("submodule update failed: %w", err)
 	}
 
+	// Reapply the preserved dependencies.
+	if stashed {
+		if err := runGit(projectDir, "stash", "pop"); err != nil {
+			ui.Error("Your local pixi dependencies could not be reapplied -- this release changed pixi.toml.")
+			fmt.Println("  Resolve the conflict in " + projectDir + "/pixi.toml" +
+				" (your changes are saved via `git stash`), then run 'emos update' again.")
+			return fmt.Errorf("pixi manifest conflict during update")
+		}
+		ui.Success("Reapplied local pixi dependencies.")
+	}
+
 	// Reinstall dependencies
 	ui.Info("Updating pixi environment...")
-	pixiInstall := exec.Command("pixi", "install")
+	pixiInstall := exec.Command(pixiBin, "install")
 	pixiInstall.Dir = projectDir
+	pixiInstall.Env = pixiBuildEnv()
 	pixiInstall.Stdout = os.Stdout
 	pixiInstall.Stderr = os.Stderr
 	if err := pixiInstall.Run(); err != nil {
@@ -302,8 +344,9 @@ func updatePixi(cfg *config.EMOSConfig) error {
 
 	// Rebuild
 	ui.Info("Rebuilding EMOS packages...")
-	pixiSetup := exec.Command("pixi", "run", "setup")
+	pixiSetup := exec.Command(pixiBin, "run", "setup")
 	pixiSetup.Dir = projectDir
+	pixiSetup.Env = pixiBuildEnv()
 	pixiSetup.Stdout = os.Stdout
 	pixiSetup.Stderr = os.Stderr
 	if err := pixiSetup.Run(); err != nil {
@@ -312,6 +355,29 @@ func updatePixi(cfg *config.EMOSConfig) error {
 
 	fmt.Println()
 	ui.SuccessBox("EMOS pixi workspace updated successfully!")
+	return nil
+}
+
+// gitTreeDirty reports whether any of the given paths have uncommitted changes
+// in the repository at dir.
+func gitTreeDirty(dir string, paths ...string) bool {
+	args := append([]string{"status", "--porcelain", "--"}, paths...)
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	return len(strings.TrimSpace(string(out))) > 0
+}
+
+// runGit runs a git command in dir, folding stderr into the returned error.
+func runGit(dir string, args ...string) error {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git %s: %s", strings.Join(args, " "), strings.TrimSpace(string(out)))
+	}
 	return nil
 }
 

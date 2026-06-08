@@ -47,21 +47,23 @@ EMOS Python packages are not on the Python path. The fix depends on your install
 
 ## "Robot plugin not found"
 
-A recipe uses `Launcher(robot_plugin="some_plugin")` but the plugin package is not installed.
+A recipe imports a robot plugin and hands it to the launcher -- `from myrobot_plugin import MyRobotPlugin` / `Launcher(robot_plugin=MyRobotPlugin())` -- but the plugin isn't installed, so the recipe fails at startup with something like `ModuleNotFoundError: No module named 'myrobot_plugin'`.
 
-**Fix:**
+**Fix:** install the plugin with the CLI -- it clones, builds it for your install mode, and wires it so recipes can import it:
 
-1. Check if the plugin is available: `ros2 pkg list | grep some_plugin`
-2. If missing, build and install the plugin package into your ROS2 workspace:
-   ```bash
-   cd ~/ros2_ws/src
-   git clone <plugin_repo_url>
-   cd ~/ros2_ws && colcon build
-   source install/setup.bash
-   ```
+```bash
+emos plugin list                       # find the plugin's name
+emos plugin install <plugin>           # install + activate it
+emos plugin inspect                    # confirm it's the active plugin
+```
+
+A robot runs **one plugin at a time**, so installing a new one replaces the active one. If the import still fails right after installing, make sure you're launching through `emos run` (or, in development, that you've sourced the plugin overlay -- see [Running Recipes](running-recipes.md#install-mode-reference)).
+
+If the plugin is one **you wrote** (not in the catalog), build it into the EMOS workspace and follow the authoring guide.
 
 ```{seealso}
-See [Robot Plugins](../concepts/robot-plugins.md) for how plugins work and how to create one.
+- [Robot Plugins](plugins.md) -- installing and managing plugins with `emos plugin`.
+- [Robot Plugins (concept)](../concepts/robot-plugins.md) -- how plugins work and how to write one.
 ```
 
 ---
@@ -132,7 +134,7 @@ This recreates the container. Your recipes in `~/emos/recipes/` are preserved (t
 
 The config file at `~/.config/emos/config.json` is missing.
 
-**Fix:** Run `emos install` to set up EMOS. If you're using the pixi install mode, run `pixi run setup` from the EMOS repo root to register the installation.
+**Fix:** Run `emos install` to set up EMOS — use `emos install --mode pixi` for the pixi mode.
 
 ---
 
@@ -239,4 +241,16 @@ ping support.automatikarobotics.com
 
 ### Dashboard shows "Not installed" but the CLI works
 
-The dashboard reads `~/.config/emos/config.json`; the CLI also falls back to migrating from a legacy `~/.config/emos/license.key` if it finds one. If `emos install` was interrupted before writing the config, the CLI sees the legacy file and migrates on the fly, but the dashboard might race the migration. Re-run `emos install` (or `emos config show`) to materialise a clean config, then refresh the browser.
+The dashboard daemon reads `~/.config/emos/config.json` **once at startup** and serves that snapshot for its whole lifetime. So if `emos serve` was started *before* EMOS finished installing, the daemon keeps reporting "not installed", even though the CLI (which re-reads the config on every command) already sees the install. A browser refresh won't help: `/info` reflects the daemon's cached config, not the current file on disk.
+
+**Fix:** make sure the config exists, then **restart the daemon** so it re-reads it.
+
+```bash
+emos config show     # materialises / migrates ~/.config/emos/config.json if needed
+
+# then restart the dashboard so it picks up the config:
+sudo systemctl restart emos-dashboard.service   # if running as a service
+# or, if you started it manually, stop `emos serve` (Ctrl-C) and run it again
+```
+
+Refresh the browser afterwards.

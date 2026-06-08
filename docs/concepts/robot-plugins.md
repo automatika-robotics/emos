@@ -1,152 +1,109 @@
 # Robot Plugins
 
-EMOS introduces Robot Plugins to **seamlessly bridge your automation recipes with diverse robot hardware**.
+EMOS is built to be **robot-agnostic** -- recipes are written against standard, hardware-independent interfaces, so the same behaviour runs on any robot. In practice, though, robot manufacturers often expose their hardware through **custom interfaces**: bespoke ROS 2 messages and services, or entirely non-ROS protocols like UDP, HTTP, or a vendor SDK.
 
-By abstracting manufacturer-specific ROS 2 interfaces, {material-regular}`extension;1.2em;sd-text-primary` **plugins allow you to write generic, portable automation logic that runs on any robot without code changes.**
+{material-regular}`extension;1.2em;sd-text-primary` **Robot Plugins exist to bridge that gap.** A plugin adapts a manufacturer's custom interface to EMOS's standard one, making it trivial to bring a new robot online without touching your recipes. A plugin can also ship the robot's **preconfigured actions** -- a gait change on a quadruped, a docking routine, an arm stow -- ready for recipes (and [Cortex](../intelligence/cortex.md)) to call by name.
 
 ---
 
 ## What Are Robot Plugins?
 
-Different robot manufacturers often use custom messages or services in their ROS 2 interfaces to handle basic operations like sending robot actions or getting diverse low-level feedback such as odometry, battery info, etc. With traditional ROS 2 packages, you need code changes to handle each new message/service type. This creates a "lock-in" where your code becomes tightly coupled to a specific robot.
+A Robot Plugin is the **translation layer** between an EMOS recipe and a specific robot. It maps the robot's real interfaces onto the standard component I/O that recipes use (`Twist`, `Odometry`, `Imu`, …), so your recipe code never changes when the hardware does -- and it surfaces the robot's high-level **actions** (`stand_up`, `dock`, gait change) and **events** (`low_battery`) for recipes and Cortex to consume directly.
 
-EMOS Robot Plugins act as a **translation layer**. They sit between your EMOS application and the robot's hardware with all its custom types.
+```{note}
+This page describes the current plugin framework (Sugarcoat 0.7+): a plugin is a Python **class** you pass to the `Launcher`. It supersedes the earlier dictionary-based `robot_feedback` / `robot_action` API.
+```
 
 ---
 
 ## Why Robot Plugins?
 
-- {material-regular}`swap_horiz;1.2em;sd-text-primary` **Portability** -- Write your automation recipe once using standard types. Switch robots by simply changing the plugin configuration.
+- {material-regular}`swap_horiz;1.2em;sd-text-primary` **Portability** -- Write the recipe once against standard types; switch robots by swapping a single plugin object.
 
-- {material-regular}`auto_fix_high;1.2em;sd-text-primary` **Simplicity** -- The plugin handles all the complex type conversions and service calls behind the scenes.
+- {material-regular}`auto_fix_high;1.2em;sd-text-primary` **Simplicity** -- The plugin hides all the type conversions, sockets, and service calls behind the scenes.
 
-- {material-regular}`widgets;1.2em;sd-text-primary` **Modularity** -- Keep hardware-specific logic isolated in a separate package.
-
----
-
-## How to Create a Robot Plugin
-
-To create your own custom plugin, you can create a ROS 2 package based on the example [myrobot_plugin_interface](https://github.com/automatika-robotics/robot-plugin-example).
-
-Any plugin package must export a Python module containing two specific dictionaries in its `__init__.py`:
-
-1. {material-regular}`sensors;1.2em;sd-text-success` `robot_feedback` -- Maps standard types to the robot's specific feedback topics (e.g., getting `IMU` or `Odometry` like information).
-2. {material-regular}`send;1.2em;sd-text-warning` `robot_action` -- Maps standard types to the robot's specific action topics or service clients (e.g., sending `Twist` like commands).
-
-### The Steps
-
-**0. (Optional) Define Custom ROS Interfaces**
-
-If your robot's manufacturer-specific messages or services are not available to import from another package, define them in `msg/` and `srv/` folders.
-
-**1. Implement Type Converters (`types.py`)**
-
-Create a `types.py` module to handle data translation:
-
-- {material-regular}`download;1.2em;sd-text-success` **For Each Feedback:** Define a callback function that transforms the custom ROS 2 message into a standard Python type (like a NumPy array). Register it using `create_supported_type`.
-- {material-regular}`upload;1.2em;sd-text-warning` **For Each Action:** Define a converter function that transforms standard Python inputs into the custom ROS 2 message.
-
-```python
-from ros_sugar.robot_plugin import create_supported_type
-
-# Example: Creating a supported type for feedback
-RobotOdometry = create_supported_type(CustomOdom, callback=_odom_callback)
-```
-
-**2. Handle Service Clients (`clients.py`)**
-
-If your robot actions require calling a ROS 2 service, create a class inheriting from `RobotPluginServiceClient` in `clients.py`. Implement the `_publish` method to construct and send the service request.
-
-**3. Register the Plugin (`__init__.py`)**
-
-Expose your new capabilities in `__init__.py` by defining two dictionaries:
-
-```python
-from . import types, clients
-
-robot_feedback = {
-    "Odometry": Topic(name="myrobot_odom", msg_type=types.RobotOdometry),
-}
-
-robot_action = {
-    "Twist": clients.CustomTwistClient
-}
-```
-
-**4. Configure the Build**
-
-Use the same `CMakeLists.txt` and `package.xml` for your new plugin package. Make sure to add any additional dependencies.
+- {material-regular}`widgets;1.2em;sd-text-primary` **Modularity** -- Keep hardware-specific logic isolated in its own package.
 
 ---
 
-## How to Use a Plugin in Your Recipe
+## How a Plugin Works
 
-Using a robot plugin in your EMOS automation recipe is straightforward. After building and installing your plugin package, specify the plugin package name when initializing the `Launcher`:
+A plugin is a subclass of `ros_sugar.robot.RobotPlugin`. Its `__init__` is **declarative** -- it only *describes* the robot (endpoints, transports, decoders) and does no I/O, so it can be serialized and rebuilt inside component subprocesses. The `Launcher` then runs it in one of two roles automatically:
 
-```python
-from ros_sugar import Launcher
+- {material-regular}`dns;1.2em;sd-text-primary` **HOST** -- lives in the launcher process. Owns the real transports (binds sockets, opens sessions, runs heartbeats), decodes telemetry once, and publishes it on a feedback bus.
+- {material-regular}`memory;1.2em;sd-text-primary` **CLIENT** -- lives in each component subprocess. Opens no sockets; it consumes decoded feedback from the bus and sends commands.
 
-# ... Define your components/events/actions/fallbacks here ...
-
-# Initialize the launcher with your specific robot plugin
-launcher = Launcher(robot_plugin="myrobot_plugin")
-
-# ... Add it all to the launcher and bringup the system ...
-```
-
-That's it. EMOS handles the rest -- every topic subscription and publication in your recipe is automatically translated through the plugin.
+During activation, every component's standard input/output topics are matched against the plugin: a ROS-topic match re-points the native subscriber/publisher, and any other transport is bridged through the feedback bus. Components stay unaware their data isn't plain ROS.
 
 ---
 
-## Example: A Complete Robot Plugin
+## Anatomy of a Plugin
 
-The [`myrobot_plugin`](https://github.com/automatika-robotics/robot-plugin-example) example bridges standard robot commands (`Twist`) and standard feedback (`Odometry`) to two custom interfaces.
+| Building block | Role |
+| :------------- | :--- |
+| `RobotPlugin` | The plugin itself -- subclass this. |
+| `Transport` | Where data comes from / goes to: `UdpTransport`, `HttpTransport`, `SdkCallbackTransport`, `RosTopicTransport`, `RosServiceTransport`. |
+| `Feedback` | One telemetry stream -- a standard type, a transport, and a decoder (raw payload → ROS message). |
+| `RobotCommand` | One command surface -- a standard type, a transport, and an encoder (component output → wire payload). |
+| `ActionRegistry` / `EventRegistry` | Named factories that produce the robot's `Action` / `Event` objects. |
+| `create_supported_type` | Wraps a robot's custom ROS message as a standard `SupportedType`. |
 
-### Custom Interfaces
-
-- {material-regular}`description;1.2em;sd-text-secondary` **`CustomOdom.msg`** -- A feedback message containing position (x, y, z) and orientation (pitch, roll, yaw).
-- {material-regular}`description;1.2em;sd-text-secondary` **`CustomTwist.msg`** -- A command message for 2D velocity (vx, vy) and angular velocity (vyaw).
-- {material-regular}`description;1.2em;sd-text-secondary` **`RobotActionCall.srv`** -- A service definition used to trigger actions on the robot, returning a success boolean.
-
-### Supported Types (`types.py`)
-
-- {material-regular}`download;1.2em;sd-text-success` **Feedback (Callbacks):** Functions that convert incoming ROS messages into standard types. Example: `_odom_callback` converts `CustomOdom` into a NumPy array `[x, y, yaw]`.
-- {material-regular}`upload;1.2em;sd-text-warning` **Actions (Converters):** Functions that convert standard commands into custom ROS 2 messages. Example: `_ctr_converter` converts velocity inputs into a `CustomTwist` message.
-
-### Service Clients (`clients.py`)
-
-For robots that handle actions via ROS services, define custom client wrappers inheriting from `RobotPluginServiceClient`. Example: `CustomTwistClient` wraps the `RobotActionCall` service.
-
-### Plugin Entry Point (`__init__.py`)
-
-Exposes the plugin capabilities using two dictionaries: `robot_feedback` and `robot_action`.
-
-### Testing
-
-A `server_node.py` is provided to simulate the robot's ROS 2 server. It spins a minimal node that listens to `robot_control_service` requests and logs the received velocity commands, allowing you to test the `CustomTwistClient` functionality.
+`Feedback` and `RobotCommand` are keyed by the **standard message-type name** they stand in for (`Twist`, `Odometry`, …) -- that is how the framework matches them to component I/O.
 
 ---
 
-## See it in Action
+## Using a Plugin in a Recipe
 
-Here the example plugin is tested with [**Kompass**](https://github.com/automatika-robotics/kompass), the EMOS navigation engine built on top of Sugarcoat.
-
-Start by running the [`turtlebot3_test`](https://github.com/automatika-robotics/kompass/blob/main/kompass/recipes/turtlebot3.py) **without** the plugin and observe the subscribed and published topics. You will see the components subscribed to `/odometry/filtered` of type `Odometry`, and the `DriveManager` publishing `Twist` on `/cmd_vel`.
-
-To enable the plugin, just edit one line:
+Hand a plugin instance to the `Launcher` -- that is the only recipe change:
 
 ```python
-launcher = Launcher(robot_plugin="myrobot_plugin")
+from ros_sugar.launch import Launcher
+from myrobot_plugin import MyRobotPlugin
+
+plugin = MyRobotPlugin()                       # declarative, zero-arg
+launcher = Launcher(robot_plugin=plugin)
+launcher.add_pkg(components=[planner, controller], multiprocessing=True)
+
+# Plugin-provided events and actions wire up like anything else
+launcher.on(plugin.events.low_battery(0.15), plugin.actions.dock())
+
+launcher.bringup()
 ```
 
-Re-run the recipe and the components now expect the plugin odometry topic of type `CustomOdometry`. The `DriveManager` no longer publishes `/cmd_vel` -- instead, it has created a service client in accordance with the custom plugin.
+EMOS hosts the plugin, propagates it to every component, and translates all topic I/O through it -- every subscription and publication in your recipe is routed via the plugin automatically.
 
-```{raw} html
-<div style="text-align: center;">
-<iframe width="600" height="338" src="https://www.youtube.com/embed/oZN6pcJKgfY" frameborder="0" allowfullscreen></iframe>
-</div>
+---
+
+## Installing a Plugin
+
+You don't have to build a plugin to use one -- the Automatika catalog ships ready-made plugins you install with one command (or one click in the dashboard):
+
+```bash
+emos plugin install emos-plugin-example
 ```
+
+See [Robot Plugins (install & manage)](../getting-started/plugins.md) for the full flow.
+
+---
+
+## Writing Your Own
+
+The reference plugin, [`emos-plugin-example`](https://github.com/automatika-robotics/emos-plugin-example), implements one robot across **all** the transport families (UDP telemetry + velocity command, a ROS-topic battery feedback, and a ROS-service docking action), with a mock robot and an end-to-end test suite. Copy it and adapt.
+
+The full step-by-step authoring guide -- wrapping custom message types, defining transports/feedbacks/commands, contributing actions and events, and introspection -- lives in the Sugarcoat docs: [**Creating a Robot Plugin**](https://github.com/automatika-robotics/sugarcoat/blob/main/docs/development/custom_robot_plugin.md).
+
+You can introspect any plugin's exposed surface from the command line:
+
+```bash
+python -m ros_sugar.robot inspect myrobot_plugin:MyRobotPlugin
+```
+
+(`emos plugin inspect` prints the same tree for the active plugin.)
+
+---
 
 ```{seealso}
-To learn about creating custom EMOS components and deploying them as system services, see [Extending EMOS](../advanced/extending.md).
+- [Robot Plugins (install & manage)](../getting-started/plugins.md) -- install a plugin from the catalog with `emos plugin`.
+- [Creating a Robot Plugin](https://github.com/automatika-robotics/sugarcoat/blob/main/docs/development/custom_robot_plugin.md) -- the full authoring guide.
+- [Extending EMOS](../advanced/extending.md) -- custom components and deploying them as system services.
 ```

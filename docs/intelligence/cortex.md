@@ -123,6 +123,10 @@ cortex = Cortex(
 
 Each `Action` must carry a description -- it's what the planner sees when deciding whether to call the tool.
 
+### Robot plugin actions
+
+When a [robot plugin](../concepts/robot-plugins.md) is attached to the recipe (`Launcher(robot_plugin=...)`), Cortex picks up the robot's high-level actions automatically: each plugin action is registered as a namespaced execution tool, and the plugin's metadata (what the robot is, its vendor) is prepended to the planning prompt so the agent knows which body it is driving. You write no registration -- installing the plugin and attaching it to the `Launcher` is enough. See [Robot Plugins](../getting-started/plugins.md) for installing one.
+
 ---
 
 ## Public API

@@ -108,6 +108,9 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		uninstallPixiMode(cfg)
 	}
 
+	// Robot-plugin workspace is not user data, always remove it.
+	removePathQuiet("plugin workspace", config.WorkspaceDir)
+
 	// Common cleanup.
 	if !uninstallKeepData {
 		removePathQuiet("recipes", config.RecipesDir)
@@ -170,10 +173,17 @@ func printRemovalPlan(cfg *config.EMOSConfig) {
 		ui.Faint("  - /opt/ros/" + distroOr(cfg, "jazzy") + "/ -- best-effort, manual commands printed")
 	case config.ModePixi:
 		if cfg.PixiProjectDir != "" {
-			ui.Faint("  - pixi env, build, install, log under: " + cfg.PixiProjectDir)
+			if samePath(cfg.PixiProjectDir, config.PixiDir) {
+				ui.Faint("  - pixi workspace (cloned repo + env + build): " + cfg.PixiProjectDir)
+			} else {
+				ui.Faint("  - pixi env, build, install, log under: " + cfg.PixiProjectDir)
+			}
 		}
 	}
 
+	if cfg.Plugin != nil {
+		ui.Faint("  - robot plugin workspace: " + config.WorkspaceDir)
+	}
 	if !uninstallKeepData {
 		ui.Faint("  - " + config.RecipesDir)
 		ui.Faint("  - " + config.LogsDir)
@@ -264,6 +274,11 @@ func uninstallPixiMode(cfg *config.EMOSConfig) {
 		ui.Warn("No pixi project directory recorded in config; skipping pixi cleanup.")
 		return
 	}
+	// Remove workspace in pixi installation dir
+	if samePath(dir, config.PixiDir) {
+		removePathQuiet("pixi workspace", dir)
+		return
+	}
 	for _, sub := range []string{".pixi", "build", "install", "log"} {
 		p := filepath.Join(dir, sub)
 		if _, err := os.Stat(p); err == nil {
@@ -271,6 +286,19 @@ func uninstallPixiMode(cfg *config.EMOSConfig) {
 		}
 	}
 	ui.Faint("The cloned EMOS repo at " + dir + " was preserved.")
+}
+
+// samePath reports whether two paths resolve to the same absolute location.
+func samePath(a, b string) bool {
+	ca, err := filepath.Abs(a)
+	if err != nil {
+		return false
+	}
+	cb, err := filepath.Abs(b)
+	if err != nil {
+		return false
+	}
+	return filepath.Clean(ca) == filepath.Clean(cb)
 }
 
 // existsUnitFile reports whether a systemd unit file is present on disk.

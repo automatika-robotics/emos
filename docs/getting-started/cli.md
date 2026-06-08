@@ -18,6 +18,7 @@ The `emos` CLI manages installation, recipes, the dashboard daemon, and device c
 | `emos run <name>`  | Run a recipe (foreground, blocking)                         |
 | `emos info <name>` | Show sensor/topic requirements for a recipe                 |
 | `emos map <cmd>`   | Mapping tools (record, edit)                                |
+| `emos plugin <cmd>`| Install and manage the robot plugin                          |
 | `emos version`     | Show CLI version                                            |
 
 ```{tip}
@@ -95,14 +96,15 @@ For the full walkthrough -- writing the recipe, dropping it in, verifying discov
 emos install                           # interactive mode menu
 emos install --mode container          # OSS container (no ROS required on host)
 emos install --mode native             # native (uses host's ROS 2)
+emos install --mode pixi               # self-contained ROS via pixi (no system ROS)
 emos install --mode licensed <key>     # licensed deployment (requires license key)
 emos install --distro jazzy            # pin a ROS distro for container/native mode
 ```
 
-| Flag       | Default    | Description                                      |
-| :--------- | :--------- | :----------------------------------------------- |
-| `--mode`   | _(prompt)_ | One of: `container`, `native`, `licensed`.       |
-| `--distro` | _(prompt)_ | ROS 2 distribution: `jazzy`, `humble`, `kilted`. |
+| Flag       | Default    | Description                                          |
+| :--------- | :--------- | :--------------------------------------------------- |
+| `--mode`   | _(prompt)_ | One of: `container`, `native`, `pixi`, `licensed`.   |
+| `--distro` | _(prompt)_ | ROS 2 distribution: `jazzy`, `humble`, `kilted`.    |
 
 The installer offers, at the end, to:
 
@@ -110,7 +112,7 @@ The installer offers, at the end, to:
 - Persist the chosen device name and a fresh pairing code to `~/.config/emos/config.json`.
 
 ```{note}
-The pixi install path is currently driven from the EMOS repo (`pixi run setup`) rather than `emos install --mode pixi`. See [Installation](installation.md#deployment-modes).
+Pixi mode requires [pixi](https://pixi.sh) on the host (`emos install --mode pixi` errors with install instructions if it's missing). It clones the EMOS workspace and builds it under `~/.local/share/emos`, independent of any system ROS. Currently pinned to ROS 2 Jazzy. See [Installation](installation.md#deployment-modes).
 ```
 
 ### `emos uninstall`
@@ -136,7 +138,7 @@ Mode-specific behavior:
 
 - **Container / licensed:** `docker stop` + `docker rm` the EMOS container; licensed also removes the container auto-restart unit and `~/emos/robot/`.
 - **Native:** removes the build workspace and `pip uninstall`s `kompass-core`. EMOS package files in `/opt/ros/<distro>/` are co-mingled with ROS by colcon and **cannot** be cleanly removed -- the command prints the manual `rm` commands rather than running them, so you can review and apply if you want.
-- **Pixi:** removes `.pixi/`, `build/`, `install/`, `log/` under the EMOS repo directory. The cloned repo itself is preserved.
+- **Pixi:** removes the EMOS-owned pixi workspace at `~/.local/share/emos` (cloned repo + env + build) wholesale. A workspace you cloned yourself elsewhere is preserved — only its build artifacts are stripped.
 
 The CLI binary at `/usr/local/bin/emos` is never removed automatically -- a running process can't reliably unlink itself. The command prints the `sudo rm` one-liner for you.
 
@@ -150,7 +152,7 @@ Run `emos uninstall` before switching install modes (e.g. native -> pixi). It cl
 emos update
 ```
 
-Detects the install mode and updates accordingly. Container mode pulls the latest image and recreates the container; native mode pulls the latest source, rebuilds, and re-installs into `/opt/ros/{distro}/`; pixi mode runs `git pull`, refreshes the pixi env (`pixi install`), and rebuilds the EMOS packages (`pixi run setup`).
+Detects the install mode and updates accordingly. Container mode pulls the latest image and recreates the container; native mode pulls the latest source, rebuilds, and re-installs into `/opt/ros/{distro}/`; pixi mode runs `git pull`, refreshes the pixi env (`pixi install`), and rebuilds the EMOS packages (`pixi run setup`). If a robot plugin is installed, it is also pulled to its latest commit and rebuilt.
 
 ### `emos status`
 
@@ -347,6 +349,26 @@ If you skip the check and a sensor topic never arrives, the recipe may hang sile
 [Troubleshooting](troubleshooting.md) for common errors during recipe execution.
 ```
 
+### `emos plugin`
+
+Install and manage the robot plugin — a ROS package that adapts a specific robot to the EMOS stack. A robot runs **one plugin at a time**. See [Robot Plugins](plugins.md) for the full guide.
+
+```bash
+emos plugin list                       # browse the catalog (active plugin marked)
+emos plugin install <name>             # install + activate (replaces any active plugin)
+emos plugin inspect                    # show the active plugin's feedbacks/commands/actions/events
+emos plugin remove                     # remove the active plugin
+```
+
+| Subcommand          | Description                                                                                  |
+| :------------------ | :------------------------------------------------------------------------------------------- |
+| `list`              | List plugins available in the Automatika catalog; flags the currently active one.            |
+| `install <name>`    | Clone, build (for your install mode), and activate a plugin. Prompts before replacing one.    |
+| `inspect`           | Pretty-print the active plugin's introspection tree (same data the dashboard System page shows). |
+| `remove`            | Remove the active plugin from the robot.                                                      |
+
+Installing a plugin makes it importable; a recipe opts in with `Launcher(robot_plugin=MyRobotPlugin())`. The dashboard's [Plugins page](dashboard.md#plugins) drives the same flow from a browser.
+
 ### `emos map`
 
 Mapping subcommands for creating and editing environment maps:
@@ -472,6 +494,10 @@ sudo systemctl restart emos-dashboard.service
   - Per-run log files: `<recipe>_<timestamp>.log`. Streamed by `emos run` and the dashboard.
 * - `~/emos/ros_ws/`
   - Native-mode build workspace.
+* - `~/.local/share/emos/`
+  - Pixi-mode install: cloned EMOS workspace, pixi env, and colcon overlay (`emos install --mode pixi`).
+* - `~/emos/workspace/`
+  - Robot-plugin source and build overlay (`emos plugin install`).
 * - `/etc/systemd/system/emos-dashboard.service`
   - Dashboard auto-start unit (created by `emos serve install-service`).
 * - `/etc/systemd/system/emos.service`

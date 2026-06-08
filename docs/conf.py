@@ -155,6 +155,7 @@ LLMS_TXT_SELECTION = [
     "concepts/events-and-actions.md",
     "concepts/status-and-fallbacks.md",
     "concepts/launcher.md",
+    "concepts/robot-plugins.md",
     # Intelligence Layer (EmbodiedAgents) -- components, clients, models
     "intelligence/overview.md",
     "intelligence/ai-components.md",

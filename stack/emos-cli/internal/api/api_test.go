@@ -102,3 +102,49 @@ func TestParseRecipesResponse_200JSONButWrongShape(t *testing.T) {
 		t.Errorf("error should be the friendly unexpected-response message; got: %v", err)
 	}
 }
+
+func TestParsePluginsResponse_ValidArray(t *testing.T) {
+	resp := mkResp(http.StatusOK, "application/json",
+		`[{"filename":"robot-plugin-example","name":"Example","vendor":"Automatika",`+
+			`"entry_point":"myrobot_plugin:MyRobotPlugin","repo":"https://example.test/r",`+
+			`"ref":"","description":"d","tags":["example"]}]`)
+	plugins, err := parsePluginsResponse(resp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(plugins) != 1 {
+		t.Fatalf("got %d plugins, want 1", len(plugins))
+	}
+	p := plugins[0]
+	if p.Filename != "robot-plugin-example" || p.EntryPoint != "myrobot_plugin:MyRobotPlugin" {
+		t.Errorf("decoded plugin wrong: %+v", p)
+	}
+	if len(p.Tags) != 1 || p.Tags[0] != "example" {
+		t.Errorf("tags decoded wrong: %+v", p.Tags)
+	}
+}
+
+func TestParsePluginsResponse_404(t *testing.T) {
+	resp := mkResp(http.StatusNotFound, "text/plain; charset=utf-8", "404 page not found")
+	_, err := parsePluginsResponse(resp)
+	if err == nil {
+		t.Fatal("expected an error for a 404 response, got nil")
+	}
+	if !strings.Contains(err.Error(), "HTTP 404") {
+		t.Errorf("error should name the HTTP status; got: %v", err)
+	}
+	if strings.Contains(err.Error(), "api.Plugin") || strings.Contains(err.Error(), "unmarshal") {
+		t.Errorf("error leaks Go internals: %v", err)
+	}
+}
+
+func TestParsePluginsResponse_200NonJSON(t *testing.T) {
+	resp := mkResp(http.StatusOK, "text/html", "<html>maintenance</html>")
+	_, err := parsePluginsResponse(resp)
+	if err == nil {
+		t.Fatal("expected an error for a non-JSON 200, got nil")
+	}
+	if !strings.Contains(err.Error(), "non-JSON") {
+		t.Errorf("error should mention the non-JSON response; got: %v", err)
+	}
+}

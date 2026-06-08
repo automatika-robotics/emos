@@ -98,6 +98,54 @@ func parseRecipesResponse(resp *http.Response) ([]Recipe, error) {
 	return recipes, nil
 }
 
+// Plugin is a robot-plugin registry entry from the support portal. Sources in
+// github repos.
+type Plugin struct {
+	Filename    string   `json:"filename"` // slug / clone-directory name
+	Name        string   `json:"name"`
+	Vendor      string   `json:"vendor"`
+	EntryPoint  string   `json:"entry_point"` // module:ClassName
+	Repo        string   `json:"repo"`        // public GitHub URL
+	Ref         string   `json:"ref"`         // branch/tag; empty = default branch
+	Image       string   `json:"image"`       // image filename served by the portal, if any
+	Description string   `json:"description"`
+	Tags        []string `json:"tags"`
+}
+
+// ListPlugins fetches the robot-plugin registry from the support portal.
+func ListPlugins() ([]Plugin, error) {
+	resp, err := http.Get(config.PluginsEndpoint)
+	if err != nil {
+		return nil, fmt.Errorf("could not connect to the plugins API: %w", err)
+	}
+	defer resp.Body.Close()
+	return parsePluginsResponse(resp)
+}
+
+// parsePluginsResponse validates and decodes a /plugins catalog response.
+func parsePluginsResponse(resp *http.Response) ([]Plugin, error) {
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read plugins API response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf(
+			"plugin catalog unavailable (HTTP %d). The service may be down or upgrading -- try again later",
+			resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "json") {
+		return nil, fmt.Errorf(
+			"plugin catalog returned a non-JSON response. The service may be down or upgrading -- try again later")
+	}
+
+	var plugins []Plugin
+	if err := json.Unmarshal(body, &plugins); err != nil {
+		return nil, fmt.Errorf(
+			"plugin catalog returned an unexpected response. The service may be down or upgrading -- try again later")
+	}
+	return plugins, nil
+}
+
 // WARN: DownloadRecipe fetches the recipe archive from the catalog and extracts it
 // into <destDir>/<name>/. The upstream archive layout is inconsistent:
 // Normalise both shapes to <destDir>/<name>/{manifest.json, recipe.py, ...}

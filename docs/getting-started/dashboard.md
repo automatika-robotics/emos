@@ -8,6 +8,7 @@ The EMOS Dashboard is a web app that runs on your robot. Once you open it in a b
 
 - A **home page** that shows what your robot is, whether something is running, and one-click shortcuts to start a recipe.
 - A **recipes library** with a built-in catalog you can install from with one click.
+- A **plugins catalog** to install the robot plugin for your hardware in one click.
 - A **live console** that streams a recipe's output as it runs.
 - A **system page** that tells you the robot's name on the network, the URLs to open from other devices, and a QR code to scan with your phone.
 
@@ -60,7 +61,7 @@ To pair a phone the same way, point its camera at the QR code that the terminal 
 
 ## Dashboard views
 
-The dashboard has six pages. The sidebar (or the command palette — press {kbd}`Ctrl`+{kbd}`K` / {kbd}`⌘`+{kbd}`K` to open it) lets you jump between them.
+The dashboard has seven pages. The sidebar (or the command palette — press {kbd}`Ctrl`+{kbd}`K` / {kbd}`⌘`+{kbd}`K` to open it) lets you jump between them.
 
 ### Home
 
@@ -96,6 +97,19 @@ Click any installed recipe to see what it does. The page shows:
 
 If a sensor your recipe needs isn't connected, the run will warn you up-front rather than silently hanging.
 
+### Plugins
+
+<!-- TODO screenshot: Plugins page — catalog grid + the active-plugin card -->
+<!-- ![EMOS Plugins page](../_static/images/emos_plugins.png) -->
+
+The catalog of **robot plugins** — the package that teaches EMOS how to talk to your specific robot. A robot runs one plugin at a time; the active one is shown at the top.
+
+- Browse the published plugins, each with its vendor, picture, and description.
+- Tap **Install** on a card to fetch, build, and activate it. Progress streams live on the card the same way recipe pulls do; the active plugin then powers the robot identity on the **System** page.
+- **Reinstall** or **Remove** the active plugin from the same page.
+
+Installing here is the browser equivalent of `emos plugin install`. For the full flow and the CLI commands, see [Robot Plugins](plugins.md).
+
 ### Runs
 
 A timeline of every recipe you've run recently. Click any row to open its console.
@@ -118,6 +132,7 @@ This is the page you'll want when you need to invite a phone or another laptop t
 - A **QR code** to scan from another device — opens the same Pair screen on that device.
 - A list of paired browsers (you can revoke any of them).
 - Robot install info (mode, ROS distribution, version) and a button to copy any field.
+- The **active robot**, when a [plugin](#plugins) is installed: its picture, model, vendor, and the actions and events it exposes. Your robot keeps its unique EMOS name as the title — the plugin's name is shown as the model alongside it.
 
 ## Inviting another phone or laptop
 

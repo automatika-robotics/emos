@@ -71,8 +71,31 @@ export interface RobotInfo {
   vendor?: string;
   kinematics?: string;
   sensors?: string[];
-  plugin?: string;
+  plugin?: string;       // active plugin entry point (module:Class)
+  description?: string;  // from the plugin's metadata
+  image_url?: string;    // portal-served robot picture, if any
+  actions?: string[];    // plugin-provided action names
+  events?: string[];     // plugin-provided event names
   source: string;
+}
+
+// CatalogPlugin is a robot-plugin registry entry (GET /plugins/remote).
+export interface CatalogPlugin {
+  slug: string;
+  name: string;
+  vendor: string;
+  description: string;
+  tags: string[];
+  entry_point: string;
+}
+
+// ActivePlugin is the installed plugin plus its cached describe() tree.
+export interface ActivePlugin {
+  slug: string;
+  entry_point: string;
+  repo: string;
+  ref?: string;
+  describe?: unknown;
 }
 
 export interface LocalRecipe {
@@ -190,6 +213,12 @@ export const api = {
     request<void>(`/recipes/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   recipePull: (name: string) =>
     request<{ job_id: string }>(`/recipes/${encodeURIComponent(name)}/pull`, { method: 'POST' }),
+
+  pluginsRemote: () => request<CatalogPlugin[]>('/plugins/remote'),
+  pluginActive: () => request<ActivePlugin>('/plugins/active'),
+  pluginInstall: (slug: string) =>
+    request<{ job_id: string }>(`/plugins/${encodeURIComponent(slug)}/install`, { method: 'POST' }),
+  pluginRemove: () => request<void>('/plugins/active', { method: 'DELETE' }),
 
   runs: () => request<Run[]>('/runs'),
   runStart: (recipe: string, opts: { rmw?: string; skip_sensor_check?: boolean } = {}) =>

@@ -23,7 +23,7 @@ The CLI is a single static binary with no runtime dependencies, copy `/usr/local
 
 ## Deployment Modes
 
-EMOS supports three deployment modes. Run `emos install` without arguments for an interactive menu, or use the `--mode` flag directly.
+EMOS supports four deployment modes. Run `emos install` without arguments for an interactive menu, or use the `--mode` flag directly.
 
 ::::{tab-set}
 
@@ -64,26 +64,23 @@ After installation, EMOS packages are available whenever you source `/opt/ros/<d
 
 :::
 
-:::{tab-item} pixi (Experimental)
+:::{tab-item} pixi
 
 ```{note}
-Currently available only with **ROS2 Jazzy**.
+Currently pinned to **ROS 2 Jazzy**.
 ```
 
 Installs ROS2 and all EMOS dependencies into an isolated userspace environment using [pixi](https://pixi.sh). No root privileges, no Docker, no pre-installed ROS2 required. Works on any Linux distribution.
 
 ```bash
-# Install pixi
+# Install pixi first (emos install --mode pixi tells you if it's missing)
 curl -fsSL https://pixi.sh/install.sh | bash
 
-# Clone EMOS and install
-git clone --recurse-submodules https://github.com/automatika-robotics/emos.git
-cd emos
-pixi install
-pixi run setup
+# Install EMOS in pixi mode
+emos install --mode pixi
 ```
 
-This pulls ROS2 Jazzy and all dependencies as pre-built packages from [RoboStack](https://robostack.github.io/) and conda-forge, installs kompass-core with GPU acceleration, then builds the EMOS packages with colcon.
+The CLI clones the EMOS workspace into `~/.local/share/emos`, pulls ROS 2 Jazzy and all dependencies as pre-built packages from [RoboStack](https://robostack.github.io/) and conda-forge, installs kompass-core with GPU acceleration, then builds the EMOS packages with colcon — independent of any system ROS 2.
 
 See [Running Recipes](running-recipes.md) for how to launch a recipe -- directly from a `pixi shell` or via the `emos run` flow.
 
@@ -186,36 +183,22 @@ If you place a launch file at `~/emos/robot/launch/bringup_robot.py`, the CLI wi
 
 :::{tab-item} pixi
 
-Pixi mode assumes you have **no system ROS2 installation**, so sensor drivers are installed into a pixi environment as well — either your EMOS environment or a separate one dedicated to the driver. Packages are pulled from [RoboStack](https://robostack.github.io/) and conda-forge.
-
-**Option A: install the driver into your EMOS pixi environment**
-
-From the same `emos` directory you cloned during installation:
+Pixi mode assumes you have **no system ROS2 installation**, so sensor drivers are installed into the pixi environment too. The EMOS workspace already has the [RoboStack](https://robostack.github.io/) `robostack-jazzy` channel configured, so adding a driver is a **single command** — install it straight into the EMOS environment:
 
 ```bash
+cd ~/.local/share/emos
 pixi add ros-jazzy-usb-cam
-pixi shell
-ros2 run usb_cam usb_cam_node_exe
+RMW_IMPLEMENTATION=rmw_zenoh_cpp pixi run ros2 run usb_cam usb_cam_node_exe
 ```
 
-**Option B: run the driver in a separate pixi environment**
+The driver lives in the same environment as your recipes, and because both use Zenoh as the default RMW, its topics are visible to running recipes automatically — no system ROS2, no separate project, no extra channel setup.
 
-Useful if you want to keep the driver isolated or run it on a different machine:
-
-```bash
-mkdir ~/sensors && cd ~/sensors
-pixi init
-pixi project channel add https://prefix.dev/robostack-jazzy
-pixi add ros-jazzy-ros-base ros-jazzy-usb-cam ros-jazzy-rmw-zenoh-cpp
-pixi shell
-export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 run usb_cam usb_cam_node_exe
+```{note}
+`emos update` **preserves** drivers you add this way: it stashes your local `pixi.toml` / `pixi.lock` changes around the update and reapplies them. (In the rare case a release changes `pixi.toml` itself, you get a clear conflict to resolve rather than a silent overwrite.)
 ```
-
-Either way, because both EMOS and the driver use Zenoh as the default RMW, the driver's topics are visible to recipes running in the EMOS pixi environment automatically; no host-side ROS2 installation required.
 
 ```{tip}
-If a specific driver package isn't available on RoboStack, you can still install it from source into the pixi environment using `colcon`, or fall back to Native mode for that driver only.
+If a driver package isn't on RoboStack, install it from source into the EMOS environment with `colcon`, or fall back to Native mode for that driver only.
 ```
 
 :::
@@ -273,7 +256,7 @@ The CLI detects your installation mode and updates accordingly:
 
 - **Container mode:** pulls the latest image and recreates the container.
 - **Native mode:** pulls the latest source, rebuilds, and re-installs packages into `/opt/ros/{distro}/`.
-- **Pixi mode:** runs `git pull` and `git submodule update` in the EMOS repository you cloned at install time, refreshes the pixi environment (`pixi install`), and rebuilds the EMOS packages (`pixi run setup`).
+- **Pixi mode:** runs `git pull` and `git submodule update` in the EMOS workspace at `~/.local/share/emos`, refreshes the pixi environment (`pixi install`), and rebuilds the EMOS packages (`pixi run setup`). Any installed robot plugin is pulled and rebuilt too.
 
 ## Uninstalling
 

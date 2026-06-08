@@ -63,6 +63,11 @@ func (s *Server) buildRouter() http.Handler {
 			r.Delete("/recipes/{name}", s.handleRecipeDelete)
 			r.Post("/recipes/{name}/pull", s.handleRecipePull)
 
+			r.Get("/plugins/remote", s.handlePluginsRemote)
+			r.Get("/plugins/active", s.handlePluginActive)
+			r.Post("/plugins/{slug}/install", s.handlePluginInstall)
+			r.Delete("/plugins/active", s.handlePluginRemove)
+
 			r.Get("/runs", s.handleRunsList)
 			r.Post("/runs", s.handleRunsStart)
 			r.Get("/runs/{id}", s.handleRunGet)

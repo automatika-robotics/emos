@@ -6,20 +6,24 @@ import (
 	"path/filepath"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
+	"github.com/automatika-robotics/emos-cli/internal/plugin"
 )
 
 // RobotInfo is best-effort identity about the device. The dashboard renders
 // a generic device card if /robot returns 404
-// TODO: Populate from installed robot plugins or license info
 type RobotInfo struct {
-	Name       string   `json:"name,omitempty"`
-	Model      string   `json:"model,omitempty"`
-	Serial     string   `json:"serial,omitempty"`
-	Vendor     string   `json:"vendor,omitempty"`
-	Kinematics string   `json:"kinematics,omitempty"`
-	Sensors    []string `json:"sensors,omitempty"`
-	Plugin     string   `json:"plugin,omitempty"`
-	Source     string   `json:"source"` // "manifest" | "plugin" | "config"
+	Name        string   `json:"name,omitempty"`
+	Model       string   `json:"model,omitempty"`
+	Serial      string   `json:"serial,omitempty"`
+	Vendor      string   `json:"vendor,omitempty"`
+	Kinematics  string   `json:"kinematics,omitempty"`
+	Sensors     []string `json:"sensors,omitempty"`
+	Plugin      string   `json:"plugin,omitempty"`      // active plugin entry point (module:Class)
+	Description string   `json:"description,omitempty"` // from the plugin's metadata
+	ImageURL    string   `json:"image_url,omitempty"`   // portal-served robot picture, if any
+	Actions     []string `json:"actions,omitempty"`     // plugin-provided action names
+	Events      []string `json:"events,omitempty"`      // plugin-provided event names
+	Source      string   `json:"source"`                // "manifest" | "plugin" | "config"
 }
 
 // DiscoverRobot tries each known source in order and returns the first hit.
@@ -33,7 +37,8 @@ func DiscoverRobot() (*RobotInfo, bool) {
 	return nil, false
 }
 
-// readRobotManifest reads ~/emos/robot/manifest.json (licensed deployments)
+// readRobotManifest reads ~/emos/robot/manifest.json
+// NOTE: Available in licensed deployments.
 func readRobotManifest() *RobotInfo {
 	path := filepath.Join(config.HomeDir, "emos", "robot", "manifest.json")
 	data, err := os.ReadFile(path)
@@ -77,38 +82,52 @@ func readRobotManifest() *RobotInfo {
 	return info
 }
 
-// detectRobotPlugin looks for an installed sugarcoat-style robot plugin in the
-// EMOS workspace.
-// NOTE: uses a simple filesystem heuristic; future revs can hit `ros2 pkg list`
+// detectRobotPlugin reports the active robot plugin recorded in the EMOS config,
+// enriched with the plugin's cached describe() metadata.
 func detectRobotPlugin() *RobotInfo {
 	cfg := config.LoadConfig()
-	if cfg == nil {
+	if cfg == nil || cfg.Plugin == nil {
 		return nil
 	}
-	candidates := []string{}
-	if cfg.WorkspacePath != "" {
-		candidates = append(candidates, filepath.Join(cfg.WorkspacePath, "src"))
+	info := &RobotInfo{
+		Plugin:   cfg.Plugin.EntryPoint,
+		ImageURL: cfg.Plugin.ImageURL,
+		Source:   "plugin",
 	}
-	candidates = append(candidates, filepath.Join(config.HomeDir, "emos", "ros_ws", "src"))
 
-	for _, base := range candidates {
-		entries, err := os.ReadDir(base)
-		if err != nil {
-			continue
+	if data, ok := plugin.CachedDescribe(); ok {
+		var d struct {
+			Metadata struct {
+				Name        string `json:"name"`
+				Vendor      string `json:"vendor"`
+				Description string `json:"description"`
+			} `json:"metadata"`
+			Actions []struct {
+				Name string `json:"name"`
+			} `json:"actions"`
+			Events []struct {
+				Name string `json:"name"`
+			} `json:"events"`
 		}
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
+		if json.Unmarshal(data, &d) == nil {
+			// The plugin's metadata name is the robot's model/type
+			info.Model = d.Metadata.Name
+			info.Vendor = d.Metadata.Vendor
+			info.Description = d.Metadata.Description
+			for _, a := range d.Actions {
+				if a.Name != "" {
+					info.Actions = append(info.Actions, a.Name)
+				}
 			}
-			name := e.Name()
-			if len(name) >= len("_robot_plugin") &&
-				name[len(name)-len("_robot_plugin"):] == "_robot_plugin" {
-				return &RobotInfo{
-					Plugin: name,
-					Source: "plugin",
+			for _, e := range d.Events {
+				if e.Name != "" {
+					info.Events = append(info.Events, e.Name)
 				}
 			}
 		}
 	}
-	return nil
+	if info.Model == "" {
+		info.Model = cfg.Plugin.Slug
+	}
+	return info
 }

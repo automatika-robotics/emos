@@ -4,6 +4,10 @@ description = "The Embodied Operating System — unified orchestration layer for
 channels = ["https://prefix.dev/robostack-jazzy", "conda-forge"]
 platforms = ["linux-64", "linux-aarch64"]
 
+# Let scikit-build-core ignore pixi's unknown config-settings (for pixi > 0.66).
+[activation.env]
+SKBUILD_STRICT_CONFIG = "false"
+
 # --- Conda Dependencies ---
 [dependencies]
 # Python
@@ -119,18 +123,23 @@ build = """colcon build \
   --base-paths stack/sugarcoat stack/kompass stack/embodied-agents \
   --cmake-args -DCMAKE_BUILD_TYPE=Release"""
 
-# Register pixi installation with EMOS CLI config
+# Register pixi installation with EMOS CLI config.
 register = """python3 -c "
 import json, os, pathlib
 config_dir = pathlib.Path.home() / '.config' / 'emos'
 config_dir.mkdir(parents=True, exist_ok=True)
-config = {
-    'mode': 'pixi',
-    'ros_distro': 'jazzy',
-    'pixi_project_dir': os.getcwd()
-}
-(config_dir / 'config.json').write_text(json.dumps(config, indent=2))
-print('EMOS config written to', config_dir / 'config.json')
+cfg_path = config_dir / 'config.json'
+config = {}
+if cfg_path.exists():
+    try:
+        config = json.loads(cfg_path.read_text())
+    except Exception:
+        config = {}
+config['mode'] = 'pixi'
+config['ros_distro'] = 'jazzy'
+config['pixi_project_dir'] = os.environ.get('PIXI_PROJECT_ROOT', os.getcwd())
+cfg_path.write_text(json.dumps(config, indent=2))
+print('EMOS config written to', cfg_path)
 " """
 
 # Full setup: install kompass-core, build packages, register with CLI

@@ -11,6 +11,7 @@
   import Dashboard from '$routes/Dashboard.svelte';
   import Recipes from '$routes/Recipes.svelte';
   import RecipeDetail from '$routes/RecipeDetail.svelte';
+  import Plugins from '$routes/Plugins.svelte';
   import Runs from '$routes/Runs.svelte';
   import RunDetail from '$routes/RunDetail.svelte';
   import System from '$routes/System.svelte';
@@ -20,6 +21,7 @@
     '/': Dashboard,
     '/recipes': Recipes,
     '/recipes/:name': RecipeDetail,
+    '/plugins': Plugins,
     '/runs': Runs,
     '/runs/:id': RunDetail,
     '/system': System,

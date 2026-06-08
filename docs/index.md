@@ -24,6 +24,7 @@ getting-started/quickstart
 getting-started/dashboard
 getting-started/cli
 getting-started/running-recipes
+getting-started/plugins
 getting-started/troubleshooting
 recipes/overview
 ```

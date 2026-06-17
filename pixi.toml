@@ -8,6 +8,10 @@ platforms = ["linux-64", "linux-aarch64"]
 [activation.env]
 SKBUILD_STRICT_CONFIG = "false"
 
+# Let the pyaudio aarch64 source build find the multiarch glibc headers.
+[target.linux-aarch64.activation.env]
+CFLAGS = "-I/usr/include/aarch64-linux-gnu"
+
 # --- Conda Dependencies ---
 [dependencies]
 # Python

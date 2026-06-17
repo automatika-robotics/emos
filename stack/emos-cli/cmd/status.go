@@ -9,6 +9,7 @@ import (
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/container"
+	"github.com/automatika-robotics/emos-cli/internal/installer"
 	"github.com/automatika-robotics/emos-cli/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -72,9 +73,10 @@ func pixiStatus(cfg *config.EMOSConfig) {
 		return
 	}
 
-	// pixi binary
-	if _, err := exec.LookPath("pixi"); err != nil {
-		ui.Error("pixi: Not found in PATH")
+	// check for pixi binary (PATH, then ~/.pixi/bin, then /usr/local/bin)
+	pixiBin, pixiErr := installer.ResolvePixi()
+	if pixiErr != nil {
+		ui.Error("pixi: Not found")
 	} else {
 		ui.Success("pixi: Available")
 	}
@@ -87,10 +89,16 @@ func pixiStatus(cfg *config.EMOSConfig) {
 	}
 	ui.Success("pixi project: " + projectDir)
 
+	// Without a pixi binary we can't probe the environment; skip the package
+	// checks
+	if pixiErr != nil {
+		return
+	}
+
 	// Helper to run a shell command inside the pixi environment
 	setupSh := filepath.Join(projectDir, "install", "setup.sh")
 	pixiShell := func(shellCmd string) *exec.Cmd {
-		cmd := exec.Command("pixi", "run", "--manifest-path", pixiToml, "bash", "-c", shellCmd)
+		cmd := exec.Command(pixiBin, "run", "--manifest-path", pixiToml, "bash", "-c", shellCmd)
 		cmd.Dir = projectDir
 		return cmd
 	}

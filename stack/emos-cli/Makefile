@@ -1,4 +1,4 @@
-VERSION ?= 0.7.5
+VERSION ?= 0.7.6
 BINARY  := emos
 GO      ?= $(shell which go 2>/dev/null || echo /usr/local/go/bin/go)
 NPM     ?= $(shell which npm 2>/dev/null || echo /usr/bin/npm)

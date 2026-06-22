@@ -297,10 +297,10 @@ func updatePixi(cfg *config.EMOSConfig) error {
 
 	// Preserve user-added pixi dependencies across the git pull: stash the
 	// manifest, pull, then reapply.
-	stashed := gitTreeDirty(projectDir, "pixi.toml", "pixi.lock")
+	stashed := gitTreeDirty(projectDir, "pixi.toml")
 	if stashed {
 		if err := runGit(projectDir, "stash", "push", "-m",
-			"emos-update: preserve local pixi deps", "--", "pixi.toml", "pixi.lock"); err != nil {
+			"emos-update: preserve local pixi deps", "--", "pixi.toml"); err != nil {
 			return fmt.Errorf("could not preserve local pixi dependencies: %w", err)
 		}
 		ui.Info("Preserved local pixi dependencies for the update.")

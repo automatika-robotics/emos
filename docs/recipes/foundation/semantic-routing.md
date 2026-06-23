@@ -8,98 +8,135 @@ The router operates in two distinct modes:
 
 2. **LLM Mode (Agentic):** This mode uses an LLM to intelligently analyze the intent of the query and triggers routes accordingly. This is more computationally expensive but can handle complex nuances, context, and negation (e.g., "Don't go to the kitchen" might be routed differently by an agent than a simple vector similarity search).
 
-In this recipe, we will route queries between two components: a General Purpose LLM (for chatting) and a Go-to-X Component (for navigation commands) that we built in the previous [recipe](goto-navigation.md). Lets start by setting up our components.
+In this recipe, we will route queries between two components: a General Purpose LLM (for chatting) and a Go-to-X Component (for navigation commands) that we built in the previous [recipe](goto-navigation.md). The Go-to-X component resolves a place name by calling the `Memory` component's `locate` tool, so we set up `Vision` and `Memory` here too. Lets start by setting up our components.
 
 ## Setting up the components
 
-In the following code snippet we will setup our two components.
+In the following code snippet we will set up the perception side (`Vision` + `Memory`, which builds the spatial map) and our two query components.
 
 ```python
+import re
 from typing import Optional
-import json
 import numpy as np
-from agents.components import LLM, SemanticRouter
-from agents.models import OllamaModel
+
+from agents.components import LLM, Memory, Vision
+from agents.models import OllamaModel, VisionModel
 from agents.vectordbs import ChromaDB
-from agents.config import LLMConfig, SemanticRouterConfig
-from agents.clients import ChromaClient, OllamaClient
-from agents.ros import Launcher, Topic, Route
+from agents.config import LLMConfig, MemoryConfig, VisionConfig
+from agents.clients import ChromaClient, OllamaClient, RoboMLRESPClient
+from agents.ros import Launcher, Topic, Route, MemLayer
 
-# Start a Llama3.2 based llm component using ollama client
-llama = OllamaModel(name="llama", checkpoint="llama3.2:3b")
-llama_client = OllamaClient(llama)
+# Reuse one (tool-capable) model for the generic LLM and the Go-to-X LLM
+qwen = OllamaModel(name="qwen", checkpoint="qwen3.5:latest")
+qwen_client = OllamaClient(qwen)
 
-# Initialize a vector DB that will store our routes
+# Embeddings for Memory (the spatial map)
+embedding_client = OllamaClient(
+    OllamaModel(name="embeddings", checkpoint="nomic-embed-text-v2-moe:latest")
+)
+
+# Vector DB for the SemanticRouter — it stores the route samples
 chroma = ChromaDB()
 chroma_client = ChromaClient(db=chroma)
 
 
-# Make a generic LLM component using the Llama3_2 model
+# -- Perception: vision + memory build the map --
+image0 = Topic(name="image_raw", msg_type="Image")
+detections_topic = Topic(name="detections", msg_type="Detections")
+position = Topic(name="odom", msg_type="Odometry")
+
+vision = Vision(
+    inputs=[image0],
+    outputs=[detections_topic],
+    trigger=image0,
+    config=VisionConfig(threshold=0.5),
+    model_client=RoboMLRESPClient(
+        VisionModel(name="rtdetr", checkpoint="PekingU/rtdetr_r50vd_coco_o365")
+    ),
+    component_name="vision",
+)
+
+memory = Memory(
+    layers=[MemLayer(subscribes_to=detections_topic)],
+    position=position,
+    embedding_client=embedding_client,
+    config=MemoryConfig(db_path="/tmp/go_to_x.db"),
+    trigger=10.0,
+    component_name="memory",
+)
+
+
+# Make a generic LLM component for general questions
 llm_in = Topic(name="text_in_llm", msg_type="String")
 llm_out = Topic(name="text_out_llm", msg_type="String")
 
 llm = LLM(
     inputs=[llm_in],
     outputs=[llm_out],
-    model_client=llama_client,
+    model_client=qwen_client,
     trigger=llm_in,
     component_name="generic_llm",
 )
 
-# Make a Go-to-X component using the same Llama3_2 model
+# Make a Go-to-X component — it looks places up via Memory's `locate` tool
 goto_in = Topic(name="goto_in", msg_type="String")
 goal_point = Topic(name="goal_point", msg_type="PoseStamped")
-
-config = LLMConfig(enable_rag=True,
-                   collection_name="map",
-                   distance_func="l2",
-                   n_results=1,
-                   add_metadata=True)
 
 goto = LLM(
     inputs=[goto_in],
     outputs=[goal_point],
-    model_client=llama_client,
-    db_client=chroma_client,
+    model_client=qwen_client,
     trigger=goto_in,
-    config=config,
-    component_name='go_to_x'
+    config=LLMConfig(),
+    component_name="go_to_x",
 )
 
-# set a component prompt
 goto.set_component_prompt(
-    template="""From the given metadata, extract coordinates and provide
-    the coordinates in the following json format:\n {"position": coordinates}"""
+    template=(
+        "The user asks you to go to a place. Use the available tools to "
+        "look up the place's location in memory. Pass the place name to "
+        "the locate tool as the ``concept`` argument. User said: {{goto_in}}"
+    )
 )
+
+# Register Memory's `locate` tool on the Go-to-X LLM so it can be called
+memory.register_tools_on(goto, tools=["locate"], send_tool_response_to_model=False)
+
 
 # pre-process the output before publishing to a topic of msg_type PoseStamped
-def llm_answer_to_goal_point(output: str) -> Optional[np.ndarray]:
-    # extract the json part of the output string (including brackets)
-    # one can use sophisticated regex parsing here but we'll keep it simple
-    json_string = output[output.find("{"):output.find("}") + 1]
+_LOCATION_RE = re.compile(r"Location:\s*\(([^)]+)\)")
 
-    # load the string as a json and extract position coordinates
-    # if there is an error, return None, i.e. no output would be published to goal_point
-    try:
-        json_dict = json.loads(json_string)
-        return np.array(json_dict['position'])
-    except Exception:
+
+def locate_text_to_goal_point(output: str) -> Optional[np.ndarray]:
+    """Pull the centroid coordinates out of Memory.locate's text output."""
+    match = _LOCATION_RE.search(output)
+    if not match:
         return
+    try:
+        coords = np.fromstring(match.group(1), sep=",", dtype=np.float64)
+    except ValueError:
+        return
+    if coords.shape[0] == 2:
+        coords = np.append(coords, 0.0)
+    if coords.shape[0] != 3:
+        return
+    return coords
+
 
 # add the pre-processing function to the goal_point output topic
-goto.add_publisher_preprocessor(goal_point, llm_answer_to_goal_point)
+goto.add_publisher_preprocessor(goal_point, locate_text_to_goal_point)
 ```
 
 ```{note}
-Note that we have reused the same model and its client for both components.
+We reused the same model and its client for both query components. The model must support tool calling, since the Go-to-X component calls Memory's `locate` tool.
 ```
 
 ```{note}
-For a detailed explanation of the code for setting up the Go-to-X component, check the previous [recipe](goto-navigation.md).
+For a detailed explanation of the Go-to-X component — how `Memory` builds the map and exposes the `locate` tool — check the previous [recipe](goto-navigation.md).
 ```
 
-```{caution}
-In the code block above we are using the same DB client that was setup in the [Semantic Map](semantic-map.md) recipe.
+```{important}
+The Go-to-X LLM calls `Memory` **in-process**, so the router, the LLMs, and Memory must launch in the same process (no `multiprocessing=True` on `add_pkg`).
 ```
 
 ## Creating the SemanticRouter
@@ -129,7 +166,7 @@ The `routes_to` parameter of a `Route` can be a `Topic` or an `Action`. `Actions
 
 ## Option 1: Vector Mode (Similarity)
 
-This is the standard approach. In Vector mode, the SemanticRouter component works by storing these examples in a vector DB. Distance is calculated between an incoming query's embedding and the embeddings of example queries to determine which _Route_(_Topic_) the query should be sent on. For the database client we will use the ChromaDB client setup in the [Semantic Map](semantic-map.md) recipe. We will specify a router name in our router config, which will act as a _collection_name_ in the database.
+This is the standard approach. In Vector mode, the SemanticRouter component stores the route samples in a vector DB. Distance is calculated between an incoming query's embedding and the embeddings of the example queries to determine which _Route_(_Topic_) the query should be sent on. We pass the `chroma_client` set up above as the `db_client`, and specify a router name in the config, which acts as a _collection_name_ in the database.
 
 ```python
 from agents.components import SemanticRouter
@@ -149,7 +186,7 @@ router = SemanticRouter(
 
 ## Option 2: LLM Mode (Agentic)
 
-Alternatively, we can use an LLM to make routing decisions. This is useful if your routes require "understanding" rather than just similarity. We simply provide a `model_client` instead of a `db_client`.
+Alternatively, we can use an LLM to make routing decisions. This is useful if your routes require "understanding" rather than just similarity. We simply provide a `model_client` instead of a `db_client` (no ChromaDB needed in this mode).
 
 ```{note}
 We can even use the same LLM (`model_client`) as we are using for our other Q&A components.
@@ -160,7 +197,7 @@ We can even use the same LLM (`model_client`) as we are using for our other Q&A 
 router = SemanticRouter(
     inputs=[query_topic],
     routes=[llm_route, goto_route],
-    model_client=llama_client, # Providing model_client enables LLM Mode
+    model_client=qwen_client, # Providing model_client enables LLM Mode
     component_name="smart_router"
 )
 
@@ -171,85 +208,117 @@ And that is it. Whenever something is published on the input topic **question**,
 ```{code-block} python
 :caption: Semantic Routing
 :linenos:
+import re
 from typing import Optional
-import json
 import numpy as np
-from agents.components import LLM, SemanticRouter
-from agents.models import OllamaModel
+
+from agents.components import LLM, Memory, SemanticRouter, Vision
+from agents.models import OllamaModel, VisionModel
 from agents.vectordbs import ChromaDB
-from agents.config import LLMConfig, SemanticRouterConfig
-from agents.clients import ChromaClient, OllamaClient
-from agents.ros import Launcher, Topic, Route
+from agents.config import LLMConfig, MemoryConfig, SemanticRouterConfig, VisionConfig
+from agents.clients import ChromaClient, OllamaClient, RoboMLRESPClient
+from agents.ros import Launcher, Topic, Route, MemLayer
 
-# Start a Llama3.2 based llm component using ollama client
-llama = OllamaModel(name="llama", checkpoint="llama3.2:3b")
-llama_client = OllamaClient(llama)
+# Reuse one (tool-capable) model for the generic LLM and the Go-to-X LLM
+qwen = OllamaModel(name="qwen", checkpoint="qwen3.5:latest")
+qwen_client = OllamaClient(qwen)
 
-# Initialize a vector DB that will store our routes
+# Embeddings for Memory (the spatial map)
+embedding_client = OllamaClient(
+    OllamaModel(name="embeddings", checkpoint="nomic-embed-text-v2-moe:latest")
+)
+
+# Vector DB for the SemanticRouter — it stores the route samples
 chroma = ChromaDB()
 chroma_client = ChromaClient(db=chroma)
 
 
-# Make a generic LLM component using the Llama3_2 model
+# -- Perception: vision + memory build the map --
+image0 = Topic(name="image_raw", msg_type="Image")
+detections_topic = Topic(name="detections", msg_type="Detections")
+position = Topic(name="odom", msg_type="Odometry")
+
+vision = Vision(
+    inputs=[image0],
+    outputs=[detections_topic],
+    trigger=image0,
+    config=VisionConfig(threshold=0.5),
+    model_client=RoboMLRESPClient(
+        VisionModel(name="rtdetr", checkpoint="PekingU/rtdetr_r50vd_coco_o365")
+    ),
+    component_name="vision",
+)
+
+memory = Memory(
+    layers=[MemLayer(subscribes_to=detections_topic)],
+    position=position,
+    embedding_client=embedding_client,
+    config=MemoryConfig(db_path="/tmp/go_to_x.db"),
+    trigger=10.0,
+    component_name="memory",
+)
+
+
+# Make a generic LLM component for general questions
 llm_in = Topic(name="text_in_llm", msg_type="String")
 llm_out = Topic(name="text_out_llm", msg_type="String")
 
 llm = LLM(
     inputs=[llm_in],
     outputs=[llm_out],
-    model_client=llama_client,
+    model_client=qwen_client,
     trigger=llm_in,
     component_name="generic_llm",
 )
 
 
-# Define LLM input and output topics including goal_point topic of type PoseStamped
+# Make a Go-to-X component — it looks places up via Memory's `locate` tool
 goto_in = Topic(name="goto_in", msg_type="String")
 goal_point = Topic(name="goal_point", msg_type="PoseStamped")
 
-config = LLMConfig(
-    enable_rag=True,
-    collection_name="map",
-    distance_func="l2",
-    n_results=1,
-    add_metadata=True,
-)
-
-# initialize the component
 goto = LLM(
     inputs=[goto_in],
     outputs=[goal_point],
-    model_client=llama_client,
-    db_client=chroma_client,  # check the previous example where we setup this database client
+    model_client=qwen_client,
     trigger=goto_in,
-    config=config,
+    config=LLMConfig(),
     component_name="go_to_x",
 )
 
-# set a component prompt
 goto.set_component_prompt(
-    template="""From the given metadata, extract coordinates and provide
-    the coordinates in the following json format:\n {"position": coordinates}"""
+    template=(
+        "The user asks you to go to a place. Use the available tools to "
+        "look up the place's location in memory. Pass the place name to "
+        "the locate tool as the ``concept`` argument. User said: {{goto_in}}"
+    )
 )
+
+# Register Memory's `locate` tool on the Go-to-X LLM so it can be called
+memory.register_tools_on(goto, tools=["locate"], send_tool_response_to_model=False)
 
 
 # pre-process the output before publishing to a topic of msg_type PoseStamped
-def llm_answer_to_goal_point(output: str) -> Optional[np.ndarray]:
-    # extract the json part of the output string (including brackets)
-    # one can use sophisticated regex parsing here but we'll keep it simple
-    json_string = output[output.find("{") : output.find("}") + 1]
+_LOCATION_RE = re.compile(r"Location:\s*\(([^)]+)\)")
 
-    # load the string as a json and extract position coordinates
-    # if there is an error, return None, i.e. no output would be published to goal_point
-    try:
-        json_dict = json.loads(json_string)
-        return np.array(json_dict["position"])
-    except Exception:
+
+def locate_text_to_goal_point(output: str) -> Optional[np.ndarray]:
+    """Pull the centroid coordinates out of Memory.locate's text output."""
+    match = _LOCATION_RE.search(output)
+    if not match:
         return
+    try:
+        coords = np.fromstring(match.group(1), sep=",", dtype=np.float64)
+    except ValueError:
+        return
+    if coords.shape[0] == 2:
+        coords = np.append(coords, 0.0)
+    if coords.shape[0] != 3:
+        return
+    return coords
 
 
 # add the pre-processing function to the goal_point output topic
-goto.add_publisher_preprocessor(goal_point, llm_answer_to_goal_point)
+goto.add_publisher_preprocessor(goal_point, locate_text_to_goal_point)
 
 # Create the input topic for the router
 query_topic = Topic(name="question", msg_type="String")
@@ -297,13 +366,13 @@ router = SemanticRouter(
 #     inputs=[query_topic],
 #     routes=[llm_route, goto_route],
 #     default_route=llm_route,
-#     model_client=llama_client, # LLM mode requires model_client
+#     model_client=qwen_client, # LLM mode requires model_client
 #     component_name="router",
 # )
 
-# Launch the components
+# Launch the components — single process so the Go-to-X LLM can call Memory in-process
 launcher = Launcher()
-launcher.add_pkg(components=[llm, goto, router])
+launcher.add_pkg(components=[vision, memory, llm, goto, router])
 launcher.bringup()
 ```
 
@@ -312,4 +381,3 @@ launcher.bringup()
 ```{tip}
 **Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
 ```
-

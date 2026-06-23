@@ -11,7 +11,7 @@ For the multiprocessing-and-fault-tolerant variant of this recipe, see [Multipro
 ```{admonition} Prerequisites
 :class: important
 
-This recipe uses the `Memory` component for spatio-temporal memory. Memory needs the [eMEM](https://github.com/automatika-robotics/emem) package: `pip install emem`. Audio playback also needs `pip install soundfile sounddevice`.
+This recipe uses the `Memory` component for spatio-temporal memory. Memory needs the [eMEM](https://github.com/automatika-robotics/emem) package, which `emos install` does not add — the install command depends on your mode (see [Memory installation](../../intelligence/memory.md)). Audio playback also needs `pip install soundfile sounddevice`.
 ```
 
 ## The Graph

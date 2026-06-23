@@ -11,9 +11,7 @@ For the conceptual background on Memory and the neuroscience principles behind i
 ```{admonition} Prerequisites
 :class: important
 
-The `Memory` component requires the [eMEM](https://github.com/automatika-robotics/emem) Python package. Install it into the same environment as the EMOS launcher before running this recipe:
-
-`pip install emem`
+The `Memory` component requires the [eMEM](https://github.com/automatika-robotics/emem) Python package, which `emos install` does not add. The install command depends on your mode (Pixi: `pixi add --pypi emem`; Native: `pip install emem`; Container: install inside the container) — see [Memory installation](../../intelligence/memory.md).
 ```
 
 ---

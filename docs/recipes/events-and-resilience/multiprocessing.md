@@ -5,7 +5,7 @@ In the previous recipes we saw how to compose a complex graph of components into
 ```{admonition} Prerequisites
 :class: important
 
-This recipe builds on [Complete Agent](../foundation/complete-agent.md). Memory needs the [eMEM](https://github.com/automatika-robotics/emem) package: `pip install emem`.
+This recipe builds on [Complete Agent](../foundation/complete-agent.md). Memory needs the [eMEM](https://github.com/automatika-robotics/emem) package, which `emos install` does not add — the install command depends on your mode (see [Memory installation](../../intelligence/memory.md)).
 ```
 
 ## Run Components in Separate Processes

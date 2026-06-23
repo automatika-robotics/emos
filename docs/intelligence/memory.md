@@ -17,7 +17,11 @@ For a hands-on intro to Memory by itself, see [Spatio-Temporal Memory](../recipe
 ```{admonition} Installation
 :class: note
 
-`Memory` depends on the [eMEM](https://github.com/automatika-robotics/emem) package and raises `ImportError` at construction if it isn't available. Install it into the same environment as the EMOS launcher: `pip install emem`.
+`Memory` depends on the [eMEM](https://github.com/automatika-robotics/emem) package and raises `ImportError` at construction if it isn't available. eMEM is **not** installed by `emos install` — add it to the environment the EMOS launcher runs in. The command depends on your [install mode](../getting-started/installation.md):
+
+- **Pixi:** `cd ~/.local/share/emos && pixi add --pypi emem`
+- **Native:** `pip install emem` into your ROS 2 Python environment
+- **Container:** `docker exec -it emos-container pip install emem` (ephemeral — bake it into a derived image to persist)
 ```
 
 ---

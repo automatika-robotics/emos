@@ -11,7 +11,7 @@ For the conceptual reference of Memory's full retrieval surface, see the [Memory
 ```{admonition} Prerequisites
 :class: important
 
-Memory needs the [eMEM](https://github.com/automatika-robotics/emem) package: `pip install emem`.
+Memory needs the [eMEM](https://github.com/automatika-robotics/emem) package, which `emos install` does not add — the install command depends on your mode (see [Memory installation](../../intelligence/memory.md)).
 ```
 
 ---

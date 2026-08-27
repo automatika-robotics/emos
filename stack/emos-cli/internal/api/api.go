@@ -104,11 +104,13 @@ type Plugin struct {
 	Filename    string   `json:"filename"` // slug / clone-directory name
 	Name        string   `json:"name"`
 	Vendor      string   `json:"vendor"`
+	Role        string   `json:"role"`        // "robot" | "sensor" — catalog badge + install routing
 	EntryPoint  string   `json:"entry_point"` // module:ClassName
 	Repo        string   `json:"repo"`        // public GitHub URL
 	Ref         string   `json:"ref"`         // branch/tag; empty = default branch
 	Image       string   `json:"image"`       // image filename served by the portal, if any
 	Description string   `json:"description"`
+	Requires    []string `json:"requires"` // display-only dependency hint
 	Tags        []string `json:"tags"`
 }
 

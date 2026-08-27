@@ -23,26 +23,29 @@ const (
 )
 
 type EMOSConfig struct {
-	Mode           InstallMode `json:"mode"`
-	Name           string      `json:"name,omitempty"` // human-friendly device name (e.g. "epic-otter")
-	Port           int         `json:"port,omitempty"` // dashboard bind port; 0 means DefaultDashboardPort
-	LicenseKey     string      `json:"license_key,omitempty"`
-	ROSDistro      string      `json:"ros_distro"`
-	ImageTag       string      `json:"image_tag,omitempty"`
-	WorkspacePath  string      `json:"workspace_path,omitempty"`
-	PixiProjectDir string      `json:"pixi_project_dir,omitempty"`
-	Plugin         *PluginInfo `json:"plugin,omitempty"`
-	Auth           AuthState   `json:"auth"`
+	Mode           InstallMode  `json:"mode"`
+	Name           string       `json:"name,omitempty"` // human-friendly device name (e.g. "epic-otter")
+	Port           int          `json:"port,omitempty"` // dashboard bind port; 0 means DefaultDashboardPort
+	LicenseKey     string       `json:"license_key,omitempty"`
+	ROSDistro      string       `json:"ros_distro"`
+	ImageTag       string       `json:"image_tag,omitempty"`
+	WorkspacePath  string       `json:"workspace_path,omitempty"`
+	PixiProjectDir string       `json:"pixi_project_dir,omitempty"`
+	Plugin         *PluginInfo  `json:"plugin,omitempty"`         // the robot plugin (0 or 1)
+	SensorPlugins  []PluginInfo `json:"sensor_plugins,omitempty"` // additive sensor plugins (0..N)
+	Auth           AuthState    `json:"auth"`
 }
 
-// PluginInfo records the single active robot plugin (a robot runs one plugin
-// at a time).
+// PluginInfo records an installed plugin. A robot runs one robot plugin (in
+// EMOSConfig.Plugin) plus any number of sensor plugins mounted alongside it
+// (in EMOSConfig.SensorPlugins).
 type PluginInfo struct {
 	Slug        string    `json:"slug"`
-	EntryPoint  string    `json:"entry_point"` // module:ClassName
+	EntryPoint  string    `json:"entry_point"`    // module:ClassName
+	Role        string    `json:"role,omitempty"` // "robot" | "sensor" (from describe().role)
 	Repo        string    `json:"repo"`
 	Ref         string    `json:"ref,omitempty"`       // empty = tracks the default branch
-	ImageURL    string    `json:"image_url,omitempty"` // portal-served robot picture, if any
+	ImageURL    string    `json:"image_url,omitempty"` // portal-served hardware picture, if any
 	InstalledAt time.Time `json:"installed_at,omitempty"`
 }
 

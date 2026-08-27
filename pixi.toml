@@ -67,10 +67,7 @@ ompl = "*"
 fcl = "*"
 eigen = ">=3.4,<4"
 
-[target.linux-64.dependencies]
-pyaudio = "*"
-
-# Python packages (from conda-forge)
+# Python packages (conda-forge). Cross-platform.
 numpy = "*"
 opencv = "*"
 attrs = ">=23.2.0"
@@ -90,6 +87,10 @@ grpcio = "*"
 protobuf = "*"
 huggingface_hub = "*"
 
+[target.linux-64.dependencies]
+# conda pyaudio on x86
+pyaudio = "*"
+
 # --- PyPI Dependencies (not on conda-forge or missing for aarch64) ---
 [pypi-dependencies]
 monsterui = "*"
@@ -100,6 +101,7 @@ llama-cpp-python = "*"
 onnxruntime = "*"
 
 [target.linux-aarch64.pypi-dependencies]
+# pypi pyaudio on x86
 PyAudio = "*"
 
 # --- GPU Feature (optional) ---

@@ -65,6 +65,11 @@ func Install(cfg *config.EMOSConfig, entry api.Plugin, out io.Writer) error {
 		return fmt.Errorf("git clone: %w", err)
 	}
 
+	// Install the plugin's declared sensor-driver dependencies.
+	if err := resolveDeps(cfg, config.PluginSrcDir(), out); err != nil {
+		return fmt.Errorf("resolve dependencies: %w", err)
+	}
+
 	fmt.Fprintf(out, "Building plugin (%s mode)\n", cfg.Mode)
 	if err := build(cfg, out); err != nil {
 		return fmt.Errorf("colcon build: %w", err)

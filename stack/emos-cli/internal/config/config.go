@@ -36,17 +36,84 @@ type EMOSConfig struct {
 	Auth           AuthState    `json:"auth"`
 }
 
+// Plugin roles, as reported by a plugin's describe().role.
+const (
+	RoleRobot  = "robot"
+	RoleSensor = "sensor"
+)
+
 // PluginInfo records an installed plugin. A robot runs one robot plugin (in
 // EMOSConfig.Plugin) plus any number of sensor plugins mounted alongside it
 // (in EMOSConfig.SensorPlugins).
 type PluginInfo struct {
-	Slug        string    `json:"slug"`
-	EntryPoint  string    `json:"entry_point"`    // module:ClassName
-	Role        string    `json:"role,omitempty"` // "robot" | "sensor" (from describe().role)
-	Repo        string    `json:"repo"`
-	Ref         string    `json:"ref,omitempty"`       // empty = tracks the default branch
-	ImageURL    string    `json:"image_url,omitempty"` // portal-served hardware picture, if any
-	InstalledAt time.Time `json:"installed_at,omitempty"`
+	Slug        string          `json:"slug"`
+	EntryPoint  string          `json:"entry_point"`    // module:ClassName
+	Role        string          `json:"role,omitempty"` // "robot" | "sensor" (from describe().role)
+	Repo        string          `json:"repo"`
+	Ref         string          `json:"ref,omitempty"`       // empty = tracks the default branch
+	ImageURL    string          `json:"image_url,omitempty"` // portal-served hardware picture, if any
+	Describe    json.RawMessage `json:"describe,omitempty"`  // cached inspect() output
+	InstalledAt time.Time       `json:"installed_at,omitempty"`
+}
+
+// Plugins returns every installed plugin: the robot (if any) then the sensors.
+func (c *EMOSConfig) Plugins() []PluginInfo {
+	var all []PluginInfo
+	if c == nil {
+		return all
+	}
+	if c.Plugin != nil {
+		all = append(all, *c.Plugin)
+	}
+	return append(all, c.SensorPlugins...)
+}
+
+// FindPlugin returns the installed plugin (robot or sensor) with the given
+// slug, or nil.
+func (c *EMOSConfig) FindPlugin(slug string) *PluginInfo {
+	if c == nil {
+		return nil
+	}
+	if c.Plugin != nil && c.Plugin.Slug == slug {
+		return c.Plugin
+	}
+	for i := range c.SensorPlugins {
+		if c.SensorPlugins[i].Slug == slug {
+			return &c.SensorPlugins[i]
+		}
+	}
+	return nil
+}
+
+// UpsertSensor adds a sensor plugin, replacing any existing entry with the same
+// slug.
+func (c *EMOSConfig) UpsertSensor(pi PluginInfo) {
+	for i := range c.SensorPlugins {
+		if c.SensorPlugins[i].Slug == pi.Slug {
+			c.SensorPlugins[i] = pi
+			return
+		}
+	}
+	c.SensorPlugins = append(c.SensorPlugins, pi)
+}
+
+// RemovePlugin drops the installed plugin with the given slug from whichever
+// slot holds it (the robot or the sensor list). Returns true if one was found.
+func (c *EMOSConfig) RemovePlugin(slug string) bool {
+	if c == nil {
+		return false
+	}
+	if c.Plugin != nil && c.Plugin.Slug == slug {
+		c.Plugin = nil
+		return true
+	}
+	for i := range c.SensorPlugins {
+		if c.SensorPlugins[i].Slug == slug {
+			c.SensorPlugins = append(c.SensorPlugins[:i], c.SensorPlugins[i+1:]...)
+			return true
+		}
+	}
+	return false
 }
 
 // DefaultDashboardPort is the bind port used when EMOSConfig.Port is unset.

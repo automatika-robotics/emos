@@ -38,8 +38,9 @@ func Resolve(slug string) (api.Plugin, error) {
 	return api.Plugin{}, fmt.Errorf("plugin %q not found in the catalog", slug)
 }
 
-// Install fetches, builds, and activates a robot plugin. Any previously
-// installed plugin is removed first.
+// Install fetches, builds, and activates a plugin. A robot plugin replaces the
+// current robot; a sensor plugin is added alongside it. Other plugins' sources
+// are left in place and the overlay is rebuilt from what remains.
 func Install(cfg *config.EMOSConfig, entry api.Plugin, out io.Writer) error {
 	if cfg == nil || !cfg.IsInstalled() {
 		return fmt.Errorf("EMOS is not installed; run 'emos install' first")
@@ -51,12 +52,18 @@ func Install(cfg *config.EMOSConfig, entry api.Plugin, out io.Writer) error {
 		return fmt.Errorf("plugin %q has no entry_point in the catalog", entry.Filename)
 	}
 
-	// One plugin at a time: clear any existing workspace wholesale.
-	if err := os.RemoveAll(config.WorkspaceDir); err != nil {
-		return fmt.Errorf("clear plugin workspace: %w", err)
-	}
-	if err := os.MkdirAll(config.PluginSrcDir(), 0755); err != nil {
+	if err := os.MkdirAll(config.PluginSrcDir(), 0o755); err != nil {
 		return fmt.Errorf("create plugin source dir: %w", err)
+	}
+
+	// Drop any prior copy of THIS plugin (a reinstall) and, when installing a
+	// robot, the previously-installed robot (one robot at a time). Unrelated
+	// sensor sources are left untouched.
+	if err := os.RemoveAll(filepath.Join(config.PluginSrcDir(), entry.Filename)); err != nil {
+		return fmt.Errorf("clear plugin source: %w", err)
+	}
+	if entry.Role == config.RoleRobot && cfg.Plugin != nil && cfg.Plugin.Slug != entry.Filename {
+		_ = os.RemoveAll(filepath.Join(config.PluginSrcDir(), cfg.Plugin.Slug))
 	}
 
 	srcDir := filepath.Join(config.PluginSrcDir(), entry.Filename)
@@ -70,7 +77,12 @@ func Install(cfg *config.EMOSConfig, entry api.Plugin, out io.Writer) error {
 		return fmt.Errorf("resolve dependencies: %w", err)
 	}
 
-	fmt.Fprintf(out, "Building plugin (%s mode)\n", cfg.Mode)
+	// Rebuild the overlay from scratch so a replaced plugin's artifacts don't
+	// linger
+	if err := os.RemoveAll(config.PluginOverlayDir()); err != nil {
+		return fmt.Errorf("clear plugin overlay: %w", err)
+	}
+	fmt.Fprintf(out, "Building plugins (%s mode)\n", cfg.Mode)
 	if err := build(cfg, out); err != nil {
 		return fmt.Errorf("colcon build: %w", err)
 	}
@@ -79,24 +91,62 @@ func Install(cfg *config.EMOSConfig, entry api.Plugin, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("inspect plugin: %w", err)
 	}
-	if err := os.WriteFile(config.PluginDescribeFile, describe, 0o644); err != nil {
-		return fmt.Errorf("cache plugin describe: %w", err)
+
+	// The plugin's own describe().role is authoritative; reconcile it with the
+	// catalog's hint.
+	role := entry.Role
+	if r := parseRole(describe); r != "" {
+		if role != "" && role != r {
+			return fmt.Errorf("plugin %q reports role %q but the catalog lists it as %q",
+				entry.Filename, r, role)
+		}
+		role = r
+	}
+	if role == "" {
+		role = config.RoleRobot
 	}
 
-	cfg.Plugin = &config.PluginInfo{
+	pi := config.PluginInfo{
 		Slug:        entry.Filename,
 		EntryPoint:  entry.EntryPoint,
+		Role:        role,
 		Repo:        entry.Repo,
 		Ref:         entry.Ref,
+		Describe:    json.RawMessage(describe),
 		InstalledAt: time.Now().UTC(),
 	}
 	if entry.Image != "" {
-		cfg.Plugin.ImageURL = config.PluginsEndpoint + "/images/" + entry.Image
+		pi.ImageURL = config.PluginsEndpoint + "/images/" + entry.Image
+	}
+
+	if role == config.RoleSensor {
+		cfg.UpsertSensor(pi)
+	} else {
+		cfg.Plugin = &pi
+		// Back-compat: robot.go / handlers / cmd still read the single describe
+		// cache; retired in 3b once they read the inline Describe.
+		_ = os.WriteFile(config.PluginDescribeFile, describe, 0o644)
 	}
 	if err := config.SaveConfig(cfg); err != nil {
 		return fmt.Errorf("save config: %w", err)
 	}
 	return nil
+}
+
+// parseRole extracts a plugin's role from its describe() JSON ("robot" |
+// "sensor"), or "" if absent/unparseable.
+func parseRole(describe []byte) string {
+	var d struct {
+		Role string `json:"role"`
+	}
+	if json.Unmarshal(describe, &d) != nil {
+		return ""
+	}
+	role := strings.ToLower(strings.TrimSpace(d.Role))
+	if i := strings.LastIndex(role, "."); i >= 0 {
+		role = role[i+1:] // tolerate a "PluginRole.SENSOR"-style value
+	}
+	return role
 }
 
 // Update pulls a default branch tracking plugin to its latest commit and
@@ -136,7 +186,7 @@ func Update(cfg *config.EMOSConfig, out io.Writer) error {
 	return config.SaveConfig(cfg)
 }
 
-// Remove deletes the active plugin's workspace and clears its config record.
+// Remove deletes all installed plugins and clears their config records.
 func Remove(cfg *config.EMOSConfig) error {
 	if err := os.RemoveAll(config.WorkspaceDir); err != nil {
 		return fmt.Errorf("remove plugin workspace: %w", err)
@@ -144,6 +194,7 @@ func Remove(cfg *config.EMOSConfig) error {
 	_ = os.Remove(config.PluginDescribeFile)
 	if cfg != nil {
 		cfg.Plugin = nil
+		cfg.SensorPlugins = nil
 		return config.SaveConfig(cfg)
 	}
 	return nil

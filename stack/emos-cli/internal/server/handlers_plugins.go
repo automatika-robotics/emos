@@ -77,9 +77,7 @@ func (s *Server) handlePluginActive(w http.ResponseWriter, r *http.Request) {
 		Repo:       cfg.Plugin.Repo,
 		Ref:        cfg.Plugin.Ref,
 	}
-	if data, ok := plugin.CachedDescribe(); ok {
-		resp.Describe = json.RawMessage(data)
-	}
+	resp.Describe = cfg.Plugin.Describe
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -134,11 +132,11 @@ func (s *Server) handlePluginInstall(w http.ResponseWriter, r *http.Request) {
 // handlePluginRemove removes the active plugin. Idempotent.
 func (s *Server) handlePluginRemove(w http.ResponseWriter, r *http.Request) {
 	cfg := config.LoadConfig()
-	if cfg == nil || cfg.Plugin == nil {
+	if cfg == nil || len(cfg.Plugins()) == 0 {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if err := plugin.Remove(cfg); err != nil {
+	if err := plugin.RemoveAll(cfg); err != nil {
 		writeErr(w, http.StatusInternalServerError, codeInternal, err.Error())
 		return
 	}

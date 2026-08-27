@@ -186,15 +186,14 @@ const (
 )
 
 var (
-	HomeDir            string
-	ConfigDir          string
-	RecipesDir         string
-	LogsDir            string
-	LicenseFile        string
-	ConfigFile         string
-	PixiDir            string // Pixi installation location
-	WorkspaceDir       string // ~/emos/workspace: plugin source
-	PluginDescribeFile string // cached inspect output of the active plugin
+	HomeDir      string
+	ConfigDir    string
+	RecipesDir   string
+	LogsDir      string
+	LicenseFile  string
+	ConfigFile   string
+	PixiDir      string // Pixi installation location
+	WorkspaceDir string // ~/emos/workspace: plugin source
 )
 
 func Init() {
@@ -206,7 +205,6 @@ func Init() {
 	ConfigFile = filepath.Join(ConfigDir, "config.json")
 	PixiDir = pixiDataDir()
 	WorkspaceDir = filepath.Join(HomeDir, "emos", "workspace")
-	PluginDescribeFile = filepath.Join(ConfigDir, "plugin-describe.json")
 }
 
 // PluginSrcDir is where robot-plugin sources are cloned (one subdir per

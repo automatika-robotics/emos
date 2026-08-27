@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
-	"github.com/automatika-robotics/emos-cli/internal/plugin"
 )
 
 // RobotInfo is best-effort identity about the device. The dashboard renders
@@ -95,7 +94,7 @@ func detectRobotPlugin() *RobotInfo {
 		Source:   "plugin",
 	}
 
-	if data, ok := plugin.CachedDescribe(); ok {
+	if data := cfg.Plugin.Describe; len(data) > 0 {
 		var d struct {
 			Metadata struct {
 				Name        string `json:"name"`

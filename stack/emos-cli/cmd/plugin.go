@@ -16,31 +16,33 @@ import (
 
 var pluginCmd = &cobra.Command{
 	Use:   "plugin",
-	Short: "Manage the robot plugin",
-	Long: "Manage the robot plugin -- a ROS package that adapts a specific robot to\n" +
-		"the EMOS stack. A robot runs one plugin at a time.",
+	Short: "Manage robot and sensor plugins",
+	Long: "Manage plugins -- ROS packages that adapt hardware to the EMOS stack. A\n" +
+		"robot runs one robot plugin plus any number of sensor plugins.",
 }
 
 func init() {
 	pluginCmd.AddCommand(&cobra.Command{
 		Use:   "list",
-		Short: "List robot plugins available in the catalog",
+		Short: "List plugins available in the catalog",
 		RunE:  runPluginList,
 	})
 	pluginCmd.AddCommand(&cobra.Command{
 		Use:   "install <plugin>",
-		Short: "Install and activate a robot plugin",
+		Short: "Install a plugin (a robot replaces the current robot; a sensor is added)",
 		Args:  cobra.ExactArgs(1),
 		RunE:  runPluginInstall,
 	})
 	pluginCmd.AddCommand(&cobra.Command{
-		Use:   "inspect",
-		Short: "Show the active plugin's interface (feedbacks, commands, actions, events)",
+		Use:   "inspect [slug]",
+		Short: "Show an installed plugin's interface (feedbacks, commands, actions, events)",
+		Args:  cobra.MaximumNArgs(1),
 		RunE:  runPluginInspect,
 	})
 	pluginCmd.AddCommand(&cobra.Command{
-		Use:   "remove",
-		Short: "Remove the active robot plugin",
+		Use:   "remove [slug]",
+		Short: "Remove an installed plugin, or all of them if no slug is given",
+		Args:  cobra.MaximumNArgs(1),
 		RunE:  runPluginRemove,
 	})
 }
@@ -58,21 +60,27 @@ func runPluginList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	active := ""
-	if cfg := config.LoadConfig(); cfg != nil && cfg.Plugin != nil {
-		active = cfg.Plugin.Slug
+	installed := map[string]bool{}
+	if cfg := config.LoadConfig(); cfg != nil {
+		for _, p := range cfg.Plugins() {
+			installed[p.Slug] = true
+		}
 	}
 
 	fmt.Println()
 	var rows [][]string
 	for _, p := range plugins {
 		marker := ""
-		if p.Filename == active {
-			marker = "● active"
+		if installed[p.Filename] {
+			marker = "● installed"
 		}
-		rows = append(rows, []string{p.Filename, p.Name, p.Vendor, marker})
+		role := p.Role
+		if role == "" {
+			role = config.RoleRobot
+		}
+		rows = append(rows, []string{p.Filename, p.Name, p.Vendor, role, marker})
 	}
-	ui.PrintTable([]string{"PLUGIN", "NAME", "VENDOR", ""}, rows)
+	ui.PrintTable([]string{"PLUGIN", "NAME", "VENDOR", "ROLE", ""}, rows)
 	fmt.Println()
 	ui.Faint("Install with: emos plugin install <plugin>")
 	return nil
@@ -99,8 +107,8 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if cfg.Plugin != nil && cfg.Plugin.Slug != slug {
-		ui.Warn(fmt.Sprintf("A robot runs one plugin at a time. This replaces the active plugin '%s'.", cfg.Plugin.Slug))
+	if entry.Role == config.RoleRobot && cfg.Plugin != nil && cfg.Plugin.Slug != slug {
+		ui.Warn(fmt.Sprintf("A robot runs one robot plugin at a time. This replaces the current robot '%s'.", cfg.Plugin.Slug))
 		if !ui.Confirm("Continue?") {
 			return fmt.Errorf("aborted by user")
 		}
@@ -116,50 +124,85 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println()
-	ui.SuccessBox(fmt.Sprintf("Plugin '%s' installed and activated.", entry.Name))
+	ui.SuccessBox(fmt.Sprintf("Plugin '%s' installed.", entry.Name))
 	if module, class, ok := strings.Cut(entry.EntryPoint, ":"); ok {
-		ui.Faint(fmt.Sprintf("In a recipe: from %s import %s; Launcher(robot_plugin=%s())", module, class, class))
+		if entry.Role == config.RoleSensor {
+			ui.Faint(fmt.Sprintf("In a recipe: from %s import %s; Launcher(..., sensor_plugins=[%s()])", module, class, class))
+		} else {
+			ui.Faint(fmt.Sprintf("In a recipe: from %s import %s; Launcher(robot_plugin=%s())", module, class, class))
+		}
 	}
 	return nil
 }
 
-// runPluginInspect pretty-prints the active plugin's cached describe() tree
-// (feedbacks, commands, actions, events).
+// runPluginInspect pretty-prints an installed plugin's cached describe() tree.
+// With no slug it shows the robot (or the first sensor when there is no robot).
 func runPluginInspect(cmd *cobra.Command, args []string) error {
 	cfg := config.LoadConfig()
-	if cfg == nil || cfg.Plugin == nil {
+	if cfg == nil || len(cfg.Plugins()) == 0 {
 		ui.Warn("No plugin is installed. Use 'emos plugin install <plugin>'.")
 		return nil
 	}
-	data, ok := plugin.CachedDescribe()
-	if !ok {
-		ui.Warn("No cached plugin description found. Try reinstalling the plugin.")
+	var pi *config.PluginInfo
+	switch {
+	case len(args) == 1:
+		if pi = cfg.FindPlugin(args[0]); pi == nil {
+			ui.Warn(fmt.Sprintf("Plugin '%s' is not installed.", args[0]))
+			return nil
+		}
+	case cfg.Plugin != nil:
+		pi = cfg.Plugin
+	case len(cfg.SensorPlugins) > 0:
+		pi = &cfg.SensorPlugins[0]
+	}
+	if pi == nil || len(pi.Describe) == 0 {
+		ui.Warn("No cached description found. Try reinstalling the plugin.")
 		return nil
 	}
 	var pretty bytes.Buffer
-	if err := json.Indent(&pretty, data, "", "  "); err != nil {
-		fmt.Println(string(data))
+	if err := json.Indent(&pretty, pi.Describe, "", "  "); err != nil {
+		fmt.Println(string(pi.Describe))
 		return nil
 	}
 	fmt.Println(pretty.String())
 	return nil
 }
 
-// runPluginRemove deletes the active plugin and its workspace after
-// confirmation.
+// runPluginRemove removes one installed plugin by slug, or all of them when no
+// slug is given, after confirmation.
 func runPluginRemove(cmd *cobra.Command, args []string) error {
 	cfg := config.LoadConfig()
-	if cfg == nil || cfg.Plugin == nil {
+	if cfg == nil || len(cfg.Plugins()) == 0 {
 		ui.Info("No plugin is installed.")
 		return nil
 	}
-	slug := cfg.Plugin.Slug
-	if !ui.Confirm(fmt.Sprintf("Remove the active plugin '%s'?", slug)) {
+
+	if len(args) == 1 {
+		slug := args[0]
+		if cfg.FindPlugin(slug) == nil {
+			ui.Warn(fmt.Sprintf("Plugin '%s' is not installed.", slug))
+			return nil
+		}
+		if !ui.Confirm(fmt.Sprintf("Remove plugin '%s'?", slug)) {
+			return fmt.Errorf("aborted by user")
+		}
+		if err := plugin.Remove(cfg, slug, os.Stdout); err != nil {
+			return err
+		}
+		ui.Success("Plugin '" + slug + "' removed.")
+		return nil
+	}
+
+	var slugs []string
+	for _, p := range cfg.Plugins() {
+		slugs = append(slugs, p.Slug)
+	}
+	if !ui.Confirm(fmt.Sprintf("Remove all %d plugins (%s)?", len(slugs), strings.Join(slugs, ", "))) {
 		return fmt.Errorf("aborted by user")
 	}
-	if err := plugin.Remove(cfg); err != nil {
+	if err := plugin.RemoveAll(cfg); err != nil {
 		return err
 	}
-	ui.Success("Plugin '" + slug + "' removed.")
+	ui.Success("All plugins removed.")
 	return nil
 }

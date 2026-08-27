@@ -123,9 +123,6 @@ func Install(cfg *config.EMOSConfig, entry api.Plugin, out io.Writer) error {
 		cfg.UpsertSensor(pi)
 	} else {
 		cfg.Plugin = &pi
-		// Back-compat: robot.go / handlers / cmd still read the single describe
-		// cache; retired in 3b once they read the inline Describe.
-		_ = os.WriteFile(config.PluginDescribeFile, describe, 0o644)
 	}
 	if err := config.SaveConfig(cfg); err != nil {
 		return fmt.Errorf("save config: %w", err)
@@ -149,64 +146,106 @@ func parseRole(describe []byte) string {
 	return role
 }
 
-// Update pulls a default branch tracking plugin to its latest commit and
-// rebuilds it. A ref-pinned plugin is left untouched.
+// pluginPtrs returns a pointer to every installed plugin record (robot then
+// sensors), for in-place updates.
+func pluginPtrs(cfg *config.EMOSConfig) []*config.PluginInfo {
+	var ptrs []*config.PluginInfo
+	if cfg.Plugin != nil {
+		ptrs = append(ptrs, cfg.Plugin)
+	}
+	for i := range cfg.SensorPlugins {
+		ptrs = append(ptrs, &cfg.SensorPlugins[i])
+	}
+	return ptrs
+}
+
+// Update pulls every default-branch tracking plugin (robot + sensors) to its
+// latest commit, rebuilds the overlay once, and refreshes each cached
+// describe(). Ref-pinned plugins are left untouched.
 func Update(cfg *config.EMOSConfig, out io.Writer) error {
-	if cfg == nil || cfg.Plugin == nil {
+	if cfg == nil {
 		return nil
 	}
-	p := cfg.Plugin
-	if p.Ref != "" {
-		fmt.Fprintf(out, "Plugin %s is pinned to %s; nothing to update.\n", p.Slug, p.Ref)
-		return nil
+	pulled := false
+	for _, p := range pluginPtrs(cfg) {
+		if p.Ref != "" {
+			fmt.Fprintf(out, "Plugin %s is pinned to %s; not updating.\n", p.Slug, p.Ref)
+			continue
+		}
+		srcDir := filepath.Join(config.PluginSrcDir(), p.Slug)
+		if _, err := os.Stat(srcDir); err != nil {
+			fmt.Fprintf(out, "Plugin %s source is missing; reinstall with 'emos plugin install %s'.\n", p.Slug, p.Slug)
+			continue
+		}
+		fmt.Fprintf(out, "Updating plugin %s\n", p.Slug)
+		if err := runStreaming("git", []string{"pull", "--ff-only"}, srcDir, out); err != nil {
+			return fmt.Errorf("git pull %s: %w", p.Slug, err)
+		}
+		if err := runStreaming("git", []string{"submodule", "update", "--init", "--depth", "1"}, srcDir, out); err != nil {
+			return fmt.Errorf("submodule update %s: %w", p.Slug, err)
+		}
+		pulled = true
 	}
-	srcDir := filepath.Join(config.PluginSrcDir(), p.Slug)
-	if _, err := os.Stat(srcDir); err != nil {
-		return fmt.Errorf("plugin source missing at %s; reinstall with 'emos plugin install %s'", srcDir, p.Slug)
+	if !pulled {
+		return nil
 	}
 
-	fmt.Fprintf(out, "Updating plugin %s\n", p.Slug)
-	if err := runStreaming("git", []string{"pull", "--ff-only"}, srcDir, out); err != nil {
-		return fmt.Errorf("git pull: %w", err)
-	}
-	if err := runStreaming("git", []string{"submodule", "update", "--init", "--depth", "1"}, srcDir, out); err != nil {
-		return fmt.Errorf("submodule update: %w", err)
+	// Rebuild the overlay once, then refresh each plugin's cached describe().
+	if err := os.RemoveAll(config.PluginOverlayDir()); err != nil {
+		return fmt.Errorf("clear plugin overlay: %w", err)
 	}
 	if err := build(cfg, out); err != nil {
 		return fmt.Errorf("colcon build: %w", err)
 	}
-	describe, err := inspect(cfg, p.EntryPoint)
-	if err != nil {
-		return fmt.Errorf("inspect plugin: %w", err)
+	for _, p := range pluginPtrs(cfg) {
+		describe, err := inspect(cfg, p.EntryPoint)
+		if err != nil {
+			return fmt.Errorf("inspect %s: %w", p.Slug, err)
+		}
+		p.Describe = json.RawMessage(describe)
+		p.InstalledAt = time.Now().UTC()
 	}
-	if err := os.WriteFile(config.PluginDescribeFile, describe, 0o644); err != nil {
-		return err
-	}
-	p.InstalledAt = time.Now().UTC()
 	return config.SaveConfig(cfg)
 }
 
-// Remove deletes all installed plugins and clears their config records.
-func Remove(cfg *config.EMOSConfig) error {
+// Remove deletes one installed plugin by slug then rebuilds the overlay from
+// whatever remains.
+func Remove(cfg *config.EMOSConfig, slug string, out io.Writer) error {
+	if cfg == nil || cfg.FindPlugin(slug) == nil {
+		return fmt.Errorf("plugin %q is not installed", slug)
+	}
+	if err := os.RemoveAll(filepath.Join(config.PluginSrcDir(), slug)); err != nil {
+		return fmt.Errorf("remove plugin source: %w", err)
+	}
+	cfg.RemovePlugin(slug)
+
+	if len(cfg.Plugins()) == 0 {
+		if err := os.RemoveAll(config.WorkspaceDir); err != nil {
+			return fmt.Errorf("remove plugin workspace: %w", err)
+		}
+	} else {
+		if err := os.RemoveAll(config.PluginOverlayDir()); err != nil {
+			return fmt.Errorf("clear plugin overlay: %w", err)
+		}
+		fmt.Fprintf(out, "Rebuilding remaining plugins (%s mode)\n", cfg.Mode)
+		if err := build(cfg, out); err != nil {
+			return fmt.Errorf("rebuild after removal: %w", err)
+		}
+	}
+	return config.SaveConfig(cfg)
+}
+
+// RemoveAll deletes every installed plugin and its workspace.
+func RemoveAll(cfg *config.EMOSConfig) error {
 	if err := os.RemoveAll(config.WorkspaceDir); err != nil {
 		return fmt.Errorf("remove plugin workspace: %w", err)
 	}
-	_ = os.Remove(config.PluginDescribeFile)
 	if cfg != nil {
 		cfg.Plugin = nil
 		cfg.SensorPlugins = nil
 		return config.SaveConfig(cfg)
 	}
 	return nil
-}
-
-// CachedDescribe returns the active plugin's cached describe() JSON.
-func CachedDescribe() ([]byte, bool) {
-	data, err := os.ReadFile(config.PluginDescribeFile)
-	if err != nil || len(data) == 0 {
-		return nil, false
-	}
-	return data, true
 }
 
 // gitClone clones repo at ref (empty = default branch) into dest, then pulls

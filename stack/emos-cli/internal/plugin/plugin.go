@@ -181,7 +181,7 @@ func Update(cfg *config.EMOSConfig, out io.Writer) error {
 		if err := runStreaming("git", []string{"pull", "--ff-only"}, srcDir, out); err != nil {
 			return fmt.Errorf("git pull %s: %w", p.Slug, err)
 		}
-		if err := runStreaming("git", []string{"submodule", "update", "--init", "--depth", "1"}, srcDir, out); err != nil {
+		if err := runStreaming("git", []string{"submodule", "update", "--init", "--recursive", "--depth", "1"}, srcDir, out); err != nil {
 			return fmt.Errorf("submodule update %s: %w", p.Slug, err)
 		}
 		pulled = true
@@ -259,7 +259,7 @@ func gitClone(repo, ref, dest string, out io.Writer) error {
 	if err := runStreaming("git", args, "", out); err != nil {
 		return err
 	}
-	return runStreaming("git", []string{"submodule", "update", "--init", "--depth", "1"}, dest, out)
+	return runStreaming("git", []string{"submodule", "update", "--init", "--recursive", "--depth", "1"}, dest, out)
 }
 
 // build compiles the plugin into the overlay, dispatching on install mode.

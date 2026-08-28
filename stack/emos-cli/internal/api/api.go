@@ -110,7 +110,6 @@ type Plugin struct {
 	Ref         string   `json:"ref"`         // branch/tag; empty = default branch
 	Image       string   `json:"image"`       // image filename served by the portal, if any
 	Description string   `json:"description"`
-	Requires    []string `json:"requires"` // display-only dependency hint
 	Tags        []string `json:"tags"`
 }
 

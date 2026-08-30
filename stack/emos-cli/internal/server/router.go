@@ -138,6 +138,7 @@ func spaHandler(uiFS fs.FS) http.Handler {
 }
 
 // requestLogger writes one line per HTTP request
+//
 //	5xx                              -> ERROR
 //	4xx                              -> WARN
 //	Mutating verbs (POST/PUT/...)    -> INFO

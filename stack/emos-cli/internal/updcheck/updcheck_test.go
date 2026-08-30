@@ -28,7 +28,7 @@ func withFakeReleases(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 
 	target, _ := url.Parse(srv.URL)
 	httpClient = &http.Client{
-		Timeout: 5 * time.Second,
+		Timeout:   5 * time.Second,
 		Transport: rewriteRT{target: target},
 	}
 	return srv

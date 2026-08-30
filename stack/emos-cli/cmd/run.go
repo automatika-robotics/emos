@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	rmwFlag            string
+	rmwFlag             string
 	skipSensorCheckFlag bool
 )
 

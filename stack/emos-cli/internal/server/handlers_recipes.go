@@ -21,12 +21,12 @@ import (
 // LocalRecipe is the per-recipe wire shape returned by /recipes/local
 // and (with `Topics`/`SensorTopics` populated) by /recipes/{name}.
 type LocalRecipe struct {
-	Name         string                 `json:"name"`
-	DisplayName  string                 `json:"display_name,omitempty"`
-	Description  string                 `json:"description,omitempty"`
-	Path         string                 `json:"path"`
-	HasRecipePy  bool                   `json:"has_recipe_py"`
-	Manifest     map[string]any         `json:"manifest,omitempty"`
+	Name         string                  `json:"name"`
+	DisplayName  string                  `json:"display_name,omitempty"`
+	Description  string                  `json:"description,omitempty"`
+	Path         string                  `json:"path"`
+	HasRecipePy  bool                    `json:"has_recipe_py"`
+	Manifest     map[string]any          `json:"manifest,omitempty"`
 	Topics       []runner.ExtractedTopic `json:"topics,omitempty"`
 	SensorTopics []runner.ExtractedTopic `json:"sensor_topics,omitempty"`
 }

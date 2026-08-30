@@ -99,7 +99,7 @@ func (h *RunHandle) Cancel(grace time.Duration) error {
 }
 
 // shellQuote wraps `s` in single quotes for safe inclusion in a shell command,
-// escaping any embedded single quotes via the standard '\'' trick.
+// escaping any embedded single quotes via the standard '\” trick.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

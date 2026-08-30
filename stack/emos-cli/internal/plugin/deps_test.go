@@ -37,8 +37,8 @@ func TestDepsEmpty(t *testing.T) {
 }
 
 func TestRosDistroPkg(t *testing.T) {
-	got := RosDistroPkg("realsense2_camera_msgs", "jazzy")
+	got := rosDistroPkg("realsense2_camera_msgs", "jazzy")
 	if want := "ros-jazzy-realsense2-camera-msgs"; got != want {
-		t.Fatalf("RosDistroPkg = %q, want %q", got, want)
+		t.Fatalf("rosDistroPkg = %q, want %q", got, want)
 	}
 }

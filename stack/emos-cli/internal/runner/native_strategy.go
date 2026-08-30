@@ -14,7 +14,6 @@ import (
 // NativeStrategy handles recipe execution directly on the host (no container).
 // EMOS packages are installed directly into /opt/ros/{distro}/, so only the
 // ROS setup.bash needs to be sourced.
-//
 type NativeStrategy struct {
 	rosDistro string
 	extraEnv  []string

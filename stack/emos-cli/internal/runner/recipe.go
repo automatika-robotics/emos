@@ -220,4 +220,3 @@ func runQuiet(name string, args ...string) {
 
 // topicChecker abstracts how to run `ros2 topic list` for different modes.
 type topicChecker func() (string, error)
-

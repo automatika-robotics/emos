@@ -9,6 +9,7 @@ import (
 )
 
 // RunStatus is the lifecycle state of a recipe run.
+//
 //	preparing -> running -> finished | failed | canceled
 //	preparing -> failed | canceled (pre-flight error / abort)
 type RunStatus string
@@ -41,9 +42,9 @@ type Run struct {
 	RMW        string    `json:"rmw"`
 	Error      string    `json:"error,omitempty"`
 
-	handle          *runner.RunHandle `json:"-"`
-	cancelCh        chan struct{}     `json:"-"` // closed by CancelPreflight
-	handleAttached  chan struct{}     `json:"-"` // closed by AttachHandle
+	handle         *runner.RunHandle `json:"-"`
+	cancelCh       chan struct{}     `json:"-"` // closed by CancelPreflight
+	handleAttached chan struct{}     `json:"-"` // closed by AttachHandle
 }
 
 // CancelCh returns a channel that closes if the run is cancelled before its
@@ -275,4 +276,3 @@ func (rt *Runtime) watch(r *Run) {
 	}
 	rt.rotateLocked(r)
 }
-

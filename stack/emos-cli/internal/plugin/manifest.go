@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -27,7 +28,7 @@ type Manifest struct {
 // Source is one repository to clone into the workspace and build from source.
 type Source struct {
 	Git       string `yaml:"git"`       // clone URL
-	Ref       string `yaml:"ref"`       // tag/branch/sha; empty = default branch
+	Ref       string `yaml:"ref"`       // tag or branch; empty = default branch
 	Recursive bool   `yaml:"recursive"` // init nested submodules on clone
 	Name      string `yaml:"name"`      // workspace dir name; default = repo basename
 }
@@ -69,8 +70,12 @@ func LoadManifest(dir string) (*Manifest, error) {
 		}
 		return nil, err
 	}
+	// Reject unknown keys so any mistake in a manifest fails here
+	// rather than as a silently missing package at build time.
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
 	var m Manifest
-	if err := yaml.Unmarshal(data, &m); err != nil {
+	if err := dec.Decode(&m); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", ManifestFile, err)
 	}
 	return &m, nil

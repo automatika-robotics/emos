@@ -82,3 +82,16 @@ func TestSourcePackageName(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadManifestRejectsUnknownKeys(t *testing.T) {
+	dir := t.TempDir()
+	// "source" (singular) is a typo for "sources": it must fail loudly rather
+	// than parse as a manifest with no sources.
+	body := "source:\n  - git: https://example.com/foo\n"
+	if err := os.WriteFile(filepath.Join(dir, ManifestFile), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadManifest(dir); err == nil {
+		t.Fatal("expected an error for an unknown top-level key")
+	}
+}

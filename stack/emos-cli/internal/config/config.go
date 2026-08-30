@@ -52,6 +52,7 @@ type PluginInfo struct {
 	Repo        string          `json:"repo"`
 	Ref         string          `json:"ref,omitempty"`       // empty = tracks the default branch
 	ImageURL    string          `json:"image_url,omitempty"` // portal-served hardware picture, if any
+	Sources     []string        `json:"sources,omitempty"`   // workspace packages cloned from the manifest's sources
 	Describe    json.RawMessage `json:"describe,omitempty"`  // cached inspect() output
 	InstalledAt time.Time       `json:"installed_at,omitempty"`
 }

@@ -57,7 +57,7 @@ func resolveDeps(cfg *config.EMOSConfig, manifest *Manifest, srcRoot string, out
 func pixiPackages(deps Deps, distro string) []string {
 	var pkgs []string
 	for _, dep := range deps.ROS {
-		pkgs = append(pkgs, rosDistroPkg(dep, distro))
+		pkgs = append(pkgs, RosDistroPkg(dep, distro))
 	}
 	return append(pkgs, deps.System.Conda...)
 }
@@ -97,7 +97,7 @@ func resolveDepsNative(cfg *config.EMOSConfig, srcRoot string, deps Deps, out io
 // printDriverInstructions lists the manifest's declared deps as apt packages.
 func printDriverInstructions(cfg *config.EMOSConfig, deps Deps, out io.Writer) {
 	for _, dep := range deps.ROS {
-		fmt.Fprintf(out, "  - %s  ->  %s\n", dep, rosDistroPkg(dep, cfg.ROSDistro))
+		fmt.Fprintf(out, "  - %s  ->  %s\n", dep, RosDistroPkg(dep, cfg.ROSDistro))
 	}
 	for _, pkg := range deps.System.Apt {
 		fmt.Fprintf(out, "  - %s\n", pkg)
@@ -109,7 +109,7 @@ func depsEmpty(deps Deps) bool {
 	return len(deps.ROS) == 0 && len(deps.System.Conda) == 0 && len(deps.System.Apt) == 0
 }
 
-// rosDistroPkg is the ros-<distro>-* package name for a ROS package dependency.
-func rosDistroPkg(dep, distro string) string {
+// RosDistroPkg is the ros-<distro>-* package name for a ROS package dependency.
+func RosDistroPkg(dep, distro string) string {
 	return "ros-" + distro + "-" + strings.ReplaceAll(dep, "_", "-")
 }

@@ -127,7 +127,7 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 	ui.SuccessBox(fmt.Sprintf("Plugin '%s' installed.", entry.Name))
 	if module, class, ok := strings.Cut(entry.EntryPoint, ":"); ok {
 		if entry.Role == config.RoleSensor {
-			ui.Faint(fmt.Sprintf("In a recipe: from %s import %s; Launcher(..., sensor_plugins=[%s()])", module, class, class))
+			ui.Faint(fmt.Sprintf("In a recipe: from %s import %s; launcher.add_plugin(%s(), mount=Mount(parent=robot, xyz=..., rpy=...))", module, class, class))
 		} else {
 			ui.Faint(fmt.Sprintf("In a recipe: from %s import %s; Launcher(robot_plugin=%s())", module, class, class))
 		}

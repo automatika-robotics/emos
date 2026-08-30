@@ -3,6 +3,7 @@
   import { onMount } from 'svelte';
   import { api, ApiException } from '$lib/api';
   import { getToken } from '$lib/auth';
+  import type { Component } from 'svelte';
   import { navigate, path, useRoutes } from '$lib/router';
   import Sidebar from '$components/Sidebar.svelte';
   import Header from '$components/Header.svelte';
@@ -17,7 +18,7 @@
   import System from '$routes/System.svelte';
   import Pair from '$routes/Pair.svelte';
 
-  const routes = {
+  const routes: Record<string, Component<any>> = {
     '/': Dashboard,
     '/recipes': Recipes,
     '/recipes/:name': RecipeDetail,

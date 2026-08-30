@@ -8,6 +8,7 @@
   let { params }: { params?: { id?: string } } = $props();
   // App.svelte remounts this component when the route changes; safe to
   // read params once at init and call the hook once.
+  // svelte-ignore state_referenced_locally
   const id = params?.id ?? '';
   const run = useRun(id);
   const cancel = useCancelRun();

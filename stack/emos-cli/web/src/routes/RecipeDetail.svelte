@@ -10,6 +10,7 @@
   // App.svelte remounts this component when the route changes, so reading
   // params once at init is correct AND avoids re-creating the query
   // subscription on every $derived re-evaluation.
+  // svelte-ignore state_referenced_locally
   const name = params?.name ?? '';
   const detail = useRecipeDetail(name);
   const runs = useRuns();

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { link, path } from '$lib/router';
+  import { link, path as route } from '$lib/router';
   import { LayoutDashboard, BookMarked, Plug, Activity, Cpu, BookOpen, ExternalLink } from 'lucide-svelte';
   import Logo from './Logo.svelte';
   import { useInfo } from '$lib/queries';
@@ -15,8 +15,8 @@
   ];
 
   function isActive(href: string): boolean {
-    if (href === '/') return $path === '/' || $path === '';
-    return $path.startsWith(href);
+    if (href === '/') return $route === '/' || $route === '';
+    return $route.startsWith(href);
   }
 </script>
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Snippet, Component } from 'svelte';
+  import type { Snippet, Component, SvelteComponent } from 'svelte';
   let {
     title,
     description = '',
@@ -8,7 +8,8 @@
   }: {
     title: string;
     description?: string;
-    icon?: Component<any> | undefined;
+    // lucide-svelte icons are declared as (legacy) class components.
+    icon?: Component<any> | typeof SvelteComponent<any> | undefined;
     actions?: Snippet;
   } = $props();
 </script>

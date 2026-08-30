@@ -1,6 +1,4 @@
-// Typed fetch wrapper around the EMOS REST API. Hand-written rather than
-// generated from openapi.yaml; the surface is small enough that the
-// type-safety win from a generator wouldn't outweigh the build-step cost.
+// Typed fetch wrapper around the EMOS REST API.
 
 import { getToken, clearToken } from './auth';
 
@@ -79,23 +77,38 @@ export interface RobotInfo {
   source: string;
 }
 
-// CatalogPlugin is a robot-plugin registry entry (GET /plugins/remote).
+// PluginRole: a robot runs one robot plugin plus any number of sensor plugins.
+export type PluginRole = 'robot' | 'sensor';
+
+// CatalogPlugin is a plugin registry entry (GET /plugins/remote).
 export interface CatalogPlugin {
   slug: string;
   name: string;
   vendor: string;
+  role: PluginRole;
   description: string;
   tags: string[];
   entry_point: string;
 }
 
-// ActivePlugin is the installed plugin plus its cached describe() tree.
-export interface ActivePlugin {
+// InstalledPlugin is one installed plugin plus its cached describe() tree.
+export interface InstalledPlugin {
   slug: string;
   entry_point: string;
+  role: PluginRole;
   repo: string;
   ref?: string;
+  image_url?: string;
+  sources?: string[];     // driver packages built from source alongside it
   describe?: unknown;
+  installed_at: string;
+}
+
+// InstalledPlugins is GET /plugins/installed: the robot (or null) and the
+// sensor plugins mounted alongside it.
+export interface InstalledPlugins {
+  robot: InstalledPlugin | null;
+  sensors: InstalledPlugin[];
 }
 
 export interface LocalRecipe {
@@ -215,10 +228,11 @@ export const api = {
     request<{ job_id: string }>(`/recipes/${encodeURIComponent(name)}/pull`, { method: 'POST' }),
 
   pluginsRemote: () => request<CatalogPlugin[]>('/plugins/remote'),
-  pluginActive: () => request<ActivePlugin>('/plugins/active'),
+  pluginsInstalled: () => request<InstalledPlugins>('/plugins/installed'),
   pluginInstall: (slug: string) =>
     request<{ job_id: string }>(`/plugins/${encodeURIComponent(slug)}/install`, { method: 'POST' }),
-  pluginRemove: () => request<void>('/plugins/active', { method: 'DELETE' }),
+  pluginRemove: (slug: string) =>
+    request<{ job_id: string }>(`/plugins/${encodeURIComponent(slug)}`, { method: 'DELETE' }),
 
   runs: () => request<Run[]>('/runs'),
   runStart: (recipe: string, opts: { rmw?: string; skip_sensor_check?: boolean } = {}) =>

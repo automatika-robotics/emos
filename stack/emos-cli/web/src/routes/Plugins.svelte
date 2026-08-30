@@ -1,88 +1,126 @@
 <script lang="ts">
-  import { Cloud, CloudOff, RefreshCw, Loader2, Plug, Trash2, Download, Cpu } from 'lucide-svelte';
+  import { Cloud, CloudOff, RefreshCw, Loader2, Bot, Radar, Download } from 'lucide-svelte';
   import { useQueryClient } from '@tanstack/svelte-query';
   import {
     usePluginsRemote,
-    usePluginActive,
+    usePluginsInstalled,
     useInstallPlugin,
     useRemovePlugin,
     useJobs,
     useConnectivity,
     keys,
   } from '$lib/queries';
-  import { ApiException } from '$lib/api';
+  import { ApiException, type CatalogPlugin, type InstalledPlugin } from '$lib/api';
   import { confirm as confirmDialog } from '$lib/dialog';
   import { renderMarkdown } from '$lib/markdown';
   import Empty from '$components/Empty.svelte';
+  import PluginCard from '$components/PluginCard.svelte';
 
   const conn = useConnectivity();
   const qc = useQueryClient();
   const remote = usePluginsRemote();
-  const active = usePluginActive();
+  const installed = usePluginsInstalled();
   const jobs = useJobs();
   const install = useInstallPlugin();
   const remove = useRemovePlugin();
 
-  // At most one install runs at a time (one plugin per robot).
+  const PLUGIN_JOBS = new Set(['plugin_install', 'plugin_remove']);
+
+  // Slug of the plugin whose job we just requested, until the jobs list
+  // reflects it. Installs and removals rebuild one shared overlay, so one at
+  // a time.
   let pending = $state<string>('');
 
-  async function startInstall(slug: string) {
-    if (pending) return;
-    pending = slug;
+  let robot = $derived($installed.data?.robot ?? null);
+  let sensors = $derived($installed.data?.sensors ?? []);
+  let installedSlugs = $derived(
+    new Set([robot?.slug, ...sensors.map((s) => s.slug)].filter(Boolean) as string[])
+  );
+
+  let runningJob = $derived(
+    ($jobs.data ?? []).find((j) => PLUGIN_JOBS.has(j.kind) && j.status === 'running')
+  );
+  let anyBusy = $derived(!!pending || !!runningJob);
+
+  // The job message for a plugin currently being installed or removed, or ''.
+  function busyFor(slug: string): string {
+    if (runningJob?.target === slug) return runningJob.message || 'working…';
+    if (pending === slug) return 'starting…';
+    return '';
+  }
+
+  async function report(title: string, err: unknown) {
+    const msg = err instanceof ApiException ? err.message : String(err);
+    await confirmDialog({ title, message: msg, confirmLabel: 'OK', cancelLabel: 'Dismiss' });
+  }
+
+  async function startInstall(p: CatalogPlugin) {
+    if (anyBusy) return;
+    if (p.role === 'robot' && robot && robot.slug !== p.slug) {
+      const ok = await confirmDialog({
+        title: `Replace ${robotName()} with ${p.name}?`,
+        message: 'A robot runs one robot plugin. The current one is removed; sensor plugins stay.',
+        confirmLabel: 'Replace',
+        intent: 'destructive',
+      });
+      if (!ok) return;
+    }
+    pending = p.slug;
     try {
-      await $install.mutateAsync(slug);
-      setTimeout(() => {
-        if (pending === slug) pending = '';
-      }, 5000);
+      await $install.mutateAsync(p.slug);
     } catch (err) {
       pending = '';
-      const msg = err instanceof ApiException ? err.message : String(err);
-      await confirmDialog({
-        title: 'Could not start install',
-        message: msg,
-        confirmLabel: 'OK',
-        cancelLabel: 'Dismiss',
-      });
+      await report('Could not start install', err);
     }
   }
 
-  async function removeActive() {
+  async function startRemove(plugin: InstalledPlugin) {
+    if (anyBusy) return;
+    const name = ((plugin.describe as any)?.metadata?.name as string) ?? plugin.slug;
     const ok = await confirmDialog({
-      title: 'Remove the active plugin?',
-      message: 'The plugin is removed from this robot. You can install it again from the catalog later.',
+      title: `Remove ${name}?`,
+      message:
+        plugin.role === 'sensor'
+          ? 'The sensor plugin is removed from this robot. You can add it again from the catalog later.'
+          : 'The robot plugin is removed from this robot. Sensor plugins stay installed.',
       confirmLabel: 'Remove',
       intent: 'destructive',
     });
-    if (ok) $remove.mutate();
+    if (!ok) return;
+    pending = plugin.slug;
+    try {
+      await $remove.mutateAsync(plugin.slug);
+    } catch (err) {
+      pending = '';
+      await report('Could not start removal', err);
+    }
   }
 
-  // Watch plugin_install jobs; refresh the active plugin + robot identity when
-  // one settles.
+  function robotName(): string {
+    return ((robot?.describe as any)?.metadata?.name as string) ?? robot?.slug ?? 'the current robot';
+  }
+
+  // Once the jobs list shows our job, the pending marker has done its work;
+  // when a plugin job settles, refresh what is installed.
   let seen = new Set<string>();
   $effect(() => {
     for (const j of $jobs.data ?? []) {
-      if (j.kind !== 'plugin_install') continue;
+      if (!PLUGIN_JOBS.has(j.kind)) continue;
+      if (j.status === 'running' && j.target === pending) pending = '';
       if ((j.status === 'finished' || j.status === 'failed') && !seen.has(j.id)) {
         seen.add(j.id);
-        pending = '';
-        qc.invalidateQueries({ queryKey: keys.pluginActive });
+        if (j.target === pending) pending = '';
+        qc.invalidateQueries({ queryKey: keys.pluginsInstalled });
         qc.invalidateQueries({ queryKey: keys.robot });
       }
     }
   });
 
-  let installJob = $derived(
-    ($jobs.data ?? []).find((j) => j.kind === 'plugin_install' && j.status === 'running')
-  );
-
-  let activeSlug = $derived($active.data?.slug ?? '');
-  let meta = $derived(($active.data?.describe as any)?.metadata ?? null);
-  let actions = $derived(
-    ((($active.data?.describe as any)?.actions ?? []) as any[]).map((a) => a.name).filter(Boolean)
-  );
-  let events = $derived(
-    ((($active.data?.describe as any)?.events ?? []) as any[]).map((e) => e.name).filter(Boolean)
-  );
+  function installLabel(p: CatalogPlugin): string {
+    if (installedSlugs.has(p.slug)) return 'Reinstall';
+    if (p.role === 'sensor') return 'Add';
+    return robot ? 'Replace robot' : 'Install';
+  }
 
   function isOffline(): boolean {
     return $remote.error instanceof ApiException && $remote.error.code === 'offline';
@@ -119,48 +157,29 @@
   </div>
 
   <p class="text-sm text-emos-text-3 max-w-2xl">
-    A robot plugin adapts a specific robot to the EMOS stack. A robot runs
-    <strong>one plugin at a time</strong>; installing a new one replaces the active one.
+    An EMOS system can have <strong>one robot plugin</strong> plus any number of
+    <strong>sensor plugins</strong>. Installing a robot plugin replaces the current one; sensor
+    plugins are added alongside it and used for <strong>extra</strong> sensors in the environment or
+    mounted on board the robot.
   </p>
 
-  <!-- Active plugin -->
-  {#if $active.data}
-    <div class="surface p-5 space-y-3">
-      <div class="flex items-start justify-between gap-3">
-        <div class="flex items-center gap-2">
-          <Plug size={16} class="text-emos-accent" />
-          <div>
-            <div class="font-semibold">{meta?.name ?? activeSlug}</div>
-            <div class="text-xs text-emos-text-3 font-mono">{$active.data.entry_point}</div>
-          </div>
-        </div>
-        <span class="pill pill-good">● active</span>
-      </div>
-      {#if meta?.vendor || meta?.version}
-        <div class="text-sm text-emos-text-2">
-          {meta?.vendor ?? ''}{meta?.version ? ` · v${meta.version}` : ''}
-        </div>
-      {/if}
-      {#if meta?.description}
-        <div class="md-content md-compact">{@html renderMarkdown(meta.description)}</div>
-      {/if}
-      {#if actions.length}
-        <div class="text-sm">
-          <span class="text-emos-text-3">actions: </span>
-          {#each actions as a (a)}<span class="pill mr-1">{a}</span>{/each}
-        </div>
-      {/if}
-      {#if events.length}
-        <div class="text-sm">
-          <span class="text-emos-text-3">events: </span>
-          {#each events as e (e)}<span class="pill mr-1">{e}</span>{/each}
-        </div>
-      {/if}
-      <div class="pt-1">
-        <button class="btn btn-ghost" onclick={removeActive} disabled={$remove.isPending}>
-          <Trash2 size={14} /> Remove plugin
-        </button>
-      </div>
+  <!-- Installed: each section appears only once it has something in it, so a
+       fresh robot goes straight to the catalog. -->
+  {#if robot}
+    <div class="text-xs uppercase tracking-wider text-emos-text-3 pt-1 flex items-center gap-1">
+      <Bot size={12} /> Robot
+    </div>
+    <PluginCard plugin={robot} busy={busyFor(robot.slug)} onRemove={startRemove} />
+  {/if}
+
+  {#if sensors.length}
+    <div class="text-xs uppercase tracking-wider text-emos-text-3 pt-1 flex items-center gap-1">
+      <Radar size={12} /> Sensors
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {#each sensors as s (s.slug)}
+        <PluginCard plugin={s} busy={busyFor(s.slug)} onRemove={startRemove} />
+      {/each}
     </div>
   {/if}
 
@@ -186,15 +205,22 @@
   {:else if ($remote.data ?? []).length}
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       {#each $remote.data ?? [] as p (p.slug)}
-        {@const isActive = p.slug === activeSlug}
-        {@const busy = (pending === p.slug) || (installJob?.target === p.slug)}
+        {@const isInstalled = installedSlugs.has(p.slug)}
+        {@const busy = busyFor(p.slug)}
         <div class="surface p-5 space-y-2 flex flex-col">
           <div class="flex items-start justify-between gap-2">
             <div class="flex items-center gap-2">
-              <Cpu size={16} class="text-emos-text-3" />
+              {#if p.role === 'sensor'}
+                <Radar size={16} class="text-emos-text-3" />
+              {:else}
+                <Bot size={16} class="text-emos-text-3" />
+              {/if}
               <div class="font-semibold">{p.name}</div>
             </div>
-            {#if isActive}<span class="pill pill-good">active</span>{/if}
+            <div class="flex items-center gap-1">
+              <span class="pill">{p.role}</span>
+              {#if isInstalled}<span class="pill pill-good">installed</span>{/if}
+            </div>
           </div>
           {#if p.vendor}<div class="text-xs text-emos-text-3">{p.vendor}</div>{/if}
           {#if p.description}
@@ -208,12 +234,11 @@
           <div class="mt-auto pt-2">
             {#if busy}
               <button class="btn btn-ghost" disabled>
-                <Loader2 size={14} class="animate-spin" />
-                {installJob?.message || 'installing…'}
+                <Loader2 size={14} class="animate-spin" /> {busy}
               </button>
             {:else}
-              <button class="btn btn-primary" onclick={() => startInstall(p.slug)} disabled={!!pending}>
-                <Download size={14} /> {isActive ? 'Reinstall' : 'Install'}
+              <button class="btn btn-primary" onclick={() => startInstall(p)} disabled={anyBusy}>
+                <Download size={14} /> {installLabel(p)}
               </button>
             {/if}
           </div>
@@ -221,6 +246,6 @@
       {/each}
     </div>
   {:else}
-    <Empty title="No plugins available" description="The catalog has no robot plugins yet." />
+    <Empty title="No plugins available" description="The catalog has no plugins yet." />
   {/if}
 </section>

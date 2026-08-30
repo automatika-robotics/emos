@@ -1,4 +1,4 @@
-// TanStack Query glue. Centralising hook keys here makes invalidation
+// TanStack Query glue. Centralised hook keys here makes invalidation
 // (e.g. after a recipe pull finishes) one-liner-clean from any component.
 
 import { createQuery, createMutation, useQueryClient, type CreateQueryResult } from '@tanstack/svelte-query';
@@ -15,7 +15,7 @@ export const keys = {
   recipesRemote: ['recipes', 'remote'] as const,
   recipeDetail: (name: string) => ['recipes', 'detail', name] as const,
   pluginsRemote: ['plugins', 'remote'] as const,
-  pluginActive: ['plugins', 'active'] as const,
+  pluginsInstalled: ['plugins', 'installed'] as const,
   runs: ['runs'] as const,
   run: (id: string) => ['runs', id] as const,
   jobs: ['jobs'] as const,
@@ -86,18 +86,10 @@ export const usePluginsRemote = () =>
     staleTime: 30_000,
   });
 
-export const usePluginActive = () =>
+export const usePluginsInstalled = () =>
   createQuery({
-    queryKey: keys.pluginActive,
-    // 404 means no plugin installed — model that as null, not an error.
-    queryFn: async () => {
-      try {
-        return await api.pluginActive();
-      } catch (err) {
-        if (err instanceof ApiException && err.status === 404) return null;
-        throw err;
-      }
-    },
+    queryKey: keys.pluginsInstalled,
+    queryFn: api.pluginsInstalled,
     staleTime: 10_000,
   });
 
@@ -177,11 +169,10 @@ export function useInstallPlugin() {
 export function useRemovePlugin() {
   const qc = useQueryClient();
   return createMutation({
-    mutationFn: () => api.pluginRemove(),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: keys.pluginActive });
-      qc.invalidateQueries({ queryKey: keys.robot });
-    },
+    // 202: removal runs as a job (the overlay is rebuilt). Plugins.svelte
+    // watches the jobs list and refreshes the installed set when it settles.
+    mutationFn: (slug: string) => api.pluginRemove(slug),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.jobs }),
   });
 }
 

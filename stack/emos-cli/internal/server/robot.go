@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
+	"github.com/automatika-robotics/emos-cli/internal/runner"
 )
 
 // RobotInfo is best-effort identity about the device. The dashboard renders
@@ -107,6 +108,10 @@ func detectRobotPlugin() *RobotInfo {
 			Events []struct {
 				Name string `json:"name"`
 			} `json:"events"`
+			Feedbacks []struct {
+				Key     string `json:"key"`
+				MsgType string `json:"msg_type"`
+			} `json:"feedbacks"`
 		}
 		if json.Unmarshal(data, &d) == nil {
 			// The plugin's metadata name is the robot's model/type
@@ -121,6 +126,12 @@ func detectRobotPlugin() *RobotInfo {
 			for _, e := range d.Events {
 				if e.Name != "" {
 					info.Events = append(info.Events, e.Name)
+				}
+			}
+			// The robot's own sensors are its feedbacks of sensor message types.
+			for _, f := range d.Feedbacks {
+				if f.Key != "" && runner.IsSensorType(f.MsgType) {
+					info.Sensors = append(info.Sensors, f.Key)
 				}
 			}
 		}

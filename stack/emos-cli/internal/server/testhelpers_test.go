@@ -8,10 +8,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/automatika-robotics/emos-cli/internal/config"
 )
 
 // TestMain lowers bcrypt's pairing-code cost from the production value
@@ -21,6 +24,33 @@ import (
 func TestMain(m *testing.M) {
 	pairingHashCost = bcrypt.MinCost
 	os.Exit(m.Run())
+}
+
+// withTempConfig points the config package's path globals at a fresh tmp
+// dir so each test has an isolated ~/.config/emos. Restored on cleanup.
+func withTempConfig(t *testing.T) {
+	t.Helper()
+	origHome, origDir, origRecipes, origLogs, origLicense, origCfg, origWs :=
+		config.HomeDir, config.ConfigDir, config.RecipesDir, config.LogsDir, config.LicenseFile, config.ConfigFile, config.WorkspaceDir
+
+	tmp := t.TempDir()
+	config.HomeDir = tmp
+	config.ConfigDir = filepath.Join(tmp, ".config", "emos")
+	config.RecipesDir = filepath.Join(tmp, "emos", "recipes")
+	config.LogsDir = filepath.Join(tmp, "emos", "logs")
+	config.LicenseFile = filepath.Join(config.ConfigDir, "license.key")
+	config.ConfigFile = filepath.Join(config.ConfigDir, "config.json")
+	config.WorkspaceDir = filepath.Join(tmp, "emos", "workspace")
+
+	t.Cleanup(func() {
+		config.HomeDir = origHome
+		config.ConfigDir = origDir
+		config.RecipesDir = origRecipes
+		config.LogsDir = origLogs
+		config.LicenseFile = origLicense
+		config.ConfigFile = origCfg
+		config.WorkspaceDir = origWs
+	})
 }
 
 // newTestServer returns a Server wired up enough that buildRouter()'s

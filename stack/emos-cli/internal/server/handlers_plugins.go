@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -18,9 +19,28 @@ type CatalogPlugin struct {
 	Slug        string   `json:"slug"`
 	Name        string   `json:"name"`
 	Vendor      string   `json:"vendor"`
+	Role        string   `json:"role"` // "robot" | "sensor"
 	Description string   `json:"description"`
 	Tags        []string `json:"tags"`
 	EntryPoint  string   `json:"entry_point"`
+}
+
+// catalogEntry maps a registry entry to the wire shape. An entry without a
+// role is considered a robot plugin.
+func catalogEntry(p api.Plugin) CatalogPlugin {
+	role := p.Role
+	if role == "" {
+		role = config.RoleRobot
+	}
+	return CatalogPlugin{
+		Slug:        p.Filename,
+		Name:        p.Name,
+		Vendor:      p.Vendor,
+		Role:        role,
+		Description: p.Description,
+		Tags:        p.Tags,
+		EntryPoint:  p.EntryPoint,
+	}
 }
 
 // handlePluginsRemote proxies the support-portal plugin registry. Mirrors
@@ -42,42 +62,63 @@ func (s *Server) handlePluginsRemote(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]CatalogPlugin, 0, len(upstream))
 	for _, p := range upstream {
-		out = append(out, CatalogPlugin{
-			Slug:        p.Filename,
-			Name:        p.Name,
-			Vendor:      p.Vendor,
-			Description: p.Description,
-			Tags:        p.Tags,
-			EntryPoint:  p.EntryPoint,
-		})
+		out = append(out, catalogEntry(p))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
 
-// ActivePlugin is the wire shape for /plugins/active.
-type ActivePlugin struct {
-	Slug       string          `json:"slug"`
-	EntryPoint string          `json:"entry_point"`
-	Repo       string          `json:"repo"`
-	Ref        string          `json:"ref,omitempty"`
-	Describe   json.RawMessage `json:"describe,omitempty"`
+// InstalledPlugin is the wire shape of one installed plugin in
+// /plugins/installed. The config record plus its cached describe() tree.
+type InstalledPlugin struct {
+	Slug        string          `json:"slug"`
+	EntryPoint  string          `json:"entry_point"`
+	Role        string          `json:"role"`
+	Repo        string          `json:"repo"`
+	Ref         string          `json:"ref,omitempty"`
+	ImageURL    string          `json:"image_url,omitempty"`
+	Sources     []string        `json:"sources,omitempty"`
+	Describe    json.RawMessage `json:"describe,omitempty"`
+	InstalledAt time.Time       `json:"installed_at"`
 }
 
-// handlePluginActive returns the currently active plugin (plus its cached
-// describe() tree).
-func (s *Server) handlePluginActive(w http.ResponseWriter, r *http.Request) {
-	cfg := config.LoadConfig()
-	if cfg == nil || cfg.Plugin == nil {
-		writeErr(w, http.StatusNotFound, codeNotFound, "no plugin installed")
-		return
+// InstalledPlugins is the wire shape for /plugins/installed. The one robot
+// plugin (or null) and the sensor plugins mounted alongside it.
+type InstalledPlugins struct {
+	Robot   *InstalledPlugin  `json:"robot"`
+	Sensors []InstalledPlugin `json:"sensors"`
+}
+
+func installedView(pi config.PluginInfo) InstalledPlugin {
+	role := pi.Role
+	if role == "" {
+		role = config.RoleRobot
 	}
-	resp := ActivePlugin{
-		Slug:       cfg.Plugin.Slug,
-		EntryPoint: cfg.Plugin.EntryPoint,
-		Repo:       cfg.Plugin.Repo,
-		Ref:        cfg.Plugin.Ref,
+	return InstalledPlugin{
+		Slug:        pi.Slug,
+		EntryPoint:  pi.EntryPoint,
+		Role:        role,
+		Repo:        pi.Repo,
+		Ref:         pi.Ref,
+		ImageURL:    pi.ImageURL,
+		Sources:     pi.Sources,
+		Describe:    pi.Describe,
+		InstalledAt: pi.InstalledAt,
 	}
-	resp.Describe = cfg.Plugin.Describe
+}
+
+// handlePluginsInstalled returns every installed plugin, robot and sensors
+// apart.
+func (s *Server) handlePluginsInstalled(w http.ResponseWriter, r *http.Request) {
+	resp := InstalledPlugins{Sensors: []InstalledPlugin{}}
+	if cfg := config.LoadConfig(); cfg != nil {
+		if cfg.Plugin != nil {
+			robot := installedView(*cfg.Plugin)
+			resp.Robot = &robot
+		}
+		for _, pi := range cfg.SensorPlugins {
+			resp.Sensors = append(resp.Sensors, installedView(pi))
+		}
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -129,18 +170,25 @@ func (s *Server) handlePluginInstall(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": id})
 }
 
-// handlePluginRemove removes the active plugin. Idempotent.
-func (s *Server) handlePluginRemove(w http.ResponseWriter, r *http.Request) {
+// handlePluginRemoveSlug removes one installed plugin as a background job.
+func (s *Server) handlePluginRemoveSlug(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
 	cfg := config.LoadConfig()
-	if cfg == nil || len(cfg.Plugins()) == 0 {
-		w.WriteHeader(http.StatusNoContent)
+	if cfg == nil || cfg.FindPlugin(slug) == nil {
+		writeErr(w, http.StatusNotFound, codeNotFound, "plugin not installed: "+slug)
 		return
 	}
-	if err := plugin.RemoveAll(cfg); err != nil {
-		writeErr(w, http.StatusInternalServerError, codeInternal, err.Error())
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	id := newID()
+	job := s.jobs.New(id, "plugin_remove", slug)
+	go func() {
+		job.Update(JobStatusRunning, 0.1, "removing and rebuilding remaining plugins")
+		if err := plugin.Remove(cfg, slug, jobLogWriter{job: job}); err != nil {
+			job.Update(JobStatusFailed, 0, err.Error())
+			return
+		}
+		job.Update(JobStatusFinished, 1.0, "removed")
+	}()
+	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": id})
 }
 
 // jobLogWriter forwards subprocess output to a job's progress message; the

@@ -65,6 +65,13 @@ var sensorKnowledge = map[string]SensorInfo{
 	},
 }
 
+// IsSensorType reports whether a message type short name is one EMOS treats
+// as a sensor feed.
+func IsSensorType(msgType string) bool {
+	_, ok := sensorKnowledge[msgType]
+	return ok
+}
+
 // ExtractedTopic represents a Topic(...) call found in a recipe.py via AST parsing.
 type ExtractedTopic struct {
 	Name     string `json:"name"`

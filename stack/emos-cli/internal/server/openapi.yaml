@@ -166,6 +166,89 @@ paths:
                   job_id: { type: string }
         "503":
           description: offline
+  /plugins/remote:
+    get:
+      summary: Catalog of robot and sensor plugins from the Automatika API. Requires internet.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    slug: { type: string }
+                    name: { type: string }
+                    vendor: { type: string }
+                    role: { type: string, enum: [robot, sensor] }
+                    description: { type: string }
+                    tags: { type: array, items: { type: string } }
+                    entry_point: { type: string }
+        "503":
+          description: offline or upstream failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+  /plugins/installed:
+    get:
+      summary: Installed plugins — the robot (or null) and the sensor plugins alongside it. Nothing installed is an ordinary 200, not a 404.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [robot, sensors]
+                properties:
+                  robot:
+                    oneOf:
+                      - $ref: "#/components/schemas/InstalledPlugin"
+                      - type: "null"
+                  sensors:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/InstalledPlugin"
+  /plugins/{slug}/install:
+    post:
+      summary: Start a plugin install job (clone, resolve dependencies, build). Returns a job_id; stream via /jobs/{id}/logs.
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "202":
+          description: accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id: { type: string }
+        "400": { description: EMOS not installed or missing slug }
+        "503": { description: offline }
+  /plugins/{slug}:
+    delete:
+      summary: Remove one installed plugin as a background job; the overlay is rebuilt from what remains.
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "202":
+          description: accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id: { type: string }
+        "404": { description: not installed }
   /runs:
     get:
       summary: Currently running + recent finished runs
@@ -257,6 +340,25 @@ components:
       type: http
       scheme: bearer
   schemas:
+    InstalledPlugin:
+      type: object
+      required: [slug, entry_point, role, repo, installed_at]
+      properties:
+        slug: { type: string }
+        entry_point: { type: string, description: "module:ClassName" }
+        role: { type: string, enum: [robot, sensor] }
+        repo: { type: string }
+        ref: { type: string }
+        image_url: { type: string }
+        sources:
+          type: array
+          items: { type: string }
+          description: Driver packages cloned and built from source alongside the plugin.
+        describe:
+          type: object
+          additionalProperties: true
+          description: The plugin's cached describe() tree (metadata, feedbacks, commands, actions, events, role).
+        installed_at: { type: string, format: date-time }
     APIError:
       type: object
       required: [code, message]

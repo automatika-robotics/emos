@@ -156,6 +156,7 @@ python3 -m pip uninstall -y kompass-core 2>/dev/null || true
 export CMAKE_PREFIX_PATH="$PIXI_PREFIX:${CMAKE_PREFIX_PATH:-}"
 log INFO "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH"
 
+export CMAKE_BUILD_PARALLEL_LEVEL="$(nproc)"
 CXX=$CLANG_PATH python3 -m pip install --no-build-isolation .
 
 cd /tmp && rm -rf kompass-core

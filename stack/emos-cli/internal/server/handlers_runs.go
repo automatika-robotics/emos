@@ -84,7 +84,7 @@ func (s *Server) handleRunsStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	go s.runRecipeAsync(run, recipeDir, body)
+	s.goTracked(func() { s.runRecipeAsync(run, recipeDir, body) })
 
 	writeJSON(w, http.StatusAccepted, run)
 }
@@ -135,13 +135,13 @@ func (s *Server) runRecipeAsync(run *Run, recipeDir string, body startRunBody) {
 	// We wait on the run's HandleAttached channel for the happens-before
 	// guarantee, then on the handle's Done channel for the actual exit.
 	deferStrategyCleanup := func() {
-		go func() {
+		s.goTracked(func() {
 			<-run.HandleAttached()
 			if h := run.Handle(); h != nil {
 				<-h.Done()
 			}
 			_ = strategy.Cleanup()
-		}()
+		})
 	}
 
 	step("preparing environment")

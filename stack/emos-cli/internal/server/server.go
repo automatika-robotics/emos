@@ -34,6 +34,10 @@ type Options struct {
 // Server bundles every subsystem the daemon needs. Handlers are methods on
 // Server so they can read `s.runtime`, `s.jobs`, `s.auth` without DI plumbing.
 type Server struct {
+	// wg tracks the run goroutines (preflight + cleanup) so shutdown can
+	// join them.
+	wg sync.WaitGroup
+
 	cfg    *config.EMOSConfig
 	opts   Options
 	log    *slog.Logger
@@ -198,7 +202,46 @@ func (s *Server) Run(ctx context.Context) error {
 	defer cancel()
 
 	s.mdns.Shutdown()
-	return s.httpServer.Shutdown(shutdownCtx)
+	httpErr := s.httpServer.Shutdown(shutdownCtx)
+	// When the HTTP server is quiet, stop what we started. (recipes etc)
+	s.drainRuns(runDrainTimeout)
+	return httpErr
+}
+
+// runDrainTimeout bounds the shutdown wait for the run goroutines. Cancel
+// SIGKILLs the recipe after a 5 s grace, so the join completes just after.
+const runDrainTimeout = 8 * time.Second
+
+// goTracked runs fn on a goroutine registered with the shutdown WaitGroup.
+func (s *Server) goTracked(fn func()) {
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		fn()
+	}()
+}
+
+// drainRuns cancels the active run, if any, and joins the tracked run
+// goroutines so strategy.Cleanup() gets to execute before the process
+// exits. A goroutine stuck mid-preflight past its next cancel checkpoint is logged
+// and abandoned rather than hanging the stop.
+func (s *Server) drainRuns(timeout time.Duration) {
+	if cur := s.runtime.Current(); cur != nil {
+		s.log.Info("shutdown: stopping active run", "id", cur.ID, "recipe", cur.Recipe)
+		if err := s.runtime.Cancel(cur.ID); err != nil {
+			s.log.Warn("shutdown: cancel run", "err", err)
+		}
+	}
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		s.log.Warn("shutdown: run goroutines did not finish in time; exiting anyway")
+	}
 }
 
 // PairingCode returns the freshly-generated pairing code (one-time per process)
@@ -223,9 +266,7 @@ func (s *Server) refreshUpdatesLoop(ctx context.Context) {
 }
 
 // tryRefreshUpdates performs a single best-effort GitHub releases lookup.
-// Skipped entirely when connectivity is known-offline (avoids burning a
-// fetch on a slow-failing DNS during early boot, when network-online
-// hasn't actually settled yet).
+// Skipped entirely when connectivity is known-offline.
 func (s *Server) tryRefreshUpdates(ctx context.Context) {
 	if !s.conn.Online(ctx) {
 		s.log.Debug("update check skipped: offline")

@@ -276,6 +276,7 @@ func TestCheckLocalRejectsRemoteHosts(t *testing.T) {
 type recorder struct {
 	ran     [][]string
 	onStop  func()
+	after   func()
 	failFor string // argv[1] (after sudo) that should fail
 }
 
@@ -290,6 +291,9 @@ func (r *recorder) run(argv []string) error {
 	}
 	if len(verb) > 1 && verb[1] == "stop_mapping" && r.onStop != nil {
 		r.onStop()
+	}
+	if r.after != nil {
+		r.after()
 	}
 	return nil
 }
@@ -436,5 +440,130 @@ func TestStopIssuedOnceWhenNoRetriesDeclared(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Errorf("stop ran %d times, want 1", calls)
+	}
+}
+
+func TestRemoveRefusesTheActiveMap(t *testing.T) {
+	// Deleting the active map would leave localization with nothing to
+	// localize against, and the vendor's docs warn against touching it.
+	store := buildStore(t, []string{"keep-20260101-100000", "gone-20260102-100000"},
+		"keep-20260101-100000", true)
+	d := vendorDecl(store)
+	rec := &recorder{}
+
+	err := d.Remove("keep-20260101-100000", rec.run)
+	var active *ErrMapIsActive
+	if !errors.As(err, &active) {
+		t.Fatalf("want ErrMapIsActive, got %v", err)
+	}
+	if len(rec.ran) != 0 {
+		t.Errorf("nothing should run when the delete is refused: %v", rec.ran)
+	}
+	if _, err := os.Stat(filepath.Join(store, "keep-20260101-100000")); err != nil {
+		t.Error("the active map must still be there")
+	}
+}
+
+func TestRemoveRefusesAnUnknownMap(t *testing.T) {
+	store := buildStore(t, []string{"a-20260101-100000"}, "", true)
+	d := vendorDecl(store)
+	rec := &recorder{}
+	var missing *ErrNoSuchMap
+	if err := d.Remove("typo", rec.run); !errors.As(err, &missing) {
+		t.Fatalf("want ErrNoSuchMap, got %v", err)
+	}
+	if len(rec.ran) != 0 {
+		t.Errorf("nothing should run for a map that is not there: %v", rec.ran)
+	}
+}
+
+func TestRemoveUsesThePathFromTheStoreNotTheCaller(t *testing.T) {
+	// The argv must name the resolved map directory, never a caller-supplied
+	// string joined onto the store.
+	store := buildStore(t, []string{"gone-20260102-100000"}, "", true)
+	d := vendorDecl(store)
+	d.Vendor.RequiresRoot = true
+	rec := &recorder{}
+	if err := d.Remove("gone-20260102-100000", rec.run); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if len(rec.ran) != 1 {
+		t.Fatalf("want one command, got %v", rec.ran)
+	}
+	got := rec.ran[0]
+	want := []string{"sudo", "rm", "-rf", "--", filepath.Join(store, "gone-20260102-100000")}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("argv = %v, want %v", got, want)
+		}
+	}
+}
+
+func TestRemovePrefersADeclaredCommand(t *testing.T) {
+	store := buildStore(t, []string{"gone-20260102-100000"}, "", true)
+	d := vendorDecl(store)
+	d.Vendor.RequiresRoot = true
+	d.Vendor.Remove = []string{"vendortool", "delete", "{name}"}
+	rec := &recorder{}
+	if err := d.Remove("gone-20260102-100000", rec.run); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if rec.ran[0][1] != "vendortool" {
+		t.Errorf("a declared delete command should win over rm: %v", rec.ran[0])
+	}
+}
+
+func TestRemoveWithoutRootDeletesDirectly(t *testing.T) {
+	store := buildStore(t, []string{"gone-20260102-100000"}, "", true)
+	d := vendorDecl(store)
+	d.Vendor.RequiresRoot = false
+	rec := &recorder{}
+	if err := d.Remove("gone-20260102-100000", rec.run); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if len(rec.ran) != 0 {
+		t.Errorf("no command should run: %v", rec.ran)
+	}
+	if _, err := os.Stat(filepath.Join(store, "gone-20260102-100000")); !os.IsNotExist(err) {
+		t.Error("the map directory should be gone")
+	}
+}
+
+func TestExportRefusesANonActiveMapWhenTheToolTakesNoName(t *testing.T) {
+	// drmap pack packages whatever is active; exporting "b" while "a" is
+	// active would hand back the wrong map under the right name.
+	store := buildStore(t, []string{"a-20260101-100000", "b-20260102-100000"},
+		"a-20260101-100000", true)
+	d := vendorDecl(store)
+	d.Vendor.Export = []string{"drmap", "pack"}
+	rec := &recorder{}
+	if _, err := d.Export("b-20260102-100000", rec.run); err == nil {
+		t.Error("exporting a non-active map should be refused, not silently wrong")
+	}
+	if len(rec.ran) != 0 {
+		t.Errorf("nothing should run: %v", rec.ran)
+	}
+}
+
+func TestExportReportsTheArchiveThatAppeared(t *testing.T) {
+	store := buildStore(t, []string{"a-20260101-100000"}, "a-20260101-100000", true)
+	out := t.TempDir()
+	os.WriteFile(filepath.Join(out, "old.zip"), []byte("x"), 0o644)
+
+	d := vendorDecl(store)
+	d.Vendor.Export = []string{"drmap", "pack"}
+	d.Vendor.ExportDir = out
+	rec := &recorder{}
+	rec.onStop = nil
+	rec.after = func() {
+		os.WriteFile(filepath.Join(out, "map-new.zip"), []byte("y"), 0o644)
+	}
+
+	archive, err := d.Export("a-20260101-100000", rec.run)
+	if err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	if filepath.Base(archive) != "map-new.zip" {
+		t.Errorf("archive = %q, want the file that appeared", archive)
 	}
 }

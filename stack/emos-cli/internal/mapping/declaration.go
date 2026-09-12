@@ -41,7 +41,13 @@ type Vendor struct {
 	Apply       []string `json:"apply"`
 	AfterApply  []string `json:"after_apply"`
 	Export      []string `json:"export"`
-	ActiveLink  string   `json:"active_link"`
+	// ExportDir is where Export leaves its archive when the vendor picks the
+	// path itself. Empty means unknown.
+	ExportDir string `json:"export_dir"`
+	// Remove deletes a map. Nil where the vendor has no such command, in which
+	// case the map directory is removed directly.
+	Remove     []string `json:"remove"`
+	ActiveLink string   `json:"active_link"`
 	// RequiresRoot gates the dashboard. It must send the operator to the CLI
 	RequiresRoot bool    `json:"requires_root"`
 	Host         string  `json:"host"`

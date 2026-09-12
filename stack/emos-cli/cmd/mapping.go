@@ -29,6 +29,18 @@ func init() {
 		RunE:  runMapNew,
 	})
 	mapCmd.AddCommand(&cobra.Command{
+		Use:   "export [name]",
+		Short: "Package a map for copying off the robot (defaults to the active one)",
+		Args:  cobra.MaximumNArgs(1),
+		RunE:  runMapExport,
+	})
+	mapCmd.AddCommand(&cobra.Command{
+		Use:   "rm <name>",
+		Short: "Delete a map",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runMapRm,
+	})
+	mapCmd.AddCommand(&cobra.Command{
 		Use:   "list",
 		Short: "List the maps on this robot",
 		RunE:  runMapList,
@@ -173,5 +185,75 @@ func runMapNew(cmd *cobra.Command, args []string) error {
 	} else {
 		ui.Faint(built.Grid)
 	}
+	return nil
+}
+
+func runMapRm(cmd *cobra.Command, args []string) error {
+	name := args[0]
+	decl, err := resolveMapping()
+	if err != nil {
+		return err
+	}
+
+	if !ui.Confirm(fmt.Sprintf("Delete map '%s'? This cannot be undone", name)) {
+		ui.Info("Left alone.")
+		return nil
+	}
+	if decl.Vendor != nil && decl.Vendor.RequiresRoot && len(decl.Vendor.Remove) == 0 {
+		ui.Info("The map store is owned by the robot's own software; sudo will prompt.")
+	}
+
+	if err := decl.Remove(name, mapping.SystemRunner); err != nil {
+		var active *mapping.ErrMapIsActive
+		if errors.As(err, &active) {
+			ui.Error(fmt.Sprintf("'%s' is the map the robot is currently using.", name))
+			ui.Faint("Switch to another map first; deleting the active one would " +
+				"leave localization with nothing to localize against.")
+			return fmt.Errorf("refusing to delete the active map")
+		}
+		var missing *mapping.ErrNoSuchMap
+		if errors.As(err, &missing) {
+			ui.Error(fmt.Sprintf("No map named '%s'.", missing.Name))
+			ui.Faint("Run 'emos map list' to see what this robot has.")
+			return fmt.Errorf("map not found")
+		}
+		return err
+	}
+	ui.Success(fmt.Sprintf("Deleted '%s'.", name))
+	return nil
+}
+
+func runMapExport(cmd *cobra.Command, args []string) error {
+	decl, err := resolveMapping()
+	if err != nil {
+		return err
+	}
+	name := ""
+	if len(args) == 1 {
+		name = args[0]
+	} else if name = decl.ActiveName(); name == "" {
+		ui.Error("No map is marked active, so there is nothing to export.")
+		ui.Faint("Name one explicitly: 'emos map export <name>'.")
+		return fmt.Errorf("no active map")
+	}
+
+	if decl.Vendor != nil && decl.Vendor.RequiresRoot {
+		ui.Info("Exporting runs the robot's own tool; sudo may prompt.")
+	}
+	archive, err := decl.Export(name, mapping.SystemRunner)
+	if err != nil {
+		var missing *mapping.ErrNoSuchMap
+		if errors.As(err, &missing) {
+			ui.Error(fmt.Sprintf("No map named '%s'.", missing.Name))
+			return fmt.Errorf("map not found")
+		}
+		return err
+	}
+	if archive == "" {
+		ui.Success(fmt.Sprintf("Exported '%s'.", name))
+		ui.Faint("The robot's tool chose where to put the archive; check its output above.")
+		return nil
+	}
+	ui.Success(fmt.Sprintf("Exported '%s' to %s", name, archive))
 	return nil
 }

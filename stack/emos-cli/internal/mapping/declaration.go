@@ -31,15 +31,17 @@ const (
 // The command fields are argv templates. `{name}` is substituted with the map
 // name.
 type Vendor struct {
-	Start      []string `json:"start"`
-	Stop       []string `json:"stop"`
-	Store      string   `json:"store"`
-	Grid       string   `json:"grid"`
-	Cloud      string   `json:"cloud"`
-	Apply      []string `json:"apply"`
-	AfterApply []string `json:"after_apply"`
-	Export     []string `json:"export"`
-	ActiveLink string   `json:"active_link"`
+	Start []string `json:"start"`
+	Stop  []string `json:"stop"`
+	// StopRetries is how many extra times to re-issue Stop if no map appears.
+	StopRetries int      `json:"stop_retries"`
+	Store       string   `json:"store"`
+	Grid        string   `json:"grid"`
+	Cloud       string   `json:"cloud"`
+	Apply       []string `json:"apply"`
+	AfterApply  []string `json:"after_apply"`
+	Export      []string `json:"export"`
+	ActiveLink  string   `json:"active_link"`
 	// RequiresRoot gates the dashboard. It must send the operator to the CLI
 	RequiresRoot bool    `json:"requires_root"`
 	Host         string  `json:"host"`

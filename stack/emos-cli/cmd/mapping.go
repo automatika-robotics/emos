@@ -3,6 +3,9 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/mapping"
@@ -19,6 +22,12 @@ var mapCmd = &cobra.Command{
 }
 
 func init() {
+	mapCmd.AddCommand(&cobra.Command{
+		Use:   "new [name]",
+		Short: "Build a new map by driving the robot",
+		Args:  cobra.MaximumNArgs(1),
+		RunE:  runMapNew,
+	})
 	mapCmd.AddCommand(&cobra.Command{
 		Use:   "list",
 		Short: "List the maps on this robot",
@@ -80,5 +89,89 @@ func runMapList(cmd *cobra.Command, args []string) error {
 		ui.Info(line)
 	}
 	ui.Faint(fmt.Sprintf("%d map(s) in %s", len(maps), decl.Store()))
+	return nil
+}
+
+func runMapNew(cmd *cobra.Command, args []string) error {
+	decl, err := resolveMapping()
+	if err != nil {
+		return err
+	}
+	name := ""
+	if len(args) == 1 {
+		name = args[0]
+	} else {
+		name = ui.Input("Name for this map", "map")
+	}
+
+	ui.Header("MAPPING")
+	if decl.Vendor != nil {
+		if limit := decl.Vendor.AreaLimitM; limit > 0 {
+			ui.Info(fmt.Sprintf("This robot maps areas up to %.0f x %.0f m.", limit, limit))
+		}
+		if decl.Vendor.RequiresRoot {
+			ui.Info("Mapping needs root on this robot; sudo will prompt.")
+		}
+	}
+	ui.Faint("Plan a route that closes loops -- make sure to revisit places you" + " have already scanned, or the map will not line up with itself.")
+
+	session, err := decl.Start(name, mapping.SystemRunner)
+	if err != nil {
+		return err
+	}
+
+	// From here the robot is mapping. Any exit must stop it, including Ctrl+C
+	stopped := false
+	stop := func() (*mapping.Map, error) {
+		if stopped {
+			return nil, nil
+		}
+		stopped = true
+		ui.Info("Stopping mapping and saving...")
+		return session.Stop()
+	}
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigs)
+	aborted := make(chan struct{})
+	go func() {
+		<-sigs
+		close(aborted)
+	}()
+
+	ui.Success("Mapping started.")
+	ui.Info("Drive the robot along your route with its own controller.")
+	done := make(chan struct{})
+	go func() {
+		fmt.Print("\n  Press Enter when you have finished driving... ")
+		fmt.Scanln()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-aborted:
+		fmt.Println()
+		ui.Warn("Interrupted -- stopping mapping so the robot does not keep going.")
+	}
+
+	built, err := stop()
+	if err != nil {
+		ui.Error(err.Error())
+		ui.Faint("The robot may still be finishing. Check with 'emos map list'.")
+		return fmt.Errorf("mapping did not complete")
+	}
+	if built == nil {
+		return fmt.Errorf("mapping stopped but produced no map")
+	}
+
+	ui.Success(fmt.Sprintf("Map '%s' saved.", built.Name))
+	if built.Grid == "" {
+		ui.Warn("It has no occupancy grid yet, so a recipe cannot load it.")
+		ui.Faint("The robot may still be post-processing; re-check with 'emos map list'.")
+	} else {
+		ui.Faint(built.Grid)
+	}
 	return nil
 }

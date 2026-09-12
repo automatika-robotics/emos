@@ -3,9 +3,11 @@ package mapping
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
 )
@@ -233,7 +235,6 @@ func TestNativeStoreIsEmosOwned(t *testing.T) {
 	}
 }
 
-
 func TestCommandRendersAndEscalates(t *testing.T) {
 	d := vendorDecl("/var/opt/robot/data/maps")
 	d.Vendor.RequiresRoot = true
@@ -267,5 +268,173 @@ func TestCheckLocalRejectsRemoteHosts(t *testing.T) {
 	d.Vendor.Host = "ssh://user@10.21.31.106"
 	if err := d.checkLocal(); err == nil {
 		t.Error("remote host should be refused")
+	}
+}
+
+// recordingRunner captures argv instead of executing, and can create the map
+// directory a real vendor tool would have written.
+type recorder struct {
+	ran     [][]string
+	onStop  func()
+	failFor string // argv[1] (after sudo) that should fail
+}
+
+func (r *recorder) run(argv []string) error {
+	r.ran = append(r.ran, argv)
+	verb := argv
+	if verb[0] == "sudo" {
+		verb = verb[1:]
+	}
+	if r.failFor != "" && len(verb) > 1 && verb[1] == r.failFor {
+		return fmt.Errorf("vendor tool failed")
+	}
+	if len(verb) > 1 && verb[1] == "stop_mapping" && r.onStop != nil {
+		r.onStop()
+	}
+	return nil
+}
+
+// fastStop shrinks the wait-for-map poll so tests do not sleep; restored so the
+// real values stand for anything added later.
+func fastStop(t *testing.T, timeout time.Duration) {
+	t.Helper()
+	savedT, savedP := stopTimeout, stopPoll
+	stopTimeout, stopPoll = timeout, time.Millisecond
+	t.Cleanup(func() { stopTimeout, stopPoll = savedT, savedP })
+}
+
+func sessionDecl(store string) *Declaration {
+	d := vendorDecl(store)
+	d.Vendor.RequiresRoot = true
+	d.Vendor.Start = []string{"drmap", "mapping", "-b", "-n", "{name}"}
+	d.Vendor.Stop = []string{"drmap", "stop_mapping"}
+	return d
+}
+
+func TestSessionIdentifiesTheMapTheVendorNamed(t *testing.T) {
+	fastStop(t, 50*time.Millisecond)
+	store := buildStore(t, []string{"old-20260101-100000"}, "", true)
+	d := sessionDecl(store)
+
+	// The vendor appends its own timestamp, so the directory that appears is
+	// not the name we asked for.
+	rec := &recorder{onStop: func() {
+		dir := filepath.Join(store, "warehouse-20260912-143002")
+		os.MkdirAll(dir, 0o755)
+		os.WriteFile(filepath.Join(dir, "occ_grid.yaml"), []byte("image: x\n"), 0o644)
+	}}
+
+	s, err := d.Start("warehouse", rec.run)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if got := rec.ran[0]; got[0] != "sudo" || got[len(got)-1] != "warehouse" {
+		t.Errorf("start argv = %v", got)
+	}
+
+	built, err := s.Stop()
+	if err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	if built.Name != "warehouse-20260912-143002" {
+		t.Errorf("found map %q, want the one the vendor created", built.Name)
+	}
+	if built.Grid == "" {
+		t.Error("the new map's grid should have been located")
+	}
+}
+
+func TestSessionRetriesStopUntilTheMapAppears(t *testing.T) {
+	fastStop(t, 50*time.Millisecond)
+	store := buildStore(t, nil, "", false)
+	d := sessionDecl(store)
+
+	// Re-issuing stop is opt-in: the vendor declares it, the framework does not
+	// assume it. DEEP Robotics documents it as a conditional remedy ("if
+	// stuttering occurs ... you may run it several more times").
+	d.Vendor.StopRetries = 2
+	calls := 0
+	rec := &recorder{}
+	rec.onStop = func() {
+		calls++
+		if calls < 3 {
+			return
+		}
+		os.MkdirAll(filepath.Join(store, "late-20260912-143002"), 0o755)
+	}
+
+	s, err := d.Start("late", rec.run)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	built, err := s.Stop()
+	if err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	if built.Name != "late-20260912-143002" {
+		t.Errorf("built = %q", built.Name)
+	}
+	if calls != 3 {
+		t.Errorf("stop ran %d times, want 3 (1 + 2 declared retries)", calls)
+	}
+}
+
+func TestSessionReportsWhenNoMapEverAppears(t *testing.T) {
+	fastStop(t, 50*time.Millisecond)
+	store := buildStore(t, nil, "", false)
+	d := sessionDecl(store)
+	rec := &recorder{}
+
+	s, err := d.Start("doomed", rec.run)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := s.Stop(); err == nil {
+		t.Error("a session that produced nothing must not report success")
+	}
+}
+
+func TestSessionIgnoresMapsThatExistedBefore(t *testing.T) {
+	fastStop(t, 50*time.Millisecond)
+	// A pre-existing map must not be mistaken for the one just built.
+	store := buildStore(t, []string{"previous-20260101-100000"}, "", true)
+	d := sessionDecl(store)
+	rec := &recorder{}
+
+	s, err := d.Start("new", rec.run)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := s.Stop(); err == nil {
+		t.Error("the pre-existing map should not count as the session's output")
+	}
+}
+
+func TestStartRefusesNative(t *testing.T) {
+	d := &Declaration{Kind: KindNative, Native: &Native{Cloud: "lidar"}}
+	rec := &recorder{}
+	if _, err := d.Start("x", rec.run); err == nil {
+		t.Error("native mapping is not startable through the vendor path")
+	}
+}
+
+func TestStopIssuedOnceWhenNoRetriesDeclared(t *testing.T) {
+	// The default must not repeat a vendor command that may not be idempotent.
+	fastStop(t, 20*time.Millisecond)
+	store := buildStore(t, nil, "", false)
+	d := sessionDecl(store) // StopRetries left at 0
+	calls := 0
+	rec := &recorder{}
+	rec.onStop = func() { calls++ }
+
+	s, err := d.Start("once", rec.run)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := s.Stop(); err == nil {
+		t.Fatal("no map appeared, so Stop must report failure")
+	}
+	if calls != 1 {
+		t.Errorf("stop ran %d times, want 1", calls)
 	}
 }

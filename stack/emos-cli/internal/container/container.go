@@ -155,16 +155,6 @@ func ExecInteractive(name, command string) error {
 	return cmd.Run()
 }
 
-func Cp(name, src, dst string) error {
-	_, err := run("cp", src, name+":"+dst)
-	return err
-}
-
-func CpFrom(name, src, dst string) error {
-	_, err := run("cp", name+":"+src, dst)
-	return err
-}
-
 func Top(name string) (string, error) {
 	return run("top", name)
 }

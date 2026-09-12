@@ -1,11 +1,8 @@
 package runner
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
@@ -111,59 +108,5 @@ func (s *ContainerStrategy) Cleanup() error {
 	ui.Spinner("EMOS container cleanup...", func() error {
 		return container.Stop(config.ContainerName)
 	})
-	return nil
-}
-
-// verifyNodes checks for expected ROS nodes using the robot manifest (licensed mode).
-// Used by the mapping flow.
-func verifyNodes(sensors []string) error {
-	robotManifest := filepath.Join(config.HomeDir, "emos", "robot", "manifest.json")
-	data, err := os.ReadFile(robotManifest)
-	if err != nil {
-		return fmt.Errorf("robot manifest not found: %w", err)
-	}
-
-	var robotConfig map[string]json.RawMessage
-	json.Unmarshal(data, &robotConfig)
-
-	var baseNodes []string
-	if raw, ok := robotConfig["base"]; ok {
-		json.Unmarshal(raw, &baseNodes)
-	}
-
-	for _, sensor := range sensors {
-		if raw, ok := robotConfig[sensor]; ok {
-			var node string
-			if json.Unmarshal(raw, &node) == nil && node != "" {
-				baseNodes = append(baseNodes, node)
-			}
-		}
-	}
-
-	ui.Info("Verifying required ROS2 nodes are active...")
-	allPresent := true
-	for _, node := range baseNodes {
-		node = strings.TrimSpace(node)
-		found := false
-		for i := 0; i < 10; i++ {
-			out, err := container.Exec(config.ContainerName,
-				"source ros_entrypoint.sh && ros2 node list")
-			if err == nil && strings.Contains(out, node) {
-				found = true
-				break
-			}
-			time.Sleep(time.Second)
-		}
-		if found {
-			ui.Success(fmt.Sprintf("Node '%s' is active.", node))
-		} else {
-			ui.Error(fmt.Sprintf("Node '%s' did not appear within 10 seconds!", node))
-			allPresent = false
-		}
-	}
-
-	if !allPresent {
-		return fmt.Errorf("required nodes are missing")
-	}
 	return nil
 }

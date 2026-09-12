@@ -238,7 +238,8 @@ func TestNativeStoreIsEmosOwned(t *testing.T) {
 func TestCommandRendersAndEscalates(t *testing.T) {
 	d := vendorDecl("/var/opt/robot/data/maps")
 	d.Vendor.RequiresRoot = true
-	got := d.command([]string{"drmap", "mapping", "-n", "{name}"}, "warehouse")
+	// Escalation lives in the declared argv, not in command(): it is per-verb.
+	got := d.command([]string{"sudo", "drmap", "mapping", "-n", "{name}"}, "warehouse")
 	want := []string{"sudo", "drmap", "mapping", "-n", "warehouse"}
 	if len(got) != len(want) {
 		t.Fatalf("command = %v, want %v", got, want)
@@ -249,9 +250,8 @@ func TestCommandRendersAndEscalates(t *testing.T) {
 		}
 	}
 
-	d.Vendor.RequiresRoot = false
 	if got := d.command([]string{"drmap", "stop_mapping"}, ""); got[0] == "sudo" {
-		t.Errorf("should not escalate when requires_root is false: %v", got)
+		t.Errorf("command() must not add escalation of its own: %v", got)
 	}
 
 	// An undeclared verb yields no command rather than an empty argv to run.
@@ -310,8 +310,8 @@ func fastStop(t *testing.T, timeout time.Duration) {
 func sessionDecl(store string) *Declaration {
 	d := vendorDecl(store)
 	d.Vendor.RequiresRoot = true
-	d.Vendor.Start = []string{"drmap", "mapping", "-b", "-n", "{name}"}
-	d.Vendor.Stop = []string{"drmap", "stop_mapping"}
+	d.Vendor.Start = []string{"sudo", "drmap", "mapping", "-b", "-n", "{name}"}
+	d.Vendor.Stop = []string{"sudo", "drmap", "stop_mapping"}
 	return d
 }
 
@@ -503,7 +503,7 @@ func TestRemovePrefersADeclaredCommand(t *testing.T) {
 	store := buildStore(t, []string{"gone-20260102-100000"}, "", true)
 	d := vendorDecl(store)
 	d.Vendor.RequiresRoot = true
-	d.Vendor.Remove = []string{"vendortool", "delete", "{name}"}
+	d.Vendor.Remove = []string{"sudo", "vendortool", "delete", "{name}"}
 	rec := &recorder{}
 	if err := d.Remove("gone-20260102-100000", rec.run); err != nil {
 		t.Fatalf("Remove: %v", err)
@@ -537,7 +537,7 @@ func TestExportRefusesANonActiveMapWhenTheToolTakesNoName(t *testing.T) {
 	d := vendorDecl(store)
 	d.Vendor.Export = []string{"drmap", "pack"}
 	rec := &recorder{}
-	if _, err := d.Export("b-20260102-100000", rec.run); err == nil {
+	if _, err := d.Export("b-20260102-100000", "", rec.run); err == nil {
 		t.Error("exporting a non-active map should be refused, not silently wrong")
 	}
 	if len(rec.ran) != 0 {
@@ -559,11 +559,34 @@ func TestExportReportsTheArchiveThatAppeared(t *testing.T) {
 		os.WriteFile(filepath.Join(out, "map-new.zip"), []byte("y"), 0o644)
 	}
 
-	archive, err := d.Export("a-20260101-100000", rec.run)
+	dest := t.TempDir()
+	archive, err := d.Export("a-20260101-100000", dest, rec.run)
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
-	if filepath.Base(archive) != "map-new.zip" {
-		t.Errorf("archive = %q, want the file that appeared", archive)
+	if filepath.Dir(archive) != dest {
+		t.Errorf("archive = %q, want it moved into %q", archive, dest)
+	}
+	if _, err := os.Stat(archive); err != nil {
+		t.Errorf("archive should exist at its new path: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(out, "map-new.zip")); !os.IsNotExist(err) {
+		t.Error("the vendor's copy should have been moved, not duplicated")
+	}
+}
+
+func TestExportIsNotEscalated(t *testing.T) {
+	// The vendor documents pack without sudo. Running it as root would leave a
+	// root-owned archive in the operator's own Downloads.
+	store := buildStore(t, []string{"a-20260101-100000"}, "a-20260101-100000", true)
+	d := vendorDecl(store)
+	d.Vendor.RequiresRoot = true // true for the provider as a whole
+	d.Vendor.Export = []string{"drmap", "pack"}
+	rec := &recorder{}
+	if _, err := d.Export("a-20260101-100000", "", rec.run); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	if rec.ran[0][0] == "sudo" {
+		t.Errorf("export must not be escalated: %v", rec.ran[0])
 	}
 }

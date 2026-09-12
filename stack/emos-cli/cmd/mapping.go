@@ -13,6 +13,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var mapExportDir string
+
 var mapCmd = &cobra.Command{
 	Use:   "map",
 	Short: "Build and manage maps of the robot's environment",
@@ -28,12 +30,15 @@ func init() {
 		Args:  cobra.MaximumNArgs(1),
 		RunE:  runMapNew,
 	})
-	mapCmd.AddCommand(&cobra.Command{
+	exportCmd := &cobra.Command{
 		Use:   "export [name]",
 		Short: "Package a map for copying off the robot (defaults to the active one)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE:  runMapExport,
-	})
+	}
+	exportCmd.Flags().StringVarP(&mapExportDir, "output", "o", "",
+		"directory to put the archive in (default ~/emos/map-archives)")
+	mapCmd.AddCommand(exportCmd)
 	mapCmd.AddCommand(&cobra.Command{
 		Use:   "rm <name>",
 		Short: "Delete a map",
@@ -195,7 +200,20 @@ func runMapRm(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if !ui.Confirm(fmt.Sprintf("Delete map '%s'? This cannot be undone", name)) {
+	// Resolve first, so the prompt names the directory that will actually be
+	// removed.
+	target, err := decl.Find(name)
+	var missing *mapping.ErrNoSuchMap
+	if errors.As(err, &missing) {
+		ui.Error(fmt.Sprintf("No map named '%s'.", missing.Name))
+		ui.Faint("Run 'emos map list' to see what this robot has.")
+		return fmt.Errorf("map not found")
+	}
+	if err != nil {
+		return err
+	}
+
+	if !ui.Confirm(fmt.Sprintf("Delete %s? This cannot be undone", target.Path)) {
 		ui.Info("Left alone.")
 		return nil
 	}
@@ -211,15 +229,9 @@ func runMapRm(cmd *cobra.Command, args []string) error {
 				"leave localization with nothing to localize against.")
 			return fmt.Errorf("refusing to delete the active map")
 		}
-		var missing *mapping.ErrNoSuchMap
-		if errors.As(err, &missing) {
-			ui.Error(fmt.Sprintf("No map named '%s'.", missing.Name))
-			ui.Faint("Run 'emos map list' to see what this robot has.")
-			return fmt.Errorf("map not found")
-		}
 		return err
 	}
-	ui.Success(fmt.Sprintf("Deleted '%s'.", name))
+	ui.Success(fmt.Sprintf("Deleted %s.", target.Path))
 	return nil
 }
 
@@ -240,7 +252,11 @@ func runMapExport(cmd *cobra.Command, args []string) error {
 	if decl.Vendor != nil && decl.Vendor.RequiresRoot {
 		ui.Info("Exporting runs the robot's own tool; sudo may prompt.")
 	}
-	archive, err := decl.Export(name, mapping.SystemRunner)
+	dest := mapExportDir
+	if dest == "" {
+		dest = config.MapArchivesDir
+	}
+	archive, err := decl.Export(name, dest, mapping.SystemRunner)
 	if err != nil {
 		var missing *mapping.ErrNoSuchMap
 		if errors.As(err, &missing) {

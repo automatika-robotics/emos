@@ -187,15 +187,16 @@ const (
 )
 
 var (
-	HomeDir      string
-	ConfigDir    string
-	RecipesDir   string
-	LogsDir      string
-	LicenseFile  string
-	ConfigFile   string
-	PixiDir      string // Pixi installation location
-	WorkspaceDir string // ~/emos/workspace: plugin source
-	MapsDir      string // ~/emos/maps: maps EMOS itself built
+	HomeDir        string
+	ConfigDir      string
+	RecipesDir     string
+	LogsDir        string
+	LicenseFile    string
+	ConfigFile     string
+	PixiDir        string // Pixi installation location
+	WorkspaceDir   string // ~/emos/workspace: plugin source
+	MapsDir        string // ~/emos/maps: maps EMOS itself built
+	MapArchivesDir string // ~/emos/map-archives: exported map packages
 )
 
 func Init() {
@@ -208,6 +209,9 @@ func Init() {
 	PixiDir = pixiDataDir()
 	WorkspaceDir = filepath.Join(HomeDir, "emos", "workspace")
 	MapsDir = filepath.Join(HomeDir, "emos", "maps")
+	// Deliberately not inside MapsDir: that store is listed as map directories,
+	// so a subdirectory of archives would show up as a map.
+	MapArchivesDir = filepath.Join(HomeDir, "emos", "map-archives")
 }
 
 // PluginSrcDir is where robot-plugin sources are cloned (one subdir per

@@ -32,7 +32,7 @@ func (d *Declaration) Remove(name string, run Runner) error {
 	if err := d.checkLocal(); err != nil {
 		return err
 	}
-	target, err := d.find(name)
+	target, err := d.Find(name)
 	if err != nil {
 		return err
 	}
@@ -44,6 +44,8 @@ func (d *Declaration) Remove(name string, run Runner) error {
 		return run(d.command(d.Vendor.Remove, name))
 	}
 	if d.Kind == KindVendor && d.Vendor != nil && d.Vendor.RequiresRoot {
+		// No vendor delete command, and the store is owned by the robot's own
+		// software, so the CLI escalates on its own.
 		return run([]string{"sudo", "rm", "-rf", "--", target.Path})
 	}
 	return os.RemoveAll(target.Path)
@@ -53,15 +55,17 @@ func (d *Declaration) Remove(name string, run Runner) error {
 // when it can be identified.
 //
 // Vendors commonly package only the *active* map and take no argument, so a
-// name that is not the active one is refused.
-func (d *Declaration) Export(name string, run Runner) (string, error) {
+// name that is not the active one is refused. Vendors also choose where the
+// archive lands so it is moved into dest, somewhere predictable and
+// provider-independent. Empty dest leaves it.
+func (d *Declaration) Export(name, dest string, run Runner) (string, error) {
 	if err := d.checkLocal(); err != nil {
 		return "", err
 	}
 	if d.Kind != KindVendor || d.Vendor == nil || len(d.Vendor.Export) == 0 {
 		return "", fmt.Errorf("this robot's plugin declares no way to export a map")
 	}
-	target, err := d.find(name)
+	target, err := d.Find(name)
 	if err != nil {
 		return "", err
 	}
@@ -74,11 +78,39 @@ func (d *Declaration) Export(name string, run Runner) (string, error) {
 	if err := run(d.command(d.Vendor.Export, name)); err != nil {
 		return "", err
 	}
-	return newestNew(d.Vendor.ExportDir, before), nil
+	archive := newestNew(d.Vendor.ExportDir, before)
+	if archive == "" || dest == "" {
+		return archive, nil
+	}
+	return relocate(archive, dest)
 }
 
-// find resolves a map name against the store.
-func (d *Declaration) find(name string) (*Map, error) {
+// relocate moves src into the dest directory, falling back to copy-and-delete
+// when the two are on different filesystems.
+func relocate(src, dest string) (string, error) {
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return src, err
+	}
+	target := filepath.Join(dest, filepath.Base(src))
+	if err := os.Rename(src, target); err == nil {
+		return target, nil
+	}
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return src, err
+	}
+	if err := os.WriteFile(target, data, 0o644); err != nil {
+		return src, err
+	}
+	if err := os.Remove(src); err != nil {
+		// The copy is what matters
+		return target, nil
+	}
+	return target, nil
+}
+
+// Find resolves a map name against the store.
+func (d *Declaration) Find(name string) (*Map, error) {
 	maps, err := d.List()
 	if err != nil {
 		return nil, err

@@ -232,3 +232,40 @@ func TestNativeStoreIsEmosOwned(t *testing.T) {
 		t.Errorf("native store = %q, want %q", d.Store(), config.MapsDir)
 	}
 }
+
+
+func TestCommandRendersAndEscalates(t *testing.T) {
+	d := vendorDecl("/var/opt/robot/data/maps")
+	d.Vendor.RequiresRoot = true
+	got := d.command([]string{"drmap", "mapping", "-n", "{name}"}, "warehouse")
+	want := []string{"sudo", "drmap", "mapping", "-n", "warehouse"}
+	if len(got) != len(want) {
+		t.Fatalf("command = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("command = %v, want %v", got, want)
+		}
+	}
+
+	d.Vendor.RequiresRoot = false
+	if got := d.command([]string{"drmap", "stop_mapping"}, ""); got[0] == "sudo" {
+		t.Errorf("should not escalate when requires_root is false: %v", got)
+	}
+
+	// An undeclared verb yields no command rather than an empty argv to run.
+	if got := d.command(nil, "x"); got != nil {
+		t.Errorf("undeclared verb = %v, want nil", got)
+	}
+}
+
+func TestCheckLocalRejectsRemoteHosts(t *testing.T) {
+	d := vendorDecl("/maps")
+	if err := d.checkLocal(); err != nil {
+		t.Errorf("local host should be fine: %v", err)
+	}
+	d.Vendor.Host = "ssh://user@10.21.31.106"
+	if err := d.checkLocal(); err == nil {
+		t.Error("remote host should be refused")
+	}
+}

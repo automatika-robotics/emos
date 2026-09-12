@@ -40,6 +40,12 @@ func init() {
 		"directory to put the archive in (default ~/emos/map-archives)")
 	mapCmd.AddCommand(exportCmd)
 	mapCmd.AddCommand(&cobra.Command{
+		Use:   "import <archive>",
+		Short: "Unpack an exported map into the store (bare names are looked up in ~/emos/map-archives)",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runMapImport,
+	})
+	mapCmd.AddCommand(&cobra.Command{
 		Use:   "rm <name>",
 		Short: "Delete a map",
 		Args:  cobra.ExactArgs(1),
@@ -249,8 +255,8 @@ func runMapExport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no active map")
 	}
 
-	if decl.Vendor != nil && decl.Vendor.RequiresRoot {
-		ui.Info("Exporting runs the robot's own tool; sudo may prompt.")
+	if decl.Vendor != nil && mapping.Escalates(decl.Vendor.Export) {
+		ui.Info("Exporting runs the robot's own tool as root; sudo may prompt.")
 	}
 	dest := mapExportDir
 	if dest == "" {
@@ -271,5 +277,30 @@ func runMapExport(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	ui.Success(fmt.Sprintf("Exported '%s' to %s", name, archive))
+	return nil
+}
+
+func runMapImport(cmd *cobra.Command, args []string) error {
+	decl, err := resolveMapping()
+	if err != nil {
+		return err
+	}
+	if decl.Vendor != nil && mapping.Escalates(decl.Vendor.Import) {
+		ui.Info("Importing writes into the robot's own map store; sudo may prompt.")
+	}
+	built, err := decl.Import(args[0], config.MapArchivesDir, mapping.SystemRunner)
+	var missing *mapping.ErrNoSuchArchive
+	if errors.As(err, &missing) {
+		ui.Error(fmt.Sprintf("No archive at %s.", missing.Path))
+		ui.Faint(fmt.Sprintf("Give a path, or the name of a file in %s.", config.MapArchivesDir))
+		return fmt.Errorf("archive not found")
+	}
+	if err != nil {
+		return err
+	}
+	ui.Success(fmt.Sprintf("Imported '%s'.", built.Name))
+	if built.Grid == "" {
+		ui.Warn("It has no occupancy grid, so a recipe cannot load it.")
+	}
 	return nil
 }

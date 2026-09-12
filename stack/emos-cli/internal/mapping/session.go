@@ -39,7 +39,7 @@ func (d *Declaration) Start(name string, run Runner) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := run(d.command(d.Vendor.Start, name)); err != nil {
+	if err := run(d.command(d.Vendor.Start, vars{"name": name})); err != nil {
 		return nil, fmt.Errorf("start mapping: %w", err)
 	}
 	return &Session{decl: d, run: run, name: name, before: before}, nil
@@ -54,7 +54,7 @@ func (s *Session) Stop() (*Map, error) {
 	d := s.decl
 	var lastErr error
 	for attempt := 0; attempt <= d.Vendor.StopRetries; attempt++ {
-		if err := s.run(d.command(d.Vendor.Stop, s.name)); err != nil {
+		if err := s.run(d.command(d.Vendor.Stop, vars{"name": s.name})); err != nil {
 			lastErr = err
 		}
 		if m := s.await(stopTimeout); m != nil {
@@ -76,7 +76,7 @@ func (s *Session) Name() string { return s.name }
 func (s *Session) await(timeout time.Duration) *Map {
 	deadline := time.Now().Add(timeout)
 	for {
-		if m := s.newMap(); m != nil {
+		if m := s.decl.appeared(s.before); m != nil {
 			return m
 		}
 		if !time.Now().Before(deadline) {
@@ -100,17 +100,17 @@ func (d *Declaration) snapshot() (map[string]bool, error) {
 	return seen, nil
 }
 
-// newMap returns the map that appeared since the session started, newest first
-// when more than one did.
-func (s *Session) newMap() *Map {
-	maps, err := s.decl.List()
+// appeared returns the map that is in the store now but not in before, newest
+// first when more than one is.
+func (d *Declaration) appeared(before map[string]bool) *Map {
+	maps, err := d.List()
 	if err != nil {
 		return nil
 	}
 	var found *Map
 	for i := range maps {
 		m := maps[i]
-		if s.before[m.Name] {
+		if before[m.Name] {
 			continue
 		}
 		if found == nil || m.Modified.After(found.Modified) {

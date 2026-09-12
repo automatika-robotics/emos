@@ -25,16 +25,16 @@ func SystemRunner(argv []string) error {
 // command renders an argv template. Returns nil when the verb is not declared.
 //
 // A vendor may document sudo on one command and not another.
-func (d *Declaration) command(argv []string, name string) []string {
+func (d *Declaration) command(argv []string, subs vars) []string {
 	if len(argv) == 0 {
 		return nil
 	}
-	return Render(argv, name)
+	return Render(argv, subs)
 }
 
-// escalates reports whether a rendered argv will ask for a password, so a
+// Escalates reports whether a declared argv will ask for a password, so a
 // caller can warn before the prompt appears.
-func escalates(argv []string) bool {
+func Escalates(argv []string) bool {
 	return len(argv) > 0 && argv[0] == "sudo"
 }
 

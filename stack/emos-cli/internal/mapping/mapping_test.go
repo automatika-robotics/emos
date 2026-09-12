@@ -119,7 +119,7 @@ func TestResolveWithoutPluginOrSupport(t *testing.T) {
 }
 
 func TestRenderSubstitutesName(t *testing.T) {
-	got := Render([]string{"drmap", "mapping", "-n", "{name}"}, "warehouse")
+	got := Render([]string{"drmap", "mapping", "-n", "{name}"}, map[string]string{"name": "warehouse"})
 	want := []string{"drmap", "mapping", "-n", "warehouse"}
 	for i := range want {
 		if got[i] != want[i] {
@@ -129,9 +129,16 @@ func TestRenderSubstitutesName(t *testing.T) {
 	// The template must not be mutated -- it is read from the plugin once and
 	// reused for every later call.
 	tmpl := []string{"drmap", "apply", "{name}"}
-	Render(tmpl, "a")
+	Render(tmpl, map[string]string{"name": "a"})
 	if tmpl[2] != "{name}" {
 		t.Errorf("Render mutated its input: %v", tmpl)
+	}
+}
+
+func TestRenderDoesNotReexpandSubstitutedValues(t *testing.T) {
+	got := Render([]string{"{name}", "{path}"}, map[string]string{"name": "{path}", "path": "/a.zip"})
+	if got[0] != "{path}" || got[1] != "/a.zip" {
+		t.Errorf("Render = %v, want [{path} /a.zip]", got)
 	}
 }
 
@@ -239,7 +246,7 @@ func TestCommandRendersAndEscalates(t *testing.T) {
 	d := vendorDecl("/var/opt/robot/data/maps")
 	d.Vendor.RequiresRoot = true
 	// Escalation lives in the declared argv, not in command(): it is per-verb.
-	got := d.command([]string{"sudo", "drmap", "mapping", "-n", "{name}"}, "warehouse")
+	got := d.command([]string{"sudo", "drmap", "mapping", "-n", "{name}"}, vars{"name": "warehouse"})
 	want := []string{"sudo", "drmap", "mapping", "-n", "warehouse"}
 	if len(got) != len(want) {
 		t.Fatalf("command = %v, want %v", got, want)
@@ -250,12 +257,12 @@ func TestCommandRendersAndEscalates(t *testing.T) {
 		}
 	}
 
-	if got := d.command([]string{"drmap", "stop_mapping"}, ""); got[0] == "sudo" {
+	if got := d.command([]string{"drmap", "stop_mapping"}, nil); got[0] == "sudo" {
 		t.Errorf("command() must not add escalation of its own: %v", got)
 	}
 
 	// An undeclared verb yields no command rather than an empty argv to run.
-	if got := d.command(nil, "x"); got != nil {
+	if got := d.command(nil, vars{"name": "x"}); got != nil {
 		t.Errorf("undeclared verb = %v, want nil", got)
 	}
 }
@@ -588,5 +595,86 @@ func TestExportIsNotEscalated(t *testing.T) {
 	}
 	if rec.ran[0][0] == "sudo" {
 		t.Errorf("export must not be escalated: %v", rec.ran[0])
+	}
+}
+
+func importDecl(store string) *Declaration {
+	d := vendorDecl(store)
+	d.Vendor.RequiresRoot = true
+	d.Vendor.Import = []string{"sudo", "drmap", "unpack", "{path}"}
+	return d
+}
+
+func TestImportRunsWithTheAbsoluteArchivePathAndReportsTheNewMap(t *testing.T) {
+	store := buildStore(t, []string{"old-20260101-100000"}, "", true)
+	archive := filepath.Join(t.TempDir(), "yard.zip")
+	os.WriteFile(archive, []byte("zip"), 0o644)
+
+	d := importDecl(store)
+	rec := &recorder{after: func() {
+		os.MkdirAll(filepath.Join(store, "yard-20260912-143002"), 0o755)
+	}}
+	built, err := d.Import(archive, "", rec.run)
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	want := []string{"sudo", "drmap", "unpack", archive}
+	got := rec.ran[0]
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("argv = %v, want %v", got, want)
+		}
+	}
+	if built.Name != "yard-20260912-143002" {
+		t.Errorf("imported = %q", built.Name)
+	}
+}
+
+func TestImportFindsABareNameAmongExportedArchives(t *testing.T) {
+	store := buildStore(t, nil, "", false)
+	archives := t.TempDir()
+	os.WriteFile(filepath.Join(archives, "yard.zip"), []byte("zip"), 0o644)
+
+	d := importDecl(store)
+	rec := &recorder{after: func() {
+		os.MkdirAll(filepath.Join(store, "yard"), 0o755)
+	}}
+	if _, err := d.Import("yard.zip", archives, rec.run); err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	if got := rec.ran[0][3]; got != filepath.Join(archives, "yard.zip") {
+		t.Errorf("archive path = %q, want it resolved in the archives dir", got)
+	}
+}
+
+func TestImportRefusesAMissingArchiveBeforeRunningAnything(t *testing.T) {
+	d := importDecl(buildStore(t, nil, "", false))
+	rec := &recorder{}
+	_, err := d.Import("typo.zip", t.TempDir(), rec.run)
+	var missing *ErrNoSuchArchive
+	if !errors.As(err, &missing) {
+		t.Fatalf("want ErrNoSuchArchive, got %v", err)
+	}
+	if len(rec.ran) != 0 {
+		t.Errorf("nothing should run for an archive that is not there: %v", rec.ran)
+	}
+}
+
+func TestImportReportsWhenNoMapAppears(t *testing.T) {
+	store := buildStore(t, []string{"yard"}, "", true)
+	archive := filepath.Join(t.TempDir(), "yard.zip")
+	os.WriteFile(archive, []byte("zip"), 0o644)
+	// Unpacking over an existing map leaves nothing new to point at.
+	if _, err := importDecl(store).Import(archive, "", (&recorder{}).run); err == nil {
+		t.Error("an import that produced no new map must not report success")
+	}
+}
+
+func TestImportNeedsADeclaredCommand(t *testing.T) {
+	d := vendorDecl(buildStore(t, nil, "", false))
+	archive := filepath.Join(t.TempDir(), "yard.zip")
+	os.WriteFile(archive, []byte("zip"), 0o644)
+	if _, err := d.Import(archive, "", (&recorder{}).run); err == nil {
+		t.Error("a plugin with no import verb should say so")
 	}
 }

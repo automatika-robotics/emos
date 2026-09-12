@@ -10,6 +10,7 @@ package mapping
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
@@ -44,6 +45,8 @@ type Vendor struct {
 	// ExportDir is where Export leaves its archive when the vendor picks the
 	// path itself. Empty means unknown.
 	ExportDir string `json:"export_dir"`
+	// Import unpacks an archive into the store. {path} is the archive.
+	Import []string `json:"import"`
 	// Remove deletes a map. Nil where the vendor has no such command, in which
 	// case the map directory is removed directly.
 	Remove     []string `json:"remove"`
@@ -135,13 +138,28 @@ func Resolve(cfg *config.EMOSConfig) (*Declaration, error) {
 	return &decl, nil
 }
 
-// Render substitutes the map name into an argv template.
+// vars are the substitutions an argv template may contain, as {key}.
+type vars map[string]string
+
+// Render substitutes {key} placeholders in an argv template.
 //
-// Templates are argv lists rather than shell strings.
-func Render(argv []string, name string) []string {
+// One pass per token, so a substituted value is never itself re-expanded: a map
+// named "{path}" stays that name rather than turning into the archive path.
+func Render(argv []string, subs map[string]string) []string {
+	keys := make([]string, 0, len(subs))
+	for key := range subs {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	pairs := make([]string, 0, 2*len(keys))
+	for _, key := range keys {
+		pairs = append(pairs, "{"+key+"}", subs[key])
+	}
+	replacer := strings.NewReplacer(pairs...)
+
 	out := make([]string, 0, len(argv))
 	for _, token := range argv {
-		out = append(out, strings.ReplaceAll(token, "{name}", name))
+		out = append(out, replacer.Replace(token))
 	}
 	return out
 }

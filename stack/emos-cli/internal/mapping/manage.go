@@ -17,6 +17,13 @@ func (e *ErrNoSuchMap) Error() string {
 	return fmt.Sprintf("no map named %q in %s", e.Name, e.Store)
 }
 
+// ErrNoSuchArchive is returned when an archive to import is not on disk.
+type ErrNoSuchArchive struct{ Path string }
+
+func (e *ErrNoSuchArchive) Error() string {
+	return fmt.Sprintf("no archive at %s", e.Path)
+}
+
 // ErrMapIsActive refuses to delete the map the robot is currently using.
 type ErrMapIsActive struct{ Name string }
 
@@ -41,7 +48,7 @@ func (d *Declaration) Remove(name string, run Runner) error {
 	}
 
 	if d.Kind == KindVendor && d.Vendor != nil && len(d.Vendor.Remove) > 0 {
-		return run(d.command(d.Vendor.Remove, name))
+		return run(d.command(d.Vendor.Remove, vars{"name": name}))
 	}
 	if d.Kind == KindVendor && d.Vendor != nil && d.Vendor.RequiresRoot {
 		// No vendor delete command, and the store is owned by the robot's own
@@ -75,7 +82,7 @@ func (d *Declaration) Export(name, dest string, run Runner) (string, error) {
 	}
 
 	before := snapshotDir(d.Vendor.ExportDir)
-	if err := run(d.command(d.Vendor.Export, name)); err != nil {
+	if err := run(d.command(d.Vendor.Export, vars{"name": name})); err != nil {
 		return "", err
 	}
 	archive := newestNew(d.Vendor.ExportDir, before)
@@ -186,4 +193,48 @@ func newestNew(dir string, before map[string]bool) string {
 		}
 	}
 	return bestPath
+}
+
+// Import unpacks an archive produced by Export into the store and returns the
+// map that appeared.
+//
+// A bare filename is looked up in dest so an export and an import round-trip
+// without the operator retyping a path.
+func (d *Declaration) Import(archive, dest string, run Runner) (*Map, error) {
+	if err := d.checkLocal(); err != nil {
+		return nil, err
+	}
+	if d.Kind != KindVendor || d.Vendor == nil || len(d.Vendor.Import) == 0 {
+		return nil, fmt.Errorf("this robot's plugin declares no way to import a map")
+	}
+
+	path := archive
+	if _, err := os.Stat(path); err != nil && dest != "" && filepath.Base(archive) == archive {
+		path = filepath.Join(dest, archive)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, &ErrNoSuchArchive{Path: archive}
+	}
+	if info.IsDir() {
+		return nil, fmt.Errorf("%s is a directory, not an archive", path)
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+
+	before, err := d.snapshot()
+	if err != nil {
+		return nil, err
+	}
+	if err := run(d.command(d.Vendor.Import, vars{"path": abs})); err != nil {
+		return nil, fmt.Errorf("import map: %w", err)
+	}
+	if m := d.appeared(before); m != nil {
+		return m, nil
+	}
+	return nil, fmt.Errorf(
+		"the import ran but no new map appeared in %s; a map of the same name may already be there",
+		d.Store())
 }

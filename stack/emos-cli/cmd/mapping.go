@@ -46,6 +46,12 @@ func init() {
 		RunE:  runMapImport,
 	})
 	mapCmd.AddCommand(&cobra.Command{
+		Use:   "use <name>",
+		Short: "Make a map the one the robot localizes against",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runMapUse,
+	})
+	mapCmd.AddCommand(&cobra.Command{
 		Use:   "rm <name>",
 		Short: "Delete a map",
 		Args:  cobra.ExactArgs(1),
@@ -231,8 +237,8 @@ func runMapRm(cmd *cobra.Command, args []string) error {
 		var active *mapping.ErrMapIsActive
 		if errors.As(err, &active) {
 			ui.Error(fmt.Sprintf("'%s' is the map the robot is currently using.", name))
-			ui.Faint("Switch to another map first; deleting the active one would " +
-				"leave localization with nothing to localize against.")
+			ui.Faint("Switch to another map first with 'emos map use <name>'; deleting " +
+				"the active one would leave localization with nothing to localize against.")
 			return fmt.Errorf("refusing to delete the active map")
 		}
 		return err
@@ -302,5 +308,50 @@ func runMapImport(cmd *cobra.Command, args []string) error {
 	if built.Grid == "" {
 		ui.Warn("It has no occupancy grid, so a recipe cannot load it.")
 	}
+	if !built.Active {
+		ui.Faint(fmt.Sprintf("Make it active with 'emos map use %s'.", built.Name))
+	}
+	return nil
+}
+
+func runMapUse(cmd *cobra.Command, args []string) error {
+	name := args[0]
+	decl, err := resolveMapping()
+	if err != nil {
+		return err
+	}
+
+	target, err := decl.Find(name)
+	var missing *mapping.ErrNoSuchMap
+	if errors.As(err, &missing) {
+		ui.Error(fmt.Sprintf("No map named '%s'.", missing.Name))
+		ui.Faint("Run 'emos map list' to see what this robot has.")
+		return fmt.Errorf("map not found")
+	}
+	if err != nil {
+		return err
+	}
+	if target.Active {
+		ui.Info(fmt.Sprintf("'%s' is already the active map.", name))
+		return nil
+	}
+	if target.Grid == "" {
+		ui.Warn("It has no occupancy grid, so a recipe cannot load it.")
+	}
+
+	ui.Warn("The robot will localize against this map from now on. It needs " +
+		"relocalizing, and a running recipe will lose its position.")
+	if !ui.Confirm(fmt.Sprintf("Make '%s' the active map?", name)) {
+		ui.Info("Left alone.")
+		return nil
+	}
+	if decl.Vendor != nil && mapping.Escalates(decl.Vendor.Apply) {
+		ui.Info("Switching runs the robot's own tool as root; sudo may prompt.")
+	}
+	if err := decl.Use(name, mapping.SystemRunner); err != nil {
+		return err
+	}
+	ui.Success(fmt.Sprintf("'%s' is now the active map.", name))
+	ui.Faint("Relocalize the robot at its standard starting spot before running a recipe.")
 	return nil
 }

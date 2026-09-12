@@ -58,6 +58,39 @@ func (d *Declaration) Remove(name string, run Runner) error {
 	return os.RemoveAll(target.Path)
 }
 
+// Use makes a map the active one by running the declared apply, then
+// after_apply.
+//
+// The exit code is not trusted: the active link is re-read after apply.
+func (d *Declaration) Use(name string, run Runner) error {
+	if err := d.checkLocal(); err != nil {
+		return err
+	}
+	if d.Kind != KindVendor || d.Vendor == nil || len(d.Vendor.Apply) == 0 {
+		return fmt.Errorf("this robot's plugin declares no way to make a map active")
+	}
+	target, err := d.Find(name)
+	if err != nil {
+		return err
+	}
+
+	if err := run(d.command(d.Vendor.Apply, vars{"name": target.Name})); err != nil {
+		return fmt.Errorf("apply map: %w", err)
+	}
+	if active := d.ActiveName(); active != target.Name {
+		if active == "" {
+			return fmt.Errorf("the apply ran but no map is marked active")
+		}
+		return fmt.Errorf("the apply ran but the active map is still %q", active)
+	}
+	if len(d.Vendor.AfterApply) > 0 {
+		if err := run(d.command(d.Vendor.AfterApply, vars{"name": target.Name})); err != nil {
+			return fmt.Errorf("%q is active, but the follow-up command failed: %w", target.Name, err)
+		}
+	}
+	return nil
+}
+
 // Export packages a map for copying off the robot, returning the archive path
 // when it can be identified.
 //

@@ -678,3 +678,79 @@ func TestImportNeedsADeclaredCommand(t *testing.T) {
 		t.Error("a plugin with no import verb should say so")
 	}
 }
+
+func useDecl(store string) *Declaration {
+	d := vendorDecl(store)
+	d.Vendor.Apply = []string{"sudo", "drmap", "apply", "{name}"}
+	d.Vendor.AfterApply = []string{"systemctl", "restart", "localization.service"}
+	return d
+}
+
+// relink points the store's active link at name, as a vendor apply would.
+func relink(t *testing.T, store, name string) {
+	t.Helper()
+	link := filepath.Join(store, "active")
+	os.Remove(link)
+	if err := os.Symlink(filepath.Join(store, name), link); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUseRunsApplyThenAfterApply(t *testing.T) {
+	store := buildStore(t, []string{"a", "b"}, "a", true)
+	d := useDecl(store)
+	rec := &recorder{after: func() { relink(t, store, "b") }}
+	if err := d.Use("b", rec.run); err != nil {
+		t.Fatalf("Use: %v", err)
+	}
+	if len(rec.ran) != 2 {
+		t.Fatalf("want apply then after_apply, got %v", rec.ran)
+	}
+	if got := rec.ran[0]; got[2] != "apply" || got[3] != "b" {
+		t.Errorf("apply argv = %v", got)
+	}
+	if got := rec.ran[1]; got[0] != "systemctl" {
+		t.Errorf("after_apply argv = %v", got)
+	}
+}
+
+func TestUseReportsWhenTheActiveMapDidNotChange(t *testing.T) {
+	store := buildStore(t, []string{"a", "b"}, "a", true)
+	rec := &recorder{}
+	if err := useDecl(store).Use("b", rec.run); err == nil {
+		t.Error("a clean exit with the active link unchanged must not report success")
+	}
+	if len(rec.ran) != 1 {
+		t.Errorf("after_apply should not run when apply did not take: %v", rec.ran)
+	}
+}
+
+func TestUseStopsWhenApplyFails(t *testing.T) {
+	store := buildStore(t, []string{"a", "b"}, "a", true)
+	rec := &recorder{failFor: "apply"}
+	if err := useDecl(store).Use("b", rec.run); err == nil {
+		t.Error("a failed apply must be reported")
+	}
+	if len(rec.ran) != 1 {
+		t.Errorf("nothing should run after a failed apply: %v", rec.ran)
+	}
+}
+
+func TestUseRefusesAnUnknownMap(t *testing.T) {
+	store := buildStore(t, []string{"a"}, "a", true)
+	rec := &recorder{}
+	var missing *ErrNoSuchMap
+	if err := useDecl(store).Use("typo", rec.run); !errors.As(err, &missing) {
+		t.Fatalf("want ErrNoSuchMap, got %v", err)
+	}
+	if len(rec.ran) != 0 {
+		t.Errorf("nothing should run for a map that is not there: %v", rec.ran)
+	}
+}
+
+func TestUseNeedsADeclaredCommand(t *testing.T) {
+	store := buildStore(t, []string{"a", "b"}, "a", true)
+	if err := vendorDecl(store).Use("b", (&recorder{}).run); err == nil {
+		t.Error("a plugin with no apply verb should say so")
+	}
+}

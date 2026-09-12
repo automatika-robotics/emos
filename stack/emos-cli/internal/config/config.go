@@ -195,6 +195,7 @@ var (
 	ConfigFile   string
 	PixiDir      string // Pixi installation location
 	WorkspaceDir string // ~/emos/workspace: plugin source
+	MapsDir      string // ~/emos/maps: maps EMOS itself built
 )
 
 func Init() {
@@ -206,6 +207,7 @@ func Init() {
 	ConfigFile = filepath.Join(ConfigDir, "config.json")
 	PixiDir = pixiDataDir()
 	WorkspaceDir = filepath.Join(HomeDir, "emos", "workspace")
+	MapsDir = filepath.Join(HomeDir, "emos", "maps")
 }
 
 // PluginSrcDir is where robot-plugin sources are cloned (one subdir per

@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -114,6 +115,12 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	unlock, err := lockPlugins()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
 	ui.Header("INSTALLING PLUGIN: " + entry.Name)
 	ui.Faint("Source: " + entry.Repo)
 	ui.Faint("This clones and builds the plugin; it can take a few minutes.")
@@ -186,6 +193,11 @@ func runPluginRemove(cmd *cobra.Command, args []string) error {
 		if !ui.Confirm(fmt.Sprintf("Remove plugin '%s'?", slug)) {
 			return fmt.Errorf("aborted by user")
 		}
+		unlock, err := lockPlugins()
+		if err != nil {
+			return err
+		}
+		defer unlock()
 		if err := plugin.Remove(cfg, slug, os.Stdout); err != nil {
 			return err
 		}
@@ -200,9 +212,26 @@ func runPluginRemove(cmd *cobra.Command, args []string) error {
 	if !ui.Confirm(fmt.Sprintf("Remove all %d plugins (%s)?", len(slugs), strings.Join(slugs, ", "))) {
 		return fmt.Errorf("aborted by user")
 	}
+	unlock, err := lockPlugins()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	if err := plugin.RemoveAll(cfg); err != nil {
 		return err
 	}
 	ui.Success("All plugins removed.")
 	return nil
+}
+
+// lockPlugins takes the plugin lock for a CLI command, explaining when another
+// plugin operation holds it.
+func lockPlugins() (func(), error) {
+	unlock, err := plugin.Lock()
+	if errors.Is(err, plugin.ErrBusy) {
+		ui.Error("Another plugin install, update or removal is running, here or from the dashboard.")
+		ui.Faint("Try again once it finishes.")
+		return nil, fmt.Errorf("plugins are busy")
+	}
+	return unlock, err
 }

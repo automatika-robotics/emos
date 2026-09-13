@@ -4,11 +4,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/automatika-robotics/emos-cli/internal/api"
 	"github.com/automatika-robotics/emos-cli/internal/config"
+	"github.com/automatika-robotics/emos-cli/internal/plugin"
 )
 
 // savePlugins writes a config with the given robot and sensors into the
@@ -75,6 +78,66 @@ func TestPluginRemoveSlugNotInstalled(t *testing.T) {
 	rec := httpServe(t, s, httptest.NewRequest(http.MethodDelete, "/api/v1/plugins/nope", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestPluginRemoveRefusedWhilePluginsAreBusy(t *testing.T) {
+	s := newTestServer(t, true)
+	savePlugins(t, nil, config.PluginInfo{Slug: "hikmicro_plugin", EntryPoint: "h:H", Role: config.RoleSensor})
+	// Held by another job, or by `emos plugin install` in a terminal.
+	unlock, err := plugin.Lock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+
+	rec := httpServe(t, s, httptest.NewRequest(http.MethodDelete, "/api/v1/plugins/hikmicro_plugin", nil))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409: %s", rec.Code, rec.Body.String())
+	}
+	if len(config.LoadConfig().Plugins()) != 1 {
+		t.Error("a refused removal must not change the config")
+	}
+}
+
+func TestPluginRemoveRefusedWhileARecipeRuns(t *testing.T) {
+	s := newTestServer(t, true)
+	savePlugins(t, nil, config.PluginInfo{Slug: "hikmicro_plugin", EntryPoint: "h:H", Role: config.RoleSensor})
+	if err := s.runtime.TryLock(&Run{ID: "r1", Status: RunStatusRunning}); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httpServe(t, s, httptest.NewRequest(http.MethodDelete, "/api/v1/plugins/hikmicro_plugin", nil))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409: %s", rec.Code, rec.Body.String())
+	}
+	if plugin.Busy() {
+		t.Error("the plugin lock must be released when the request is refused")
+	}
+}
+
+func TestRunStartRefusedWhilePluginsAreBusy(t *testing.T) {
+	s := newTestServer(t, true)
+	s.cfg = &config.EMOSConfig{Mode: config.ModePixi}
+	recipe := filepath.Join(config.RecipesDir, "patrol", "recipe.py")
+	if err := os.MkdirAll(filepath.Dir(recipe), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(recipe, []byte("pass\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	unlock, err := plugin.Lock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+
+	rec := httpServe(t, s, jsonRequest(t, http.MethodPost, "/api/v1/runs", map[string]string{"recipe": "patrol"}))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409: %s", rec.Code, rec.Body.String())
+	}
+	if s.runtime.Current() != nil {
+		t.Error("a refused run must not hold the recipe slot")
 	}
 }
 

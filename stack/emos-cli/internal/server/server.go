@@ -38,6 +38,10 @@ type Server struct {
 	// join them.
 	wg sync.WaitGroup
 
+	// workMu makes claiming the recipe slot and taking the plugin lock
+	// mutually exclusive, so a run and a plugin change never both start.
+	workMu sync.Mutex
+
 	cfg    *config.EMOSConfig
 	opts   Options
 	log    *slog.Logger

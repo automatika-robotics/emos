@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -142,12 +143,17 @@ func (s *Server) handlePluginInstall(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, codeBadRequest, "EMOS is not installed")
 		return
 	}
+	unlock, ok := s.claimPlugins(w)
+	if !ok {
+		return
+	}
 
 	id := newID()
 	job := s.jobs.New(id, "plugin_install", slug)
 	ctx, cancel := context.WithCancel(context.Background())
 	job.SetCancel(cancel)
 	go func() {
+		defer unlock()
 		defer cancel()
 		job.Update(JobStatusRunning, 0.05, "resolving plugin")
 		entry, err := plugin.Resolve(slug)
@@ -178,9 +184,14 @@ func (s *Server) handlePluginRemoveSlug(w http.ResponseWriter, r *http.Request) 
 		writeErr(w, http.StatusNotFound, codeNotFound, "plugin not installed: "+slug)
 		return
 	}
+	unlock, ok := s.claimPlugins(w)
+	if !ok {
+		return
+	}
 	id := newID()
 	job := s.jobs.New(id, "plugin_remove", slug)
 	go func() {
+		defer unlock()
 		job.Update(JobStatusRunning, 0.1, "removing and rebuilding remaining plugins")
 		if err := plugin.Remove(cfg, slug, jobLogWriter{job: job}); err != nil {
 			job.Update(JobStatusFailed, 0, err.Error())
@@ -189,6 +200,31 @@ func (s *Server) handlePluginRemoveSlug(w http.ResponseWriter, r *http.Request) 
 		job.Update(JobStatusFinished, 1.0, "removed")
 	}()
 	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": id})
+}
+
+// claimPlugins takes the plugin lock for a job, refusing while another plugin
+// operation holds it (here or from the CLI) or a recipe is running. On success
+// the job must call the returned unlock when it ends.
+func (s *Server) claimPlugins(w http.ResponseWriter) (func(), bool) {
+	s.workMu.Lock()
+	defer s.workMu.Unlock()
+	unlock, err := plugin.Lock()
+	if errors.Is(err, plugin.ErrBusy) {
+		writeErr(w, http.StatusConflict, codeConflict,
+			"another plugin install, update or removal is in progress")
+		return nil, false
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, codeInternal, err.Error())
+		return nil, false
+	}
+	if s.runtime.Current() != nil {
+		unlock()
+		writeErr(w, http.StatusConflict, codeAlreadyRunning,
+			"a recipe is running; stop it before changing plugins")
+		return nil, false
+	}
+	return unlock, true
 }
 
 // jobLogWriter forwards subprocess output to a job's progress message; the

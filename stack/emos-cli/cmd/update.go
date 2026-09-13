@@ -88,8 +88,13 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	if cfg.Plugin != nil {
 		fmt.Println()
 		ui.Header("UPDATING ROBOT PLUGIN")
-		if err := plugin.Update(cfg, os.Stdout); err != nil {
-			ui.Warn("Plugin update failed: " + err.Error())
+		// The stack is already updated, so a busy plugin lock skips this step
+		// rather than failing the whole update.
+		if unlock, err := lockPlugins(); err == nil {
+			defer unlock()
+			if err := plugin.Update(cfg, os.Stdout); err != nil {
+				ui.Warn("Plugin update failed: " + err.Error())
+			}
 		}
 	}
 	return nil

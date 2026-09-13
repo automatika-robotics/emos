@@ -230,6 +230,7 @@ paths:
                 properties:
                   job_id: { type: string }
         "400": { description: EMOS not installed or missing slug }
+        "409": { description: another plugin install, update or removal is in progress, or a recipe is running }
         "503": { description: offline }
   /plugins/{slug}:
     delete:
@@ -249,6 +250,7 @@ paths:
                 properties:
                   job_id: { type: string }
         "404": { description: not installed }
+        "409": { description: another plugin install, update or removal is in progress, or a recipe is running }
   /runs:
     get:
       summary: Currently running + recent finished runs
@@ -271,7 +273,7 @@ paths:
                 skip_sensor_check: { type: boolean }
       responses:
         "202": { description: accepted }
-        "409": { description: another recipe already running }
+        "409": { description: another recipe already running, or plugins are being installed, updated or removed }
   /runs/{id}:
     get:
       summary: Status of a single run

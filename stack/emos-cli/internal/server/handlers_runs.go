@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
+	"github.com/automatika-robotics/emos-cli/internal/plugin"
 	"github.com/automatika-robotics/emos-cli/internal/runner"
 )
 
@@ -78,7 +79,18 @@ func (s *Server) handleRunsStart(w http.ResponseWriter, r *http.Request) {
 		cancelCh:       make(chan struct{}),
 		handleAttached: make(chan struct{}),
 	}
-	if err := s.runtime.TryLock(run); err != nil {
+	// Claimed under workMu, the same as a plugin job, so a recipe and a plugin
+	// change can never both start.
+	s.workMu.Lock()
+	if plugin.Busy() {
+		s.workMu.Unlock()
+		writeErr(w, http.StatusConflict, codeConflict,
+			"plugins are being installed, updated or removed; try again once that finishes")
+		return
+	}
+	err = s.runtime.TryLock(run)
+	s.workMu.Unlock()
+	if err != nil {
 		writeErr(w, http.StatusConflict, codeAlreadyRunning,
 			"a recipe is already running; stop it before starting a new one")
 		return

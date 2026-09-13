@@ -54,7 +54,7 @@ func (d *Declaration) Remove(name string, run Runner) error {
 	var argv []string
 	switch {
 	case len(d.Vendor.Remove) > 0:
-		argv = render(d.Vendor.Remove, vars{"name": name})
+		argv = render(d.Vendor.Remove, mapVars(target))
 	case d.Vendor.RequiresRoot:
 		// No vendor delete command, and the store is owned by the robot's own
 		// software, so the CLI escalates on its own.
@@ -90,7 +90,7 @@ func (d *Declaration) Use(name string, run Runner) error {
 		return err
 	}
 
-	if err := run(render(d.Vendor.Apply, vars{"name": target.Name})); err != nil {
+	if err := run(render(d.Vendor.Apply, mapVars(target))); err != nil {
 		return fmt.Errorf("apply map: %w", err)
 	}
 	active, err := d.ActiveName()
@@ -104,7 +104,7 @@ func (d *Declaration) Use(name string, run Runner) error {
 		return fmt.Errorf("the apply ran but the active map is still %q", active)
 	}
 	if len(d.Vendor.AfterApply) > 0 {
-		if err := run(render(d.Vendor.AfterApply, vars{"name": target.Name})); err != nil {
+		if err := run(render(d.Vendor.AfterApply, mapVars(target))); err != nil {
 			return fmt.Errorf("%q is active, but the follow-up command failed: %w", target.Name, err)
 		}
 	}
@@ -136,7 +136,7 @@ func (d *Declaration) Export(name, dest string, run Runner) (string, error) {
 	}
 
 	before := snapshotDir(d.Vendor.ExportDir)
-	if err := run(render(d.Vendor.Export, vars{"name": name})); err != nil {
+	if err := run(render(d.Vendor.Export, mapVars(target))); err != nil {
 		return "", err
 	}
 	archive := newestNew(d.Vendor.ExportDir, before)
@@ -221,9 +221,15 @@ func (d *Declaration) ActiveName() (string, error) {
 	return "", nil
 }
 
+// mapVars are the substitutions for a command acting on a map in the store.
+func mapVars(m *Map) vars {
+	return vars{"name": m.Name, "path": m.Path}
+}
+
+// hasPlaceholder reports whether a command names the map it acts on.
 func hasPlaceholder(argv []string) bool {
 	for _, token := range argv {
-		if strings.Contains(token, "{name}") {
+		if strings.Contains(token, "{name}") || strings.Contains(token, "{path}") {
 			return true
 		}
 	}

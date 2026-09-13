@@ -661,6 +661,19 @@ func TestExportRunsTheDeclaredCommandAsIs(t *testing.T) {
 	}
 }
 
+func TestExportAnyMapWhenTheToolTakesAPath(t *testing.T) {
+	store := buildStore(t, []string{"a", "b"}, "a", true)
+	d := vendorDecl(store)
+	d.Vendor.Export = []string{"drmap", "pack", "{path}"}
+	rec := &recorder{}
+	if _, err := d.Export("b", "", rec.run); err != nil {
+		t.Fatalf("a tool that is told which map to pack can export a non-active one: %v", err)
+	}
+	if got := rec.ran[0][2]; got != filepath.Join(store, "b") {
+		t.Errorf("export got %q", got)
+	}
+}
+
 func TestExportNeverOverwritesAnArchive(t *testing.T) {
 	store := buildStore(t, []string{"a"}, "a", true)
 	out, dest := t.TempDir(), t.TempDir()
@@ -879,5 +892,38 @@ func TestUseNeedsADeclaredCommand(t *testing.T) {
 	store := buildStore(t, []string{"a", "b"}, "a", true)
 	if err := vendorDecl(store).Use("b", (&recorder{}).run); err == nil {
 		t.Error("a plugin with no apply verb should say so")
+	}
+}
+
+func TestUseGivesTheMapDirectoryToToolsThatTakeAPath(t *testing.T) {
+	// drmap apply takes a directory, not a name.
+	store := buildStore(t, []string{"a", "b"}, "a", true)
+	d := useDecl(store)
+	d.Vendor.Apply = []string{"sudo", "drmap", "apply", "{path}"}
+	d.Vendor.AfterApply = []string{"vendortool", "reload", "--map={path}"}
+	rec := &recorder{after: func() { relink(t, store, "b") }}
+	if err := d.Use("b", rec.run); err != nil {
+		t.Fatalf("Use: %v", err)
+	}
+	dir := filepath.Join(store, "b")
+	if got := rec.ran[0][3]; got != dir {
+		t.Errorf("apply got %q, want %q", got, dir)
+	}
+	if got := rec.ran[1][2]; got != "--map="+dir {
+		t.Errorf("after_apply got %q", got)
+	}
+}
+
+func TestRemoveGivesTheMapDirectoryToToolsThatTakeAPath(t *testing.T) {
+	store := buildStore(t, []string{"gone"}, "", true)
+	d := vendorDecl(store)
+	d.Vendor.Remove = []string{"vendortool", "delete", "{path}"}
+	dir := filepath.Join(store, "gone")
+	rec := &recorder{after: deletes(dir)}
+	if err := d.Remove("gone", rec.run); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if got := rec.ran[0][2]; got != dir {
+		t.Errorf("remove got %q, want %q", got, dir)
 	}
 }

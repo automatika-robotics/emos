@@ -9,10 +9,12 @@
   let {
     plugin,
     busy = '',
+    disabled = false,
     onRemove,
   }: {
     plugin: InstalledPlugin;
     busy?: string; // non-empty while a job targets this plugin: the job's message
+    disabled?: boolean; // another plugin job is running; one at a time
     onRemove: (plugin: InstalledPlugin) => void;
   } = $props();
 
@@ -77,7 +79,7 @@
         <Loader2 size={14} class="animate-spin" /> {busy}
       </button>
     {:else}
-      <button class="btn btn-ghost" onclick={() => onRemove(plugin)}>
+      <button class="btn btn-ghost" onclick={() => onRemove(plugin)} {disabled}>
         <Trash2 size={14} /> Remove
       </button>
     {/if}

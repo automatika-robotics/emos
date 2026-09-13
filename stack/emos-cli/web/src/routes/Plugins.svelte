@@ -158,7 +158,7 @@
     <div class="text-xs uppercase tracking-wider text-emos-text-3 pt-1 flex items-center gap-1">
       <Bot size={12} /> Robot
     </div>
-    <PluginCard plugin={robot} busy={busyFor(robot.slug)} onRemove={startRemove} />
+    <PluginCard plugin={robot} busy={busyFor(robot.slug)} disabled={anyBusy} onRemove={startRemove} />
   {/if}
 
   {#if sensors.length}
@@ -167,7 +167,7 @@
     </div>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       {#each sensors as s (s.slug)}
-        <PluginCard plugin={s} busy={busyFor(s.slug)} onRemove={startRemove} />
+        <PluginCard plugin={s} busy={busyFor(s.slug)} disabled={anyBusy} onRemove={startRemove} />
       {/each}
     </div>
   {/if}

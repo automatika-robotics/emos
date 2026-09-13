@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/automatika-robotics/emos-cli/internal/api"
@@ -13,7 +14,8 @@ import (
 )
 
 // fakePixi stands in for pixi: colcon builds write an overlay marker (or fail
-// when FAKE_BUILD_FAIL is set) and inspect prints a describe() with FAKE_ROLE.
+// when FAKE_BUILD_FAIL is set), inspect prints a describe() with FAKE_ROLE, and
+// pixi add records its arguments in FAKE_PIXI_ADDS.
 const fakePixi = `#!/bin/sh
 case "$*" in
 *"colcon build"*)
@@ -22,6 +24,9 @@ case "$*" in
 	exit 0 ;;
 *"ros_sugar.robot inspect"*)
 	echo "{\"role\":\"${FAKE_ROLE:-robot}\"}"
+	exit 0 ;;
+"add "*)
+	echo "$*" >> "$FAKE_PIXI_ADDS"
 	exit 0 ;;
 esac
 exit 0
@@ -52,6 +57,7 @@ func useTempInstall(t *testing.T) {
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("FAKE_WS", config.WorkspaceDir)
+	t.Setenv("FAKE_PIXI_ADDS", filepath.Join(root, "pixi-adds.log"))
 
 	writeFile(t, filepath.Join(config.PluginSrcDir(), "old_robot", "package.xml"), "old")
 	writeFile(t, filepath.Join(config.PluginOverlayDir(), "marker"), "old\n")
@@ -248,6 +254,36 @@ func TestUpdateFailedBuildReturnsToThePreviousCommit(t *testing.T) {
 	}
 	if got := overlayMarker(t); got != "new\n" {
 		t.Errorf("overlay marker = %q; the previous overlay was not kept", got)
+	}
+}
+
+func TestUpdateInstallsWhatTheUpdatedManifestDeclares(t *testing.T) {
+	useTempInstall(t)
+	entry := robotEntry(t, "new_robot")
+	if err := Install(config.LoadConfig(), entry, io.Discard); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	// Upstream adds a dependency to the plugin's manifest.
+	origin := entry.Repo[len("file://"):]
+	writeFile(t, filepath.Join(origin, ManifestFile), "deps:\n  system:\n    conda: [libfoo]\n")
+	for _, args := range [][]string{
+		{"add", ManifestFile},
+		{"-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "needs libfoo"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = origin
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	if err := Update(config.LoadConfig(), io.Discard); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	adds, _ := os.ReadFile(os.Getenv("FAKE_PIXI_ADDS"))
+	if !strings.Contains(string(adds), "libfoo") {
+		t.Errorf("pixi add calls = %q; the new dependency was not installed", adds)
 	}
 }
 

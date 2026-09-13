@@ -84,10 +84,11 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return modeErr
 	}
 
-	// Pull the active robot plugin to its latest commit and rebuild it.
-	if cfg.Plugin != nil {
+	// Pull the installed plugins, robot and sensors, to their latest commits
+	// and rebuild them.
+	if len(cfg.Plugins()) > 0 {
 		fmt.Println()
-		ui.Header("UPDATING ROBOT PLUGIN")
+		ui.Header("UPDATING PLUGINS")
 		// The stack is already updated, so a busy plugin lock skips this step
 		// rather than failing the whole update.
 		if unlock, err := lockPlugins(); err == nil {

@@ -215,7 +215,8 @@ func Update(cfg *config.EMOSConfig, out io.Writer) error {
 		if err := runStreaming("git", []string{"submodule", "update", "--init", "--recursive", "--depth", "1"}, srcDir, out); err != nil {
 			return fmt.Errorf("submodule update %s: %w", p.Slug, err)
 		}
-		// Re-clone the plugin's declared sources (manifest may have changed).
+		// Re-clone the sources and install the dependencies the updated
+		// manifest declares; either may have changed.
 		manifest, err := LoadManifest(srcDir)
 		if err != nil {
 			return fmt.Errorf("read manifest %s: %w", p.Slug, err)
@@ -228,6 +229,9 @@ func Update(cfg *config.EMOSConfig, out io.Writer) error {
 			if err := tx.place(name); err != nil {
 				return fmt.Errorf("place %s: %w", name, err)
 			}
+		}
+		if err := resolveDeps(cfg, manifest, config.PluginSrcDir(), out); err != nil {
+			return fmt.Errorf("resolve dependencies %s: %w", p.Slug, err)
 		}
 		p.Sources = sources
 		pulled = true

@@ -21,6 +21,24 @@ func TestPixiPackages(t *testing.T) {
 	}
 }
 
+func TestPixiAddArgsResolveOnlyAarch64OnTheRobot(t *testing.T) {
+	pkgs := []string{"ros-jazzy-livox-ros-driver2", "libpcap"}
+
+	got := pixiAddArgs("/emos/pixi.toml", pkgs, "arm64")
+	want := []string{"add", "--manifest-path", "/emos/pixi.toml",
+		"--platform", "linux-aarch64", "ros-jazzy-livox-ros-driver2", "libpcap"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("arm64 = %v, want %v", got, want)
+	}
+
+	// An x86 dev machine keeps resolving every platform, aarch64 included.
+	got = pixiAddArgs("/emos/pixi.toml", pkgs, "amd64")
+	want = []string{"add", "--manifest-path", "/emos/pixi.toml", "ros-jazzy-livox-ros-driver2", "libpcap"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("amd64 = %v, want %v", got, want)
+	}
+}
+
 func TestPixiPackagesEmpty(t *testing.T) {
 	if got := pixiPackages(Deps{}, "jazzy"); len(got) != 0 {
 		t.Fatalf("pixiPackages(empty) = %v, want empty", got)

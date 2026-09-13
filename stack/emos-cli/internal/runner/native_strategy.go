@@ -147,7 +147,7 @@ func (s *NativeStrategy) StartRecipe(recipeName string, manifest *recipeManifest
 	if err := os.MkdirAll(parentDir(logFile), 0755); err != nil {
 		return nil, err
 	}
-	return startCmd(cmd, logFile)
+	return StartProcess(cmd, logFile)
 }
 
 func (s *NativeStrategy) Cleanup() error {

@@ -149,13 +149,13 @@ func (rt *Runtime) TryLock(r *Run) error {
 // AttachHandle moves a preparing run to running, attaches the live process
 // handle, and starts the exit watcher. After this returns, r.handle is
 // safely readable by anyone who waits on r.HandleAttached().
-func (rt *Runtime) AttachHandle(r *Run, h *runner.RunHandle) {
+func (rt *Runtime) AttachHandle(r *Run, h *runner.RunHandle) bool {
 	rt.mu.Lock()
 	if r.isTerminal() {
-		// Cancelled or failed during preparing; don't attach.
 		rt.mu.Unlock()
+		closeOnce(r.handleAttached)
 		_ = h.Cancel(2 * time.Second)
-		return
+		return false
 	}
 	r.handle = h
 	r.Status = RunStatusRunning
@@ -163,6 +163,7 @@ func (rt *Runtime) AttachHandle(r *Run, h *runner.RunHandle) {
 	rt.mu.Unlock()
 	closeOnce(r.handleAttached)
 	go rt.watch(r)
+	return true
 }
 
 // FailPreflight transitions a preparing run to failed and rotates it into

@@ -115,10 +115,9 @@ func (h *RunHandle) finish(code int, err error) {
 	})
 }
 
-// startCmd is a small helper used by native/pixi strategies: it sets up a
-// process group, starts the bash subprocess, and spawns a goroutine that
-// captures the exit status into the handle.
-func startCmd(cmd *exec.Cmd, logPath string) (*RunHandle, error) {
+// StartProcess starts cmd in its own process group and returns a handle that
+// records its exit status. Used by the native and pixi strategies.
+func StartProcess(cmd *exec.Cmd, logPath string) (*RunHandle, error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start recipe: %w", err)

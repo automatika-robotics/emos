@@ -111,10 +111,11 @@ func (s *Server) runRecipeAsync(run *Run, recipeDir string, body startRunBody) {
 		s.runtime.FailPreflight(run, fmt.Errorf("open log file: %w", err))
 		return
 	}
+	attached := false // a recipe process was started and attached to the run
 	defer func() {
 		// Close only if we never attached a process; the recipe process
 		// inherits the file descriptor when started by StartRecipe.
-		if run.handle == nil {
+		if !attached {
 			logf.Close()
 		}
 	}()
@@ -143,18 +144,12 @@ func (s *Server) runRecipeAsync(run *Run, recipeDir string, body startRunBody) {
 		return
 	}
 
-	// Hand the strategy a fresh run for cleanup-after-exit.
-	// We wait on the run's HandleAttached channel for the happens-before
-	// guarantee, then on the handle's Done channel for the actual exit.
-	deferStrategyCleanup := func() {
-		s.goTracked(func() {
-			<-run.HandleAttached()
-			if h := run.Handle(); h != nil {
-				<-h.Done()
-			}
+	// Whatever the strategy starts is cleaned up on every way out of here
+	defer func() {
+		if !attached {
 			_ = strategy.Cleanup()
-		})
-	}
+		}
+	}()
 
 	step("preparing environment")
 	if err := strategy.PrepareEnvironment(); err != nil {
@@ -204,7 +199,6 @@ func (s *Server) runRecipeAsync(run *Run, recipeDir string, body startRunBody) {
 		}
 		if err := strategy.VerifySensorTopics(sensors, distro); err != nil {
 			step("ERROR: %s", err)
-			_ = strategy.Cleanup()
 			s.runtime.FailPreflight(run, err)
 			return
 		}
@@ -213,7 +207,6 @@ func (s *Server) runRecipeAsync(run *Run, recipeDir string, body startRunBody) {
 	}
 	if check() {
 		s.runtime.CancelPreflight(run)
-		_ = strategy.Cleanup()
 		return
 	}
 
@@ -222,12 +215,19 @@ func (s *Server) runRecipeAsync(run *Run, recipeDir string, body startRunBody) {
 	handle, err := strategy.StartRecipe(run.Recipe, manifest, run.LogPath)
 	if err != nil {
 		s.runtime.FailPreflight(run, err)
-		_ = strategy.Cleanup()
 		return
 	}
 
-	s.runtime.AttachHandle(run, handle)
-	deferStrategyCleanup()
+	// A cancel can land after the last checkpoint, while the process starts;
+	// AttachHandle then stops the process and the deferred cleanup runs.
+	if !s.runtime.AttachHandle(run, handle) {
+		return
+	}
+	attached = true
+	s.goTracked(func() {
+		<-handle.Done()
+		_ = strategy.Cleanup()
+	})
 }
 
 // openSetupLog opens (and creates) the run log file in append mode. Used by

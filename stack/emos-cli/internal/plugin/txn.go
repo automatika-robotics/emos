@@ -10,7 +10,7 @@ import (
 
 // txn changes the workspace so that a failure can put it back.
 //
-// New clones are fetched into a staging dir first. Old verlay is moved aside
+// New clones are fetched into a staging dir first. The old overlay is moved aside
 // rather than deleted, and only discarded once the new overlay has built and
 // been inspected. The staging dir sits beside the workspace, on the same
 // filesystem so moves are renames, and outside it so colcon never discovers

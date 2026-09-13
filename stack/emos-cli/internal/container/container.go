@@ -103,13 +103,6 @@ func Run(name, image string, extraArgs ...string) error {
 	return err
 }
 
-func RunWithArgs(name, image string, args []string) error {
-	fullArgs := append([]string{"run"}, args...)
-	fullArgs = append(fullArgs, "--name", name, image)
-	_, err := run(fullArgs...)
-	return err
-}
-
 // ephemeralArgs builds the `docker run --rm` argument list shared by the
 // streaming and capturing variants. The image entrypoint sources the ROS stack before execing the command.
 func ephemeralArgs(image, command string) []string {
@@ -153,15 +146,6 @@ func ExecInteractive(name, command string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
-}
-
-func Top(name string) (string, error) {
-	return run("top", name)
-}
-
-func Restart(name string) error {
-	_, err := run("restart", name)
-	return err
 }
 
 func FileExists(name, path string) bool {

@@ -27,7 +27,7 @@ import (
 // stackPackages are the EMOS packages built from source into the environment;
 // rosdep must skip them on native installs.
 var stackPackages = []string{
-	"automatika_ros_sugar", "kompass", "embodied_agents", "kompass_interfaces",
+	"automatika_ros_sugar", "kompass", "automatika_embodied_agents", "kompass_interfaces",
 }
 
 // resolveDeps installs a plugin's declared driver dependencies, dispatched by

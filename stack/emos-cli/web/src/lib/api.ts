@@ -91,6 +91,16 @@ export interface CatalogPlugin {
   entry_point: string;
 }
 
+// PluginDescribe is the part of a plugin's cached describe() tree the
+// dashboard reads.
+export interface PluginDescribe {
+  role?: string;
+  metadata?: { name?: string; vendor?: string; version?: string; description?: string };
+  feedbacks?: { key: string; msg_type?: string }[];
+  actions?: { name: string }[];
+  events?: { name: string }[];
+}
+
 // InstalledPlugin is one installed plugin plus its cached describe() tree.
 export interface InstalledPlugin {
   slug: string;
@@ -100,9 +110,12 @@ export interface InstalledPlugin {
   ref?: string;
   image_url?: string;
   sources?: string[];     // driver packages built from source alongside it
-  describe?: unknown;
+  describe?: PluginDescribe;
   installed_at: string;
 }
+
+// pluginName is how the dashboard names a plugin: its declared name, else its slug.
+export const pluginName = (p: InstalledPlugin): string => p.describe?.metadata?.name ?? p.slug;
 
 // InstalledPlugins is GET /plugins/installed: the robot (or null) and the
 // sensor plugins mounted alongside it.

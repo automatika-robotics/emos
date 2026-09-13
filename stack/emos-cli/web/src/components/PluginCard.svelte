@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Bot, Radar, Trash2, Loader2 } from 'lucide-svelte';
-  import type { InstalledPlugin } from '$lib/api';
+  import { pluginName, type InstalledPlugin } from '$lib/api';
   import { renderMarkdown } from '$lib/markdown';
 
   // An installed plugin on the Plugins page: what it is, where it came from,
@@ -18,19 +18,17 @@
     onRemove: (plugin: InstalledPlugin) => void;
   } = $props();
 
-  const count = (items: unknown): number => ((items ?? []) as unknown[]).length;
-  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  const plural = (items: unknown[] | undefined, word: string) => {
+    const n = items?.length ?? 0;
+    return n ? `${n} ${word}${n === 1 ? '' : 's'}` : '';
+  };
 
-  let d = $derived((plugin.describe as any) ?? {});
-  let meta = $derived(d.metadata ?? null);
+  let d = $derived(plugin.describe ?? {});
+  let meta = $derived(d.metadata);
   let isSensor = $derived(plugin.role === 'sensor');
   let installed = $derived(plugin.installed_at ? new Date(plugin.installed_at).toLocaleDateString() : '');
   let summary = $derived(
-    [
-      count(d.feedbacks) ? plural(count(d.feedbacks), 'feed') : '',
-      count(d.actions) ? plural(count(d.actions), 'action') : '',
-      count(d.events) ? plural(count(d.events), 'event') : '',
-    ]
+    [plural(d.feedbacks, 'feed'), plural(d.actions, 'action'), plural(d.events, 'event')]
       .filter(Boolean)
       .join(' · ')
   );
@@ -45,7 +43,7 @@
         <Bot size={16} class="text-emos-accent" />
       {/if}
       <div>
-        <div class="font-semibold">{meta?.name ?? plugin.slug}</div>
+        <div class="font-semibold">{pluginName(plugin)}</div>
         {#if meta?.vendor}<div class="text-xs text-emos-text-3">{meta.vendor}</div>{/if}
       </div>
     </div>

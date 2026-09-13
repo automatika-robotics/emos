@@ -1,14 +1,12 @@
 <script lang="ts">
   import { Wifi, WifiOff, RefreshCw, KeyRound, ArrowUpCircle, Bot, Radar } from 'lucide-svelte';
   import { useInfo, useCapabilities, useConnectivity, useRobot, usePluginsInstalled } from '$lib/queries';
-  import type { InstalledPlugin } from '$lib/api';
-  import { renderMarkdown } from '$lib/markdown';
-  import { api } from '$lib/api';
+  import { api, pluginName, type InstalledPlugin } from '$lib/api';
   import { clearToken } from '$lib/auth';
   import { navigate } from '$lib/router';
   import { confirm as confirmDialog } from '$lib/dialog';
   import { onMount } from 'svelte';
-  import { SvelteSet } from 'svelte/reactivity';
+  import HardwareCard from '$components/HardwareCard.svelte';
 
   const info = useInfo();
   const caps = useCapabilities();
@@ -16,34 +14,22 @@
   const robot = useRobot();
   const plugins = usePluginsInstalled();
 
-  // Everything the System page shows for an installed plugin, robot or sensor:
-  // what its describe() reports plus how it was installed.
-  const names = (items: unknown, field: string): string[] =>
-    ((items ?? []) as any[]).map((x) => x?.[field]).filter(Boolean);
+  // What the System page shows for an installed plugin, robot or sensor.
   const view = (p: InstalledPlugin) => {
-    const d = (p.describe as any) ?? {};
+    const d = p.describe ?? {};
     return {
       slug: p.slug,
-      name: (d.metadata?.name as string) ?? p.slug,
-      vendor: d.metadata?.vendor as string | undefined,
-      version: d.metadata?.version as string | undefined,
-      description: d.metadata?.description as string | undefined,
-      entry: p.entry_point,
-      repo: p.repo,
-      ref: p.ref,
-      installed: p.installed_at ? new Date(p.installed_at).toLocaleDateString() : '',
-      sources: p.sources ?? [],
+      name: pluginName(p),
+      vendor: d.metadata?.vendor,
+      description: d.metadata?.description,
       image: p.image_url,
-      feeds: names(d.feedbacks, 'key'),
-      actions: names(d.actions, 'name'),
-      events: names(d.events, 'name'),
+      feeds: (d.feedbacks ?? []).map((f) => f.key).filter(Boolean),
+      actions: (d.actions ?? []).map((a) => a.name).filter(Boolean),
+      events: (d.events ?? []).map((e) => e.name).filter(Boolean),
     };
   };
   let robotPlugin = $derived($plugins.data?.robot ? view($plugins.data.robot) : null);
   let sensorPlugins = $derived(($plugins.data?.sensors ?? []).map(view));
-
-  // Hardware pictures come from the support portal or falls back to the icon.
-  const failedImages = new SvelteSet<string>();
 
   // The robot's feeds, split into what it senses and the rest (status, battery, ...).
   let robotSensors = $derived(new Set($robot.data?.sensors ?? []));
@@ -84,48 +70,26 @@
   <!-- The robot -->
   <div class="text-xs uppercase tracking-wider text-emos-text-3 flex items-center gap-1"><Bot size={12} /> Robot</div>
   {#if $robot.data}
-    <div class="surface p-5 flex flex-col md:flex-row gap-6">
-      <div class="shrink-0 md:w-56 flex items-start justify-center">
-        {#if $robot.data.image_url && !failedImages.has($robot.data.image_url)}
-          {@const src = $robot.data.image_url}
-          <img
-            {src}
-            alt={$robot.data.model ?? $robot.data.name ?? 'robot'}
-            class="max-h-48 w-full object-contain"
-            loading="lazy"
-            onerror={() => failedImages.add(src)}
-          />
-        {:else}
-          <div class="w-full h-36 rounded-xl bg-emos-surface-2 text-emos-accent flex items-center justify-center">
-            <Bot size={40} />
-          </div>
-        {/if}
-      </div>
-      <div class="min-w-0 flex-1 space-y-3">
-        <div>
-          <div class="text-lg font-semibold">{$robot.data.model ?? $robot.data.name ?? 'Robot'}</div>
-          <div class="text-sm text-emos-text-3">
-            {$robot.data.vendor ?? ''}{$robot.data.serial ? ` · ${$robot.data.serial}` : ''}{$robot.data.kinematics ? ` · ${$robot.data.kinematics}` : ''}
-          </div>
-        </div>
-        {#if robotPlugin?.description}
-          <div class="md-content md-compact">{@html renderMarkdown(robotPlugin.description)}</div>
-        {/if}
-        {#if robotPlugin}
-          {@render pills('sensors', $robot.data.sensors ?? [], 'pill-good')}
-          {@render pills('other feeds', robotOtherFeeds)}
-          {@render pills('actions', robotPlugin.actions)}
-          {@render pills('events', robotPlugin.events)}
-        {:else}
-          {@render pills('sensors', $robot.data.sensors ?? [], 'pill-good')}
-          {@render pills('actions', $robot.data.actions ?? [])}
-          {@render pills('events', $robot.data.events ?? [])}
-        {/if}
-        <div class="text-xs text-emos-text-3 pt-1">
-          {robotPlugin ? 'Described by the installed robot plugin.' : `Described by the robot ${$robot.data.source}.`}
-        </div>
-      </div>
-    </div>
+    <HardwareCard
+      large
+      icon={Bot}
+      image={$robot.data.image_url}
+      title={$robot.data.model ?? $robot.data.name ?? 'Robot'}
+      subtitle={[$robot.data.vendor, $robot.data.serial, $robot.data.kinematics].filter(Boolean).join(' · ')}
+      description={robotPlugin?.description}
+      footer={robotPlugin ? 'Described by the installed robot plugin.' : `Described by the robot ${$robot.data.source}.`}
+    >
+      {#if robotPlugin}
+        {@render pills('sensors', $robot.data.sensors ?? [], 'pill-good')}
+        {@render pills('other feeds', robotOtherFeeds)}
+        {@render pills('actions', robotPlugin.actions)}
+        {@render pills('events', robotPlugin.events)}
+      {:else}
+        {@render pills('sensors', $robot.data.sensors ?? [], 'pill-good')}
+        {@render pills('actions', $robot.data.actions ?? [])}
+        {@render pills('events', $robot.data.events ?? [])}
+      {/if}
+    </HardwareCard>
   {:else}
     <div class="surface p-5 text-sm text-emos-text-3">
       No robot identity is exposed by this device. Generic dashboard.
@@ -138,37 +102,18 @@
     <div class="text-xs uppercase tracking-wider text-emos-text-3 flex items-center gap-1"><Radar size={12} /> Sensors</div>
     <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
       {#each sensorPlugins as s (s.slug)}
-        <div class="surface p-5 flex flex-col md:flex-row gap-5">
-          <div class="shrink-0 md:w-40 flex items-start justify-center">
-            {#if s.image && !failedImages.has(s.image)}
-              {@const src = s.image}
-              <img
-                {src}
-                alt={s.name}
-                class="max-h-36 w-full object-contain"
-                loading="lazy"
-                onerror={() => failedImages.add(src)}
-              />
-            {:else}
-              <div class="w-full h-28 rounded-xl bg-emos-surface-2 text-emos-accent flex items-center justify-center">
-                <Radar size={32} />
-              </div>
-            {/if}
-          </div>
-          <div class="min-w-0 flex-1 space-y-3">
-            <div>
-              <div class="font-semibold">{s.name}</div>
-              {#if s.vendor}<div class="text-sm text-emos-text-3">{s.vendor}</div>{/if}
-            </div>
-            {#if s.description}
-              <div class="md-content md-compact">{@html renderMarkdown(s.description)}</div>
-            {/if}
-            {@render pills('feeds', s.feeds, 'pill-good')}
-            {@render pills('actions', s.actions)}
-            {@render pills('events', s.events)}
-            <div class="text-xs text-emos-text-3 pt-1">Described by the installed sensor plugin.</div>
-          </div>
-        </div>
+        <HardwareCard
+          icon={Radar}
+          image={s.image}
+          title={s.name}
+          subtitle={s.vendor}
+          description={s.description}
+          footer="Described by the installed sensor plugin."
+        >
+          {@render pills('feeds', s.feeds, 'pill-good')}
+          {@render pills('actions', s.actions)}
+          {@render pills('events', s.events)}
+        </HardwareCard>
       {/each}
     </div>
   {/if}

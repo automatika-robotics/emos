@@ -8,7 +8,7 @@
     useJobs,
     useConnectivity,
   } from '$lib/queries';
-  import { ApiException, type CatalogPlugin, type InstalledPlugin } from '$lib/api';
+  import { ApiException, pluginName, type CatalogPlugin, type InstalledPlugin } from '$lib/api';
   import { confirm as confirmDialog } from '$lib/dialog';
   import { renderMarkdown } from '$lib/markdown';
   import { isPluginJob } from '$lib/pluginJobs';
@@ -74,7 +74,7 @@
 
   async function startRemove(plugin: InstalledPlugin) {
     if (anyBusy) return;
-    const name = ((plugin.describe as any)?.metadata?.name as string) ?? plugin.slug;
+    const name = pluginName(plugin);
     const ok = await confirmDialog({
       title: `Remove ${name}?`,
       message:
@@ -96,7 +96,7 @@
   }
 
   function robotName(): string {
-    return ((robot?.describe as any)?.metadata?.name as string) ?? robot?.slug ?? 'the current robot';
+    return robot ? pluginName(robot) : 'the current robot';
   }
 
   // Once the jobs list shows our job, the pending marker has done its work.

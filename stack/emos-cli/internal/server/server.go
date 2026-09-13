@@ -56,6 +56,7 @@ type Server struct {
 	startedAt time.Time
 
 	httpServer *http.Server
+	endStreams context.CancelFunc // cancels every request's context at shutdown
 	mdns       *mdnsRegistrations
 	tlsInfo    *tlsca.Info // nil when serving plain HTTP
 
@@ -158,21 +159,7 @@ func (s *Server) Run(ctx context.Context) error {
 		s.mdns = mdnsRegs
 	}
 
-	s.httpServer = &http.Server{
-		Addr:              s.opts.Addr,
-		Handler:           s.router,
-		ReadHeaderTimeout: 10 * time.Second,
-		// Route the stdlib's internal log output (TLS handshake errors,
-		// "URL query contains semicolon", etc.) through slog so noisy
-		// LAN probes don't flood stderr at INFO.
-		ErrorLog: stdlog.New(&slogErrorWriter{log: s.log}, "", 0),
-	}
-	if s.tlsInfo != nil {
-		s.httpServer.TLSConfig = &tls.Config{
-			Certificates: []tls.Certificate{s.tlsInfo.TLSCert},
-			MinVersion:   tls.VersionTLS12,
-		}
-	}
+	s.httpServer = s.newHTTPServer()
 
 	// Background loop that refreshes the cached "latest release" tag.
 	// Tied to ctx so it exits cleanly with the rest of the daemon.
@@ -202,18 +189,60 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	s.mdns.Shutdown()
-	httpErr := s.httpServer.Shutdown(shutdownCtx)
-	// When the HTTP server is quiet, stop what we started. (recipes etc)
-	s.drainRuns(runDrainTimeout)
-	return httpErr
+	return s.stop()
 }
 
-// runDrainTimeout bounds the shutdown wait for the run goroutines. Cancel
-// SIGKILLs the recipe after a 5 s grace, so the join completes just after.
+// newHTTPServer builds the dashboard's HTTP server. Every request's context
+// derives from one that s.endStreams cancels.
+func (s *Server) newHTTPServer() *http.Server {
+	base, endStreams := context.WithCancel(context.Background())
+	s.endStreams = endStreams
+	srv := &http.Server{
+		Addr:              s.opts.Addr,
+		Handler:           s.router,
+		ReadHeaderTimeout: 10 * time.Second,
+		BaseContext:       func(net.Listener) context.Context { return base },
+		// Route the stdlib's internal log output through slog so noisy
+		// LAN probes don't flood stderr at INFO.
+		ErrorLog: stdlog.New(&slogErrorWriter{log: s.log}, "", 0),
+	}
+	if s.tlsInfo != nil {
+		srv.TLSConfig = &tls.Config{
+			Certificates: []tls.Certificate{s.tlsInfo.TLSCert},
+			MinVersion:   tls.VersionTLS12,
+		}
+	}
+	return srv
+}
+
+// httpShutdownTimeout bounds the wait for in-flight requests at shutdown.
+const httpShutdownTimeout = 5 * time.Second
+
+// stop shuts the daemon down: ends streaming responses, waits for in-flight
+// requests, then stops the active run and joins its goroutines.
+func (s *Server) stop() error {
+	s.mdns.Shutdown()
+
+	// A run or job log stream stays open for as long as what it follows, so
+	// Shutdown would otherwise wait out its whole timeout on any open tab.
+	s.endStreams()
+	ctx, cancel := context.WithTimeout(context.Background(), httpShutdownTimeout)
+	defer cancel()
+	err := s.httpServer.Shutdown(ctx)
+	if errors.Is(err, context.DeadlineExceeded) {
+		// A slow request is not a failed stop; it must not fail the unit.
+		s.log.Warn("shutdown: requests still in flight were abandoned")
+		err = nil
+	}
+
+	// With no request in flight nothing can start another run.
+	s.drainRuns(runDrainTimeout)
+	return err
+}
+
+// runDrainTimeout bounds the shutdown wait for the active run to stop and its
+// goroutines to finish, counted from before the cancel. Cancel SIGKILLs the
+// recipe after a 5 s grace, which leaves time for the cleanup to run.
 const runDrainTimeout = 8 * time.Second
 
 // goTracked runs fn on a goroutine registered with the shutdown WaitGroup.
@@ -230,6 +259,7 @@ func (s *Server) goTracked(fn func()) {
 // exits. A goroutine stuck mid-preflight past its next cancel checkpoint is logged
 // and abandoned rather than hanging the stop.
 func (s *Server) drainRuns(timeout time.Duration) {
+	deadline := time.After(timeout) // started before Cancel, which can block
 	if cur := s.runtime.Current(); cur != nil {
 		s.log.Info("shutdown: stopping active run", "id", cur.ID, "recipe", cur.Recipe)
 		if err := s.runtime.Cancel(cur.ID); err != nil {
@@ -243,7 +273,7 @@ func (s *Server) drainRuns(timeout time.Duration) {
 	}()
 	select {
 	case <-done:
-	case <-time.After(timeout):
+	case <-deadline:
 		s.log.Warn("shutdown: run goroutines did not finish in time; exiting anyway")
 	}
 }

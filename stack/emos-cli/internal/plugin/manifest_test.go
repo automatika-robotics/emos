@@ -83,6 +83,28 @@ func TestSourcePackageName(t *testing.T) {
 	}
 }
 
+func TestLoadManifestRejectsUnsafeSources(t *testing.T) {
+	// Each of these would become a workspace path that is later deleted: the
+	// first resolves to $HOME, the second to the whole source dir.
+	cases := map[string]string{
+		"climbs out":    "sources:\n  - git: https://example.com/x\n    name: ../../..\n",
+		"empty name":    "sources:\n  - git: https://github.com/.git\n",
+		"nested":        "sources:\n  - git: https://example.com/x\n    name: vendor/rslidar_sdk\n",
+		"hidden":        "sources:\n  - git: https://example.com/x\n    name: .cache\n",
+		"no git url":    "sources:\n  - ref: v1\n",
+		"option-shaped": "sources:\n  - git: https://example.com/x\n    name: -rf\n",
+	}
+	for label, body := range cases {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, ManifestFile), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadManifest(dir); err == nil {
+			t.Errorf("%s: manifest should be rejected", label)
+		}
+	}
+}
+
 func TestLoadManifestRejectsUnknownKeys(t *testing.T) {
 	dir := t.TempDir()
 	// "source" (singular) is a typo for "sources": it must fail loudly rather

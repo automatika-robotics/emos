@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -78,5 +79,25 @@ func LoadManifest(dir string) (*Manifest, error) {
 	if err := dec.Decode(&m); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", ManifestFile, err)
 	}
+	for i, s := range m.Sources {
+		if s.Git == "" {
+			return nil, fmt.Errorf("%s: sources[%d] has no git URL", ManifestFile, i)
+		}
+		if err := checkDirName(s.PackageName()); err != nil {
+			return nil, fmt.Errorf("%s: sources[%d]: %w", ManifestFile, i, err)
+		}
+	}
 	return &m, nil
+}
+
+// dirName is what a directory created in the workspace may be called.
+var dirName = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._-]*$`)
+
+// checkDirName rejects a name from a manifest or the catalog before it is joined
+// onto a workspace path that is later deleted.
+func checkDirName(name string) error {
+	if !dirName.MatchString(name) {
+		return fmt.Errorf("%q is not a usable directory name", name)
+	}
+	return nil
 }

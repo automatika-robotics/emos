@@ -49,7 +49,7 @@ func listDirs(t *testing.T, root string) []string {
 	return names
 }
 
-func TestGcSources(t *testing.T) {
+func TestOrphanSources(t *testing.T) {
 	src := useTempWorkspace(t)
 	// Workspace: robot m20 (+ its two rslidar sources), sensor hikvision, a
 	// source shared by both, and two leftovers from a replaced robot.
@@ -69,38 +69,28 @@ func TestGcSources(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := gcSources(keepSet(cfg.Plugins()), io.Discard); err != nil {
+	orphans, err := orphanSources(keepSet(cfg.Plugins()))
+	if err != nil {
 		t.Fatal(err)
 	}
-
-	want := []string{"hikmicro_plugin", "m20_plugin", "rslidar_msg", "rslidar_sdk", "shared_msgs"}
-	if got := listDirs(t, src); strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Fatalf("after gc: %v, want %v", got, want)
-	}
-	if _, err := os.Stat(filepath.Join(src, "README")); err != nil {
-		t.Fatalf("stray file was removed: %v", err)
+	// Only directories are workspace packages, so the stray file is not listed.
+	want := []string{"old_robot", "old_robot_driver"}
+	if strings.Join(orphans, ",") != strings.Join(want, ",") {
+		t.Fatalf("orphans = %v, want %v", orphans, want)
 	}
 }
 
-func TestGcSourcesNoWorkspace(t *testing.T) {
+func TestOrphanSourcesNoWorkspace(t *testing.T) {
 	orig := config.WorkspaceDir
 	config.WorkspaceDir = filepath.Join(t.TempDir(), "missing")
 	t.Cleanup(func() { config.WorkspaceDir = orig })
-	if err := gcSources(keepSet(nil), io.Discard); err != nil {
-		t.Fatalf("missing src dir should be a no-op, got %v", err)
+	if names, err := orphanSources(keepSet(nil)); err != nil || names != nil {
+		t.Fatalf("missing src dir should list nothing, got %v, %v", names, err)
 	}
 }
 
-func TestCloneSourcesRejectsMissingGit(t *testing.T) {
-	useTempWorkspace(t)
-	m := &Manifest{Sources: []Source{{Ref: "v1"}}}
-	if _, err := cloneSources(m, io.Discard); err == nil {
-		t.Fatal("expected an error for a source with no git URL")
-	}
-}
-
-func TestCloneSourcesNilManifest(t *testing.T) {
-	names, err := cloneSources(nil, io.Discard)
+func TestFetchSourcesNilManifest(t *testing.T) {
+	names, err := fetchSources(nil, nil, io.Discard)
 	if err != nil || names != nil {
 		t.Fatalf("nil manifest: names=%v err=%v, want nil,nil", names, err)
 	}

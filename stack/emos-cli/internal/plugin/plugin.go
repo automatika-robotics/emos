@@ -46,54 +46,48 @@ func Install(cfg *config.EMOSConfig, entry api.Plugin, out io.Writer) error {
 	if cfg == nil || !cfg.IsInstalled() {
 		return fmt.Errorf("EMOS is not installed; run 'emos install' first")
 	}
-	if entry.Filename == "" {
-		return fmt.Errorf("plugin entry has no slug")
+	if err := checkDirName(entry.Filename); err != nil {
+		return fmt.Errorf("plugin slug: %w", err)
 	}
 	if entry.EntryPoint == "" {
 		return fmt.Errorf("plugin %q has no entry_point in the catalog", entry.Filename)
+	}
+	cfg = current(cfg)
+
+	tx, err := begin()
+	if err != nil {
+		return fmt.Errorf("prepare workspace: %w", err)
+	}
+	defer tx.rollback()
+
+	// Fetch everything before touching the workspace, so a failed clone or a
+	// bad manifest changes nothing.
+	fmt.Fprintf(out, "Cloning %s\n", entry.Repo)
+	if err := gitClone(entry.Repo, entry.Ref, true, tx.staged(entry.Filename), out); err != nil {
+		return fmt.Errorf("git clone: %w", err)
+	}
+	manifest, err := LoadManifest(tx.staged(entry.Filename))
+	if err != nil {
+		return fmt.Errorf("read plugin manifest: %w", err)
+	}
+	sources, err := fetchSources(tx, manifest, out)
+	if err != nil {
+		return fmt.Errorf("clone source dependencies: %w", err)
 	}
 
 	if err := os.MkdirAll(config.PluginSrcDir(), 0o755); err != nil {
 		return fmt.Errorf("create plugin source dir: %w", err)
 	}
-
-	// Drop any prior copy of this plugin so the clone lands in a clean dir.
-	if err := os.RemoveAll(filepath.Join(config.PluginSrcDir(), entry.Filename)); err != nil {
-		return fmt.Errorf("clear plugin source: %w", err)
-	}
-
-	srcDir := filepath.Join(config.PluginSrcDir(), entry.Filename)
-	fmt.Fprintf(out, "Cloning %s\n", entry.Repo)
-	if err := gitClone(entry.Repo, entry.Ref, true, srcDir, out); err != nil {
-		return fmt.Errorf("git clone: %w", err)
-	}
-
-	// The plugin's manifest declares all dependencies.
-	manifest, err := LoadManifest(srcDir)
-	if err != nil {
-		return fmt.Errorf("read plugin manifest: %w", err)
-	}
-	sources, err := cloneSources(manifest, out)
-	if err != nil {
-		return fmt.Errorf("clone source dependencies: %w", err)
+	for _, name := range append([]string{entry.Filename}, sources...) {
+		if err := tx.place(name); err != nil {
+			return fmt.Errorf("place %s: %w", name, err)
+		}
 	}
 	if err := resolveDeps(cfg, manifest, config.PluginSrcDir(), out); err != nil {
 		return fmt.Errorf("resolve dependencies: %w", err)
 	}
-
-	// Prune the workspace to what this install leaves in place.
-	if err := gcSources(installKeepSet(cfg, entry, sources), out); err != nil {
-		return fmt.Errorf("prune workspace: %w", err)
-	}
-
-	// Rebuild the overlay from scratch so a replaced plugin's artifacts don't
-	// linger
-	if err := os.RemoveAll(config.PluginOverlayDir()); err != nil {
-		return fmt.Errorf("clear plugin overlay: %w", err)
-	}
-	fmt.Fprintf(out, "Building plugins (%s mode)\n", cfg.Mode)
-	if err := build(cfg, out); err != nil {
-		return fmt.Errorf("colcon build: %w", err)
+	if err := rebuild(cfg, tx, installKeepSet(cfg, entry, sources), out); err != nil {
+		return err
 	}
 
 	describe, err := inspect(cfg, entry.EntryPoint)
@@ -101,7 +95,7 @@ func Install(cfg *config.EMOSConfig, entry api.Plugin, out io.Writer) error {
 		return fmt.Errorf("inspect plugin: %w", err)
 	}
 
-	// reconcide calalog hint with describe().role from the plugin
+	// Reconcile the catalog's role with describe().role from the plugin.
 	role := entry.Role
 	if r := parseRole(describe); r != "" {
 		if role != "" && role != r {
@@ -127,16 +121,28 @@ func Install(cfg *config.EMOSConfig, entry api.Plugin, out io.Writer) error {
 	if entry.Image != "" {
 		pi.ImageURL = config.PluginsEndpoint + "/images/" + entry.Image
 	}
-
-	if role == config.RoleSensor {
-		cfg.UpsertSensor(pi)
-	} else {
-		cfg.Plugin = &pi
-	}
-	if err := config.SaveConfig(cfg); err != nil {
+	err = config.UpdateConfig(func(c *config.EMOSConfig) {
+		if role == config.RoleSensor {
+			c.UpsertSensor(pi)
+		} else {
+			c.Plugin = &pi
+		}
+	})
+	if err != nil {
 		return fmt.Errorf("save config: %w", err)
 	}
+	tx.commit()
 	return nil
+}
+
+// current returns the config as it is on disk, falling back to cfg. Callers
+// load cfg before taking Lock, when another plugin operation may still have
+// been changing it.
+func current(cfg *config.EMOSConfig) *config.EMOSConfig {
+	if fresh := config.LoadConfig(); fresh != nil {
+		return fresh
+	}
+	return cfg
 }
 
 // parseRole extracts a plugin's role from its describe() JSON ("robot" |
@@ -175,6 +181,14 @@ func Update(cfg *config.EMOSConfig, out io.Writer) error {
 	if cfg == nil {
 		return nil
 	}
+	cfg = current(cfg)
+
+	tx, err := begin()
+	if err != nil {
+		return fmt.Errorf("prepare workspace: %w", err)
+	}
+	defer tx.rollback()
+
 	pulled := false
 	for _, p := range pluginPtrs(cfg) {
 		if p.Ref != "" {
@@ -187,6 +201,14 @@ func Update(cfg *config.EMOSConfig, out io.Writer) error {
 			continue
 		}
 		fmt.Fprintf(out, "Updating plugin %s\n", p.Slug)
+		head, err := captureStdout("git", []string{"rev-parse", "HEAD"}, srcDir)
+		if err != nil {
+			return fmt.Errorf("read %s commit: %w", p.Slug, err)
+		}
+		tx.onRollback(func() {
+			runStreaming("git", []string{"reset", "--hard", string(head)}, srcDir, io.Discard)
+			runStreaming("git", []string{"submodule", "update", "--init", "--recursive", "--depth", "1"}, srcDir, io.Discard)
+		})
 		if err := runStreaming("git", []string{"pull", "--ff-only"}, srcDir, out); err != nil {
 			return fmt.Errorf("git pull %s: %w", p.Slug, err)
 		}
@@ -198,9 +220,14 @@ func Update(cfg *config.EMOSConfig, out io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("read manifest %s: %w", p.Slug, err)
 		}
-		sources, err := cloneSources(manifest, out)
+		sources, err := fetchSources(tx, manifest, out)
 		if err != nil {
 			return fmt.Errorf("update sources %s: %w", p.Slug, err)
+		}
+		for _, name := range sources {
+			if err := tx.place(name); err != nil {
+				return fmt.Errorf("place %s: %w", name, err)
+			}
 		}
 		p.Sources = sources
 		pulled = true
@@ -209,16 +236,8 @@ func Update(cfg *config.EMOSConfig, out io.Writer) error {
 		return nil
 	}
 
-	// Drop sources no plugin references any more. Rebuild the overlay and
-	// refresh each plugin's cached describe().
-	if err := gcSources(keepSet(cfg.Plugins()), out); err != nil {
-		return fmt.Errorf("prune workspace: %w", err)
-	}
-	if err := os.RemoveAll(config.PluginOverlayDir()); err != nil {
-		return fmt.Errorf("clear plugin overlay: %w", err)
-	}
-	if err := build(cfg, out); err != nil {
-		return fmt.Errorf("colcon build: %w", err)
+	if err := rebuild(cfg, tx, keepSet(cfg.Plugins()), out); err != nil {
+		return err
 	}
 	for _, p := range pluginPtrs(cfg) {
 		describe, err := inspect(cfg, p.EntryPoint)
@@ -228,35 +247,50 @@ func Update(cfg *config.EMOSConfig, out io.Writer) error {
 		p.Describe = json.RawMessage(describe)
 		p.InstalledAt = time.Now().UTC()
 	}
-	return config.SaveConfig(cfg)
+	err = config.UpdateConfig(func(c *config.EMOSConfig) {
+		for _, p := range pluginPtrs(cfg) {
+			if rec := c.FindPlugin(p.Slug); rec != nil {
+				rec.Sources, rec.Describe, rec.InstalledAt = p.Sources, p.Describe, p.InstalledAt
+			}
+		}
+	})
+	if err != nil {
+		return fmt.Errorf("save config: %w", err)
+	}
+	tx.commit()
+	return nil
 }
 
 // Remove deletes one installed plugin by slug then rebuilds the overlay from
 // whatever remains.
 func Remove(cfg *config.EMOSConfig, slug string, out io.Writer) error {
+	cfg = current(cfg)
 	if cfg == nil || cfg.FindPlugin(slug) == nil {
 		return fmt.Errorf("plugin %q is not installed", slug)
 	}
 	cfg.RemovePlugin(slug)
+	if err := config.UpdateConfig(func(c *config.EMOSConfig) { c.RemovePlugin(slug) }); err != nil {
+		return fmt.Errorf("save config: %w", err)
+	}
 
 	if len(cfg.Plugins()) == 0 {
 		if err := os.RemoveAll(config.WorkspaceDir); err != nil {
 			return fmt.Errorf("remove plugin workspace: %w", err)
 		}
-	} else {
-		// Drop the plugin and any sources only it needed, then rebuild the rest.
-		if err := gcSources(keepSet(cfg.Plugins()), out); err != nil {
-			return fmt.Errorf("prune workspace: %w", err)
-		}
-		if err := os.RemoveAll(config.PluginOverlayDir()); err != nil {
-			return fmt.Errorf("clear plugin overlay: %w", err)
-		}
-		fmt.Fprintf(out, "Rebuilding remaining plugins (%s mode)\n", cfg.Mode)
-		if err := build(cfg, out); err != nil {
-			return fmt.Errorf("rebuild after removal: %w", err)
-		}
+		return nil
 	}
-	return config.SaveConfig(cfg)
+
+	tx, err := begin()
+	if err != nil {
+		return fmt.Errorf("prepare workspace: %w", err)
+	}
+	defer tx.rollback()
+	fmt.Fprintf(out, "Rebuilding remaining plugins\n")
+	if err := rebuild(cfg, tx, keepSet(cfg.Plugins()), out); err != nil {
+		return fmt.Errorf("removed %q, but the remaining plugins failed to rebuild and keep their previous build: %w", slug, err)
+	}
+	tx.commit()
+	return nil
 }
 
 // RemoveAll deletes every installed plugin and its workspace.
@@ -264,10 +298,35 @@ func RemoveAll(cfg *config.EMOSConfig) error {
 	if err := os.RemoveAll(config.WorkspaceDir); err != nil {
 		return fmt.Errorf("remove plugin workspace: %w", err)
 	}
-	if cfg != nil {
-		cfg.Plugin = nil
-		cfg.SensorPlugins = nil
-		return config.SaveConfig(cfg)
+	if cfg == nil {
+		return nil
+	}
+	return config.UpdateConfig(func(c *config.EMOSConfig) {
+		c.Plugin = nil
+		c.SensorPlugins = nil
+	})
+}
+
+// rebuild prunes the workspace to keep and builds the overlay from scratch, so a
+// replaced plugin's artifacts don't linger. What it prunes or replaces is set
+// aside in tx.
+func rebuild(cfg *config.EMOSConfig, tx *txn, keep map[string]bool, out io.Writer) error {
+	orphans, err := orphanSources(keep)
+	if err != nil {
+		return fmt.Errorf("prune workspace: %w", err)
+	}
+	for _, name := range orphans {
+		fmt.Fprintf(out, "Removing orphaned source %s\n", name)
+		if err := tx.setAside(filepath.Join(config.PluginSrcDir(), name)); err != nil {
+			return fmt.Errorf("prune workspace: %w", err)
+		}
+	}
+	if err := tx.setAside(config.PluginOverlayDir()); err != nil {
+		return fmt.Errorf("clear plugin overlay: %w", err)
+	}
+	fmt.Fprintf(out, "Building plugins (%s mode)\n", cfg.Mode)
+	if err := build(cfg, out); err != nil {
+		return fmt.Errorf("colcon build: %w", err)
 	}
 	return nil
 }
@@ -278,7 +337,7 @@ func gitClone(repo, ref string, recursive bool, dest string, out io.Writer) erro
 	if ref != "" {
 		args = append(args, "--branch", ref)
 	}
-	args = append(args, repo, dest)
+	args = append(args, "--", repo, dest)
 	if err := runStreaming("git", args, "", out); err != nil {
 		return err
 	}
@@ -288,24 +347,17 @@ func gitClone(repo, ref string, recursive bool, dest string, out io.Writer) erro
 	return runStreaming("git", []string{"submodule", "update", "--init", "--recursive", "--depth", "1"}, dest, out)
 }
 
-// cloneSources clones a manifest's source repositories into the workspace as
-// sibling packages.
-func cloneSources(manifest *Manifest, out io.Writer) ([]string, error) {
+// fetchSources clones a manifest's source repositories into tx's staging dir
+// and returns their names, for placing in the workspace as sibling packages.
+func fetchSources(tx *txn, manifest *Manifest, out io.Writer) ([]string, error) {
 	if manifest == nil {
 		return nil, nil
 	}
 	var names []string
-	for i, s := range manifest.Sources {
-		if s.Git == "" {
-			return nil, fmt.Errorf("%s: sources[%d] has no git URL", ManifestFile, i)
-		}
+	for _, s := range manifest.Sources {
 		name := s.PackageName()
-		dest := filepath.Join(config.PluginSrcDir(), name)
-		if err := os.RemoveAll(dest); err != nil {
-			return nil, err
-		}
 		fmt.Fprintf(out, "Cloning source dependency %s\n", s.Git)
-		if err := gitClone(s.Git, s.Ref, s.Recursive, dest, out); err != nil {
+		if err := gitClone(s.Git, s.Ref, s.Recursive, tx.staged(name), out); err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
 		}
 		names = append(names, name)
@@ -345,25 +397,22 @@ func installKeepSet(cfg *config.EMOSConfig, entry api.Plugin, sources []string) 
 	return keep
 }
 
-// gcSources removes every workspace directory not in keep.
-func gcSources(keep map[string]bool, out io.Writer) error {
+// orphanSources lists the workspace source dirs keep does not account for.
+func orphanSources(keep map[string]bool) ([]string, error) {
 	entries, err := os.ReadDir(config.PluginSrcDir())
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
+		return nil, err
 	}
+	var names []string
 	for _, e := range entries {
-		if !e.IsDir() || keep[e.Name()] {
-			continue
-		}
-		fmt.Fprintf(out, "Removing orphaned source %s\n", e.Name())
-		if err := os.RemoveAll(filepath.Join(config.PluginSrcDir(), e.Name())); err != nil {
-			return err
+		if e.IsDir() && !keep[e.Name()] {
+			names = append(names, e.Name())
 		}
 	}
-	return nil
+	return names, nil
 }
 
 // build compiles the plugin into the overlay, dispatching on install mode.

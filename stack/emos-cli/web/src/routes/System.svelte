@@ -8,6 +8,7 @@
   import { navigate } from '$lib/router';
   import { confirm as confirmDialog } from '$lib/dialog';
   import { onMount } from 'svelte';
+  import { SvelteSet } from 'svelte/reactivity';
 
   const info = useInfo();
   const caps = useCapabilities();
@@ -40,6 +41,9 @@
   };
   let robotPlugin = $derived($plugins.data?.robot ? view($plugins.data.robot) : null);
   let sensorPlugins = $derived(($plugins.data?.sensors ?? []).map(view));
+
+  // Hardware pictures come from the support portal or falls back to the icon.
+  const failedImages = new SvelteSet<string>();
 
   // The robot's feeds, split into what it senses and the rest (status, battery, ...).
   let robotSensors = $derived(new Set($robot.data?.sensors ?? []));
@@ -82,12 +86,14 @@
   {#if $robot.data}
     <div class="surface p-5 flex flex-col md:flex-row gap-6">
       <div class="shrink-0 md:w-56 flex items-start justify-center">
-        {#if $robot.data.image_url}
+        {#if $robot.data.image_url && !failedImages.has($robot.data.image_url)}
+          {@const src = $robot.data.image_url}
           <img
-            src={$robot.data.image_url}
+            {src}
             alt={$robot.data.model ?? $robot.data.name ?? 'robot'}
             class="max-h-48 w-full object-contain"
             loading="lazy"
+            onerror={() => failedImages.add(src)}
           />
         {:else}
           <div class="w-full h-36 rounded-xl bg-emos-surface-2 text-emos-accent flex items-center justify-center">
@@ -134,8 +140,15 @@
       {#each sensorPlugins as s (s.slug)}
         <div class="surface p-5 flex flex-col md:flex-row gap-5">
           <div class="shrink-0 md:w-40 flex items-start justify-center">
-            {#if s.image}
-              <img src={s.image} alt={s.name} class="max-h-36 w-full object-contain" loading="lazy" />
+            {#if s.image && !failedImages.has(s.image)}
+              {@const src = s.image}
+              <img
+                {src}
+                alt={s.name}
+                class="max-h-36 w-full object-contain"
+                loading="lazy"
+                onerror={() => failedImages.add(src)}
+              />
             {:else}
               <div class="w-full h-28 rounded-xl bg-emos-surface-2 text-emos-accent flex items-center justify-center">
                 <Radar size={32} />

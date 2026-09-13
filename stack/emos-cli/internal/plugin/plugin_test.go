@@ -3,6 +3,7 @@ package plugin
 import (
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -93,6 +94,24 @@ func TestFetchSourcesNilManifest(t *testing.T) {
 	names, err := fetchSources(nil, nil, io.Discard)
 	if err != nil || names != nil {
 		t.Fatalf("nil manifest: names=%v err=%v, want nil,nil", names, err)
+	}
+}
+
+func TestQuoteKeepsAValueOneWordInBash(t *testing.T) {
+	for _, value := range []string{
+		"/home/robot user/emos/workspace", // a space in $HOME
+		"/home/o'brien/emos",
+		"m20_plugin:M20Plugin; rm -rf ~", // an entry point that tries to run shell
+		"$(id) `id` $HOME",
+		"",
+	} {
+		out, err := exec.Command("bash", "-c", "printf '%s|' "+quote(value)).Output()
+		if err != nil {
+			t.Fatalf("bash: %v", err)
+		}
+		if got := string(out); got != value+"|" {
+			t.Errorf("quote(%q) reached bash as %q", value, got)
+		}
 	}
 }
 

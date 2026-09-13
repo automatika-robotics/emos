@@ -95,9 +95,9 @@ func pixiAddArgs(manifest string, pkgs []string, goarch string) []string {
 // Reads package.xml directly.
 func resolveDepsNative(cfg *config.EMOSConfig, srcRoot string, deps Deps, out io.Writer) error {
 	shell := fmt.Sprintf(
-		"source /opt/ros/%s/setup.bash && rosdep install --from-paths %s --ignore-src -y "+
-			"--rosdistro %s --skip-keys \"%s\"",
-		cfg.ROSDistro, srcRoot, cfg.ROSDistro, strings.Join(stackPackages, " "))
+		"source %s && rosdep install --from-paths %s --ignore-src -y --rosdistro %s --skip-keys %s",
+		quote(rosSetup(cfg.ROSDistro)), quote(srcRoot), quote(cfg.ROSDistro),
+		quote(strings.Join(stackPackages, " ")))
 	if err := runStreaming("bash", []string{"-c", shell}, "", out); err != nil {
 		fmt.Fprintln(out, "rosdep could not resolve every dependency (something may not be "+
 			"apt-packaged). Install these manually:")

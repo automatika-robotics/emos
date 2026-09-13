@@ -423,8 +423,8 @@ func orphanSources(keep map[string]bool) ([]string, error) {
 func build(cfg *config.EMOSConfig, out io.Writer) error {
 	switch cfg.Mode {
 	case config.ModeNative:
-		shell := fmt.Sprintf("source /opt/ros/%s/setup.bash && cd %s && %s",
-			cfg.ROSDistro, config.WorkspaceDir, colconBuild)
+		shell := fmt.Sprintf("source %s && cd %s && %s",
+			quote(rosSetup(cfg.ROSDistro)), quote(config.WorkspaceDir), colconBuild)
 		return runStreaming("bash", []string{"-c", shell}, "", out)
 
 	case config.ModePixi:
@@ -433,8 +433,8 @@ func build(cfg *config.EMOSConfig, out io.Writer) error {
 			return err
 		}
 		shell := fmt.Sprintf("source %s && cd %s && %s",
-			filepath.Join(cfg.PixiProjectDir, "install", "setup.sh"),
-			config.WorkspaceDir, colconBuild)
+			quote(filepath.Join(cfg.PixiProjectDir, "install", "setup.sh")),
+			quote(config.WorkspaceDir), colconBuild)
 		return runStreaming(pixiBin, pixiRunArgs(cfg, shell), "", out)
 
 	case config.ModeOSSContainer, config.ModeLicensed:
@@ -451,7 +451,7 @@ func build(cfg *config.EMOSConfig, out io.Writer) error {
 func inspect(cfg *config.EMOSConfig, entryPoint string) ([]byte, error) {
 	overlayBash := filepath.Join(config.PluginOverlayDir(), "setup.bash")
 	overlaySh := filepath.Join(config.PluginOverlayDir(), "setup.sh")
-	py := "python3 -m ros_sugar.robot inspect " + entryPoint
+	py := "python3 -m ros_sugar.robot inspect " + quote(entryPoint)
 
 	var (
 		describe []byte
@@ -459,8 +459,8 @@ func inspect(cfg *config.EMOSConfig, entryPoint string) ([]byte, error) {
 	)
 	switch cfg.Mode {
 	case config.ModeNative:
-		shell := fmt.Sprintf("source /opt/ros/%s/setup.bash && source %s && %s",
-			cfg.ROSDistro, overlayBash, py)
+		shell := fmt.Sprintf("source %s && source %s && %s",
+			quote(rosSetup(cfg.ROSDistro)), quote(overlayBash), py)
 		describe, err = captureStdout("bash", []string{"-c", shell}, "")
 
 	case config.ModePixi:
@@ -469,7 +469,7 @@ func inspect(cfg *config.EMOSConfig, entryPoint string) ([]byte, error) {
 			return nil, e
 		}
 		shell := fmt.Sprintf("source %s && source %s && %s",
-			filepath.Join(cfg.PixiProjectDir, "install", "setup.sh"), overlaySh, py)
+			quote(filepath.Join(cfg.PixiProjectDir, "install", "setup.sh")), quote(overlaySh), py)
 		describe, err = captureStdout(pixiBin, pixiRunArgs(cfg, shell), "")
 
 	case config.ModeOSSContainer, config.ModeLicensed:
@@ -488,6 +488,18 @@ func inspect(cfg *config.EMOSConfig, entryPoint string) ([]byte, error) {
 		return nil, fmt.Errorf("plugin inspect did not return valid JSON (check the entry_point %q)", entryPoint)
 	}
 	return describe, nil
+}
+
+// quote makes s a single word in a bash -c command, whatever it contains.
+// Paths come from the user's home directory and entry points from the plugin
+// catalog, so neither may be split on spaces or run as shell.
+func quote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// rosSetup is the setup script of a system ROS distro install.
+func rosSetup(distro string) string {
+	return filepath.Join("/opt/ros", distro, "setup.bash")
 }
 
 // pixiRunArgs wraps a shell snippet in `pixi run --manifest-path <toml> bash -c`.

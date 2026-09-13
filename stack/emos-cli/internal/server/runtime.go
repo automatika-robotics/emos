@@ -263,15 +263,11 @@ func (rt *Runtime) watch(r *Run) {
 	r.FinishedAt = time.Now()
 	r.ExitCode = code
 	switch {
-	case err != nil && code == -1:
+	case r.Status == RunStatusCanceled:
+		// Stopped by Cancel
+	case err != nil:
 		r.Status = RunStatusFailed
 		r.Error = err.Error()
-	case err != nil:
-		// exec.ExitError after a SIGTERM-from-Cancel = canceled; otherwise failed
-		if r.Status != RunStatusCanceled {
-			r.Status = RunStatusFailed
-			r.Error = err.Error()
-		}
 	default:
 		r.Status = RunStatusFinished
 	}

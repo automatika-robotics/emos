@@ -93,6 +93,40 @@ func TestAttachHandleStopsTheProcessOfACancelledRun(t *testing.T) {
 	}
 }
 
+func TestCancelledRunStaysCanceledWhateverItsExit(t *testing.T) {
+	cases := map[string][]string{
+		"killed by the signal": {"sleep", "30"},
+		"exits cleanly":        {"sh", "-c", `trap "exit 0" TERM; while :; do sleep 0.1; done`},
+	}
+	for label, argv := range cases {
+		t.Run(label, func(t *testing.T) {
+			s := newTestServer(t, true)
+			run := &Run{ID: "r1", Recipe: "r", Status: RunStatusPreparing}
+			if err := s.runtime.TryLock(run); err != nil {
+				t.Fatal(err)
+			}
+			h, err := runner.StartProcess(exec.Command(argv[0], argv[1:]...), filepath.Join(t.TempDir(), "run.log"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !s.runtime.AttachHandle(run, h) {
+				t.Fatal("AttachHandle refused a preparing run")
+			}
+			time.Sleep(200 * time.Millisecond) // let the trap install
+			if err := s.runtime.Cancel(run.ID); err != nil {
+				t.Fatal(err)
+			}
+			deadline := time.Now().Add(5 * time.Second)
+			for s.runtime.Current() != nil && time.Now().Before(deadline) {
+				time.Sleep(20 * time.Millisecond)
+			}
+			if got := s.runtime.Get(run.ID); got == nil || got.Status != RunStatusCanceled {
+				t.Fatalf("run = %+v, want canceled", got)
+			}
+		})
+	}
+}
+
 func TestStopEndsOpenLogStreamsPromptly(t *testing.T) {
 	s := newTestServer(t, true)
 	logPath := filepath.Join(t.TempDir(), "run.log")

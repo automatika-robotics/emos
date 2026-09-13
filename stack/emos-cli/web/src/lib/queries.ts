@@ -3,6 +3,7 @@
 
 import { createQuery, createMutation, useQueryClient, type CreateQueryResult } from '@tanstack/svelte-query';
 import { api, ApiException } from './api';
+import { isPluginJob, startedPluginJobs } from './pluginJobs';
 
 export const keys = {
   health: ['health'] as const,
@@ -114,6 +115,17 @@ export const useJobs = () =>
   // <10s) and we want the card to reflect failure/success without lag.
   createQuery({ queryKey: keys.jobs, queryFn: api.jobs, refetchInterval: 2000 });
 
+// The jobs list for PluginJobWatcher, polled only while a plugin job runs.
+// Starting one from this dashboard refetches the list, which starts the
+// polling.
+export const usePluginJobsWatch = () =>
+  createQuery({
+    queryKey: keys.jobs,
+    queryFn: api.jobs,
+    refetchInterval: (q) =>
+      (q.state.data ?? []).some((j) => isPluginJob(j) && j.status === 'running') ? 2000 : false,
+  });
+
 // Mutations -----------------------------------------------------------------
 
 export function useStartRun() {
@@ -159,20 +171,26 @@ export function useDeleteRecipe() {
 export function useInstallPlugin() {
   const qc = useQueryClient();
   return createMutation({
-    // 202: the install job was registered. Plugins.svelte watches the jobs
-    // list and refreshes the active plugin when the job finishes.
+    // 202: the install job was registered. PluginJobWatcher follows it and
+    // refreshes the installed set when it ends.
     mutationFn: (slug: string) => api.pluginInstall(slug),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.jobs }),
+    onSuccess: ({ job_id }) => {
+      startedPluginJobs.add(job_id);
+      qc.invalidateQueries({ queryKey: keys.jobs });
+    },
   });
 }
 
 export function useRemovePlugin() {
   const qc = useQueryClient();
   return createMutation({
-    // 202: removal runs as a job (the overlay is rebuilt). Plugins.svelte
-    // watches the jobs list and refreshes the installed set when it settles.
+    // 202: removal runs as a job (the overlay is rebuilt). PluginJobWatcher
+    // follows it and refreshes the installed set when it ends.
     mutationFn: (slug: string) => api.pluginRemove(slug),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.jobs }),
+    onSuccess: ({ job_id }) => {
+      startedPluginJobs.add(job_id);
+      qc.invalidateQueries({ queryKey: keys.jobs });
+    },
   });
 }
 

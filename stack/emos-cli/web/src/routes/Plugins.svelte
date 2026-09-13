@@ -1,6 +1,5 @@
 <script lang="ts">
   import { Cloud, CloudOff, RefreshCw, Loader2, Bot, Radar, Download } from 'lucide-svelte';
-  import { useQueryClient } from '@tanstack/svelte-query';
   import {
     usePluginsRemote,
     usePluginsInstalled,
@@ -8,28 +7,26 @@
     useRemovePlugin,
     useJobs,
     useConnectivity,
-    keys,
   } from '$lib/queries';
   import { ApiException, type CatalogPlugin, type InstalledPlugin } from '$lib/api';
   import { confirm as confirmDialog } from '$lib/dialog';
   import { renderMarkdown } from '$lib/markdown';
+  import { isPluginJob } from '$lib/pluginJobs';
   import Empty from '$components/Empty.svelte';
   import PluginCard from '$components/PluginCard.svelte';
 
   const conn = useConnectivity();
-  const qc = useQueryClient();
   const remote = usePluginsRemote();
   const installed = usePluginsInstalled();
   const jobs = useJobs();
   const install = useInstallPlugin();
   const remove = useRemovePlugin();
 
-  const PLUGIN_JOBS = new Set(['plugin_install', 'plugin_remove']);
-
-  // Slug of the plugin whose job we just requested, until the jobs list
-  // reflects it. Installs and removals rebuild one shared overlay, so one at
-  // a time.
-  let pending = $state<string>('');
+  // The plugin whose job we just requested, until the jobs list shows that
+  // job. Installs and removals rebuild one shared overlay, so one at a time.
+  // Refreshing the page when a job ends, and reporting a failure, is
+  // PluginJobWatcher's.
+  let pending = $state<{ slug: string; jobId?: string } | null>(null);
 
   let robot = $derived($installed.data?.robot ?? null);
   let sensors = $derived($installed.data?.sensors ?? []);
@@ -38,14 +35,14 @@
   );
 
   let runningJob = $derived(
-    ($jobs.data ?? []).find((j) => PLUGIN_JOBS.has(j.kind) && j.status === 'running')
+    ($jobs.data ?? []).find((j) => isPluginJob(j) && j.status === 'running')
   );
   let anyBusy = $derived(!!pending || !!runningJob);
 
   // The job message for a plugin currently being installed or removed, or ''.
   function busyFor(slug: string): string {
     if (runningJob?.target === slug) return runningJob.message || 'working…';
-    if (pending === slug) return 'starting…';
+    if (pending?.slug === slug) return 'starting…';
     return '';
   }
 
@@ -65,11 +62,12 @@
       });
       if (!ok) return;
     }
-    pending = p.slug;
+    pending = { slug: p.slug };
     try {
-      await $install.mutateAsync(p.slug);
+      const { job_id } = await $install.mutateAsync(p.slug);
+      pending = { slug: p.slug, jobId: job_id };
     } catch (err) {
-      pending = '';
+      pending = null;
       await report('Could not start install', err);
     }
   }
@@ -87,11 +85,12 @@
       intent: 'destructive',
     });
     if (!ok) return;
-    pending = plugin.slug;
+    pending = { slug: plugin.slug };
     try {
-      await $remove.mutateAsync(plugin.slug);
+      const { job_id } = await $remove.mutateAsync(plugin.slug);
+      pending = { slug: plugin.slug, jobId: job_id };
     } catch (err) {
-      pending = '';
+      pending = null;
       await report('Could not start removal', err);
     }
   }
@@ -100,20 +99,10 @@
     return ((robot?.describe as any)?.metadata?.name as string) ?? robot?.slug ?? 'the current robot';
   }
 
-  // Once the jobs list shows our job, the pending marker has done its work;
-  // when a plugin job settles, refresh what is installed.
-  let seen = new Set<string>();
+  // Once the jobs list shows our job, the pending marker has done its work.
   $effect(() => {
-    for (const j of $jobs.data ?? []) {
-      if (!PLUGIN_JOBS.has(j.kind)) continue;
-      if (j.status === 'running' && j.target === pending) pending = '';
-      if ((j.status === 'finished' || j.status === 'failed') && !seen.has(j.id)) {
-        seen.add(j.id);
-        if (j.target === pending) pending = '';
-        qc.invalidateQueries({ queryKey: keys.pluginsInstalled });
-        qc.invalidateQueries({ queryKey: keys.robot });
-      }
-    }
+    const id = pending?.jobId;
+    if (id && ($jobs.data ?? []).some((j) => j.id === id)) pending = null;
   });
 
   function installLabel(p: CatalogPlugin): string {

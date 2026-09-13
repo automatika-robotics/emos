@@ -9,6 +9,7 @@
   import Header from '$components/Header.svelte';
   import CommandPalette from '$components/CommandPalette.svelte';
   import ConfirmDialog from '$components/ConfirmDialog.svelte';
+  import PluginJobWatcher from '$components/PluginJobWatcher.svelte';
   import Dashboard from '$routes/Dashboard.svelte';
   import Recipes from '$routes/Recipes.svelte';
   import RecipeDetail from '$routes/RecipeDetail.svelte';
@@ -97,6 +98,7 @@
           </div>
         </main>
         <CommandPalette />
+        <PluginJobWatcher />
       </div>
     {:else}
       {#key mountKey}

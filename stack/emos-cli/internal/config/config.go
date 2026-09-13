@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/automatika-robotics/emos-cli/internal/identity"
@@ -262,6 +263,8 @@ func LoadConfig() *EMOSConfig {
 
 // SaveConfig persists the EMOS config to disk. Mode 0600 because the file
 // holds license keys and hashed auth tokens.
+//
+// The file is replaced by rename, so a reader never sees it half-written.
 func SaveConfig(cfg *EMOSConfig) error {
 	if err := os.MkdirAll(ConfigDir, 0700); err != nil {
 		return err
@@ -270,7 +273,45 @@ func SaveConfig(cfg *EMOSConfig) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(ConfigFile, data, 0600)
+	tmp, err := os.CreateTemp(ConfigDir, "config-*.json") // created 0600
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name()) // a no-op once renamed
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), ConfigFile)
+}
+
+// UpdateConfig applies change to the config as it is on disk now and saves it.
+//
+// Use it for any change made after a long-running operation. The CLI and the
+// dashboard write different fields of the same file, so saving a copy loaded
+// minutes earlier would undo whatever the other wrote in between. A lock held
+// across load and save keeps two updates from interleaving.
+func UpdateConfig(change func(*EMOSConfig)) error {
+	if err := os.MkdirAll(ConfigDir, 0700); err != nil {
+		return err
+	}
+	lock, err := os.OpenFile(filepath.Join(ConfigDir, "config.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return err
+	}
+	defer lock.Close() // releases the lock
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return err
+	}
+	cfg := LoadConfig()
+	if cfg == nil {
+		cfg = &EMOSConfig{}
+	}
+	change(cfg)
+	return SaveConfig(cfg)
 }
 
 // ResolveDeviceName loads the config (creating an empty one if needed),

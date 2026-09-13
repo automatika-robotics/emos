@@ -1,8 +1,10 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -79,6 +81,66 @@ func TestSaveConfigUsesRestrictivePermissions(t *testing.T) {
 	// regression worth catching.
 	if st.Mode().Perm() != 0o600 {
 		t.Fatalf("config.json mode = %v, want 0600", st.Mode().Perm())
+	}
+}
+
+func TestSaveConfigLeavesNoTempFiles(t *testing.T) {
+	withTempConfig(t)
+	for i := 0; i < 3; i++ {
+		if err := SaveConfig(&EMOSConfig{Mode: ModeNative, Port: i}); err != nil {
+			t.Fatalf("SaveConfig: %v", err)
+		}
+	}
+	entries, err := os.ReadDir(ConfigDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Name() != "config.json" {
+			t.Errorf("unexpected file left behind: %s", e.Name())
+		}
+	}
+}
+
+func TestUpdateConfigKeepsWhatOthersWrote(t *testing.T) {
+	withTempConfig(t)
+	if err := SaveConfig(&EMOSConfig{Mode: ModePixi}); err != nil {
+		t.Fatal(err)
+	}
+	// A pairing lands on disk while a long plugin job still holds an old copy.
+	stale := LoadConfig()
+	if err := UpdateConfig(func(c *EMOSConfig) { c.Auth.PairingCodeHash = "paired" }); err != nil {
+		t.Fatal(err)
+	}
+	stale.Plugin = &PluginInfo{Slug: "m20_plugin"}
+	if err := UpdateConfig(func(c *EMOSConfig) { c.Plugin = stale.Plugin }); err != nil {
+		t.Fatal(err)
+	}
+	got := LoadConfig()
+	if got.Auth.PairingCodeHash != "paired" || got.Plugin == nil || got.Mode != ModePixi {
+		t.Errorf("an update lost another writer's change: %+v", got)
+	}
+}
+
+func TestUpdateConfigSerialisesConcurrentWriters(t *testing.T) {
+	withTempConfig(t)
+	const writers = 20
+	var wg sync.WaitGroup
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			err := UpdateConfig(func(c *EMOSConfig) {
+				c.UpsertSensor(PluginInfo{Slug: fmt.Sprintf("sensor_%d", i)})
+			})
+			if err != nil {
+				t.Error(err)
+			}
+		}(i)
+	}
+	wg.Wait()
+	if got := len(LoadConfig().SensorPlugins); got != writers {
+		t.Errorf("%d of %d concurrent updates survived", got, writers)
 	}
 }
 

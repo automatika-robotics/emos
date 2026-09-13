@@ -11,6 +11,8 @@ var rootCmd = &cobra.Command{
 	Short: "EmbodiedOS Management CLI",
 	Long:  "EMOS CLI manages the EmbodiedOS container, recipes, and mapping on your robot.",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Arguments are validated before this runs.
+		cmd.SilenceUsage = true
 		config.Init()
 	},
 	Run: func(cmd *cobra.Command, args []string) {

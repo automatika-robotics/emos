@@ -3,12 +3,14 @@
 // Mapping needs the active plugin's *knowledge*. The declaration is read
 // from the describe() tree cached at install time.
 //
-// Two providers, one command surface. Which one a robot has is the plugin's to
-// say, and a robot may have neither.
+// A plugin declares one of two providers: "vendor", where the robot ships its
+// own SLAM tool and EMOS drives it, or "native", where EMOS builds the map
+// itself.
 package mapping
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -16,8 +18,8 @@ import (
 	"github.com/automatika-robotics/emos-cli/internal/config"
 )
 
-// Kind discriminates the two providers. It is the "kind" field sugarcoat stamps
-// on the mapping block.
+// Kind discriminates the providers. It is the "kind" field sugarcoat stamps on
+// the mapping block.
 type Kind string
 
 const (
@@ -51,37 +53,21 @@ type Vendor struct {
 	// case the map directory is removed directly.
 	Remove     []string `json:"remove"`
 	ActiveLink string   `json:"active_link"`
-	// RequiresRoot gates the dashboard. It must send the operator to the CLI
+	// RequiresRoot says some verb escalates, so a caller without a terminal for
+	// a password prompt cannot drive this provider.
 	RequiresRoot bool    `json:"requires_root"`
 	Host         string  `json:"host"`
 	AreaLimitM   float64 `json:"area_limit_m"`
 }
 
-// Native is mapping performed by EMOS from the plugin's own feedbacks.
-//
-// Cloud and IMU name *feedback keys*, not topics. The plugin stays the single
-// source of truth for the topic behind each.
-type Native struct {
-	Cloud      string  `json:"cloud"`
-	IMU        string  `json:"imu"`
-	ZMin       float64 `json:"z_min"`
-	ZMax       float64 `json:"z_max"`
-	Resolution float64 `json:"resolution"`
-}
-
-// Declaration is how the active robot maps its environment. Exactly one of
-// Vendor or Native is set, matching Kind.
+// Declaration is how the active robot maps its environment. Vendor is set for
+// every declaration Resolve returns.
 type Declaration struct {
 	Kind   Kind
 	Vendor *Vendor
-	Native *Native
 }
 
 // UnmarshalJSON decodes a mapping block by its "kind" tag.
-//
-// The two providers share field *names* with different meanings. A vendor's
-// "cloud" is a filename inside a map directory, a native one's is a feedback
-// key.
 func (d *Declaration) UnmarshalJSON(data []byte) error {
 	var probe struct {
 		Kind Kind `json:"kind"`
@@ -95,8 +81,7 @@ func (d *Declaration) UnmarshalJSON(data []byte) error {
 		d.Vendor = &Vendor{}
 		return json.Unmarshal(data, d.Vendor)
 	case KindNative:
-		d.Native = &Native{}
-		return json.Unmarshal(data, d.Native)
+		return nil
 	default:
 		return fmt.Errorf("unknown mapping kind %q", probe.Kind)
 	}
@@ -104,11 +89,15 @@ func (d *Declaration) UnmarshalJSON(data []byte) error {
 
 // ErrNoPlugin is returned when no robot plugin is installed, so there is no
 // robot to map with.
-var ErrNoPlugin = fmt.Errorf("no robot plugin is installed")
+var ErrNoPlugin = errors.New("no robot plugin is installed")
 
 // ErrNotSupported is returned when a robot plugin is installed but declares no
 // mapping capability.
-var ErrNotSupported = fmt.Errorf("this robot's plugin declares no mapping support")
+var ErrNotSupported = errors.New("this robot's plugin declares no mapping support")
+
+// ErrNativeNotSupported is returned when the plugin declares native mapping,
+// which this version of EMOS does not support.
+var ErrNativeNotSupported = errors.New("native mapping is not supported by this version of EMOS")
 
 // Resolve returns how the installed robot maps, read from the describe() tree
 // cached when the plugin was installed.
@@ -135,17 +124,20 @@ func Resolve(cfg *config.EMOSConfig) (*Declaration, error) {
 	if err := json.Unmarshal(tree.Mapping, &decl); err != nil {
 		return nil, fmt.Errorf("read mapping declaration: %w", err)
 	}
+	if decl.Kind == KindNative {
+		return nil, ErrNativeNotSupported
+	}
 	return &decl, nil
 }
 
 // vars are the substitutions an argv template may contain, as {key}.
 type vars map[string]string
 
-// Render substitutes {key} placeholders in an argv template.
+// render substitutes {key} placeholders in an argv template.
 //
 // One pass per token, so a substituted value is never itself re-expanded: a map
 // named "{path}" stays that name rather than turning into the archive path.
-func Render(argv []string, subs map[string]string) []string {
+func render(argv []string, subs vars) []string {
 	keys := make([]string, 0, len(subs))
 	for key := range subs {
 		keys = append(keys, key)

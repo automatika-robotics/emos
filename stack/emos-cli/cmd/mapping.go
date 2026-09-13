@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/mapping"
 	"github.com/automatika-robotics/emos-cli/internal/ui"
+	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 )
 
@@ -19,8 +21,8 @@ var mapCmd = &cobra.Command{
 	Use:   "map",
 	Short: "Build and manage maps of the robot's environment",
 	Long: "Build and manage maps.\n\n" +
-		"How a robot maps is its plugin's to declare: some ship their own SLAM and\n" +
-		"EMOS drives it, others expose a LiDAR and EMOS builds the map itself.",
+		"How a robot maps is its plugin's to declare. EMOS drives the mapping\n" +
+		"software that ships with the robot.",
 }
 
 func init() {
@@ -77,10 +79,46 @@ func resolveMapping() (*mapping.Declaration, error) {
 		ui.Faint("If the plugin was installed before mapping support was added, " +
 			"'emos plugin update' refreshes what EMOS knows about it.")
 		return nil, fmt.Errorf("mapping not supported by this robot")
+	case errors.Is(err, mapping.ErrNativeNotSupported):
+		ui.Error("This robot's plugin expects EMOS to build the map itself, " +
+			"which this version of EMOS does not support.")
+		return nil, fmt.Errorf("mapping not supported by this robot")
 	case err != nil:
 		return nil, err
 	}
 	return decl, nil
+}
+
+// explain prints the operator-facing account of a mapping error and returns the
+// short error cobra reports. Other errors pass through unchanged.
+func explain(err error) error {
+	var (
+		missing    *mapping.ErrNoSuchMap
+		unreadable *mapping.ErrStoreUnreadable
+		noArchive  *mapping.ErrNoSuchArchive
+		active     *mapping.ErrMapIsActive
+	)
+	switch {
+	case errors.As(err, &missing):
+		ui.Error(fmt.Sprintf("No map named '%s'.", missing.Name))
+		ui.Faint("Run 'emos map list' to see what this robot has.")
+		return fmt.Errorf("map not found")
+	case errors.As(err, &unreadable):
+		ui.Error(fmt.Sprintf("Cannot read the map store at %s.", unreadable.Store))
+		ui.Faint("The robot's own software owns that directory and EMOS runs as a " +
+			"normal user. A recipe would not be able to load these maps either.")
+		return fmt.Errorf("map store not readable")
+	case errors.As(err, &noArchive):
+		ui.Error(fmt.Sprintf("No archive at %s.", noArchive.Path))
+		ui.Faint(fmt.Sprintf("Give a path, or the name of a file in %s.", config.MapArchivesDir))
+		return fmt.Errorf("archive not found")
+	case errors.As(err, &active):
+		ui.Error(fmt.Sprintf("'%s' is the map the robot is currently using.", active.Name))
+		ui.Faint("Switch to another map first with 'emos map use <name>'; deleting " +
+			"the active one would leave localization with nothing to localize against.")
+		return fmt.Errorf("refusing to delete the active map")
+	}
+	return err
 }
 
 func runMapList(cmd *cobra.Command, args []string) error {
@@ -88,17 +126,9 @@ func runMapList(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-
 	maps, err := decl.List()
-	var unreadable *mapping.ErrStoreUnreadable
-	if errors.As(err, &unreadable) {
-		ui.Error(fmt.Sprintf("Cannot read the map store at %s.", unreadable.Store))
-		ui.Faint("The robot's own software owns that directory and EMOS runs as a " +
-			"normal user. A recipe would not be able to load these maps either.")
-		return fmt.Errorf("map store not readable")
-	}
 	if err != nil {
-		return err
+		return explain(err)
 	}
 
 	if len(maps) == 0 {
@@ -126,73 +156,63 @@ func runMapNew(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	name := ""
+	if err := decl.CanStart(); err != nil {
+		return err
+	}
+	if !term.IsTerminal(os.Stdin.Fd()) {
+		return fmt.Errorf("'emos map new' needs an interactive terminal: mapping is stopped from it")
+	}
+	name := "map"
 	if len(args) == 1 {
 		name = args[0]
-	} else {
-		name = ui.Input("Name for this map", "map")
+	} else if name, err = ui.Prompt("Name for this map", "map"); err != nil {
+		ui.Info("Cancelled.")
+		return nil
 	}
 
 	ui.Header("MAPPING")
-	if decl.Vendor != nil {
-		if limit := decl.Vendor.AreaLimitM; limit > 0 {
-			ui.Info(fmt.Sprintf("This robot maps areas up to %.0f x %.0f m.", limit, limit))
-		}
-		if decl.Vendor.RequiresRoot {
-			ui.Info("Mapping needs root on this robot; sudo will prompt.")
-		}
+	if limit := decl.Vendor.AreaLimitM; limit > 0 {
+		ui.Info(fmt.Sprintf("This robot maps areas up to %.0f x %.0f m.", limit, limit))
 	}
-	ui.Faint("Plan a route that closes loops -- make sure to revisit places you" + " have already scanned, or the map will not line up with itself.")
+	if mapping.Escalates(decl.Vendor.Start) || mapping.Escalates(decl.Vendor.Stop) {
+		ui.Info("Mapping runs the robot's own tool as root; sudo may prompt.")
+	}
+	ui.Faint("Plan a route that closes loops -- make sure to revisit places you " +
+		"have already scanned, or the map will not line up with itself.")
+
+	// Caught from before the start command, so no signal can end the CLI while
+	// the robot keeps mapping. The prompt below reads Ctrl+C as a key.
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	defer signal.Stop(sigs)
 
 	session, err := decl.Start(name, mapping.SystemRunner)
 	if err != nil {
 		return err
 	}
 
-	// From here the robot is mapping. Any exit must stop it, including Ctrl+C
-	stopped := false
-	stop := func() (*mapping.Map, error) {
-		if stopped {
-			return nil, nil
-		}
-		stopped = true
-		ui.Info("Stopping mapping and saving...")
-		return session.Stop()
-	}
-
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	defer signal.Stop(sigs)
-	aborted := make(chan struct{})
-	go func() {
-		<-sigs
-		close(aborted)
-	}()
-
 	ui.Success("Mapping started.")
 	ui.Info("Drive the robot along your route with its own controller.")
-	done := make(chan struct{})
-	go func() {
-		fmt.Print("\n  Press Enter when you have finished driving... ")
-		fmt.Scanln()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-aborted:
-		fmt.Println()
+	promptCtx, cancelPrompt := cancelOnSignal(sigs)
+	err = ui.Continue(promptCtx, "Press Enter when you have finished driving", "Stop mapping")
+	cancelPrompt()
+	if err != nil {
 		ui.Warn("Interrupted -- stopping mapping so the robot does not keep going.")
 	}
 
-	built, err := stop()
+	ui.Info("Stopping mapping and saving...")
+	stopCtx, cancelStop := cancelOnSignal(sigs)
+	defer cancelStop()
+	built, err := session.Stop(stopCtx)
+	if errors.Is(err, mapping.ErrStopInterrupted) {
+		ui.Error("Stopping was interrupted, so the robot may still be mapping.")
+		ui.Faint("Stop it by hand: " + session.StopCommand())
+		return err
+	}
 	if err != nil {
 		ui.Error(err.Error())
 		ui.Faint("The robot may still be finishing. Check with 'emos map list'.")
 		return fmt.Errorf("mapping did not complete")
-	}
-	if built == nil {
-		return fmt.Errorf("mapping stopped but produced no map")
 	}
 
 	ui.Success(fmt.Sprintf("Map '%s' saved.", built.Name))
@@ -205,6 +225,19 @@ func runMapNew(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// cancelOnSignal returns a context cancelled by the next signal on sigs.
+func cancelOnSignal(sigs <-chan os.Signal) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		select {
+		case <-sigs:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	return ctx, cancel
+}
+
 func runMapRm(cmd *cobra.Command, args []string) error {
 	name := args[0]
 	decl, err := resolveMapping()
@@ -215,33 +248,23 @@ func runMapRm(cmd *cobra.Command, args []string) error {
 	// Resolve first, so the prompt names the directory that will actually be
 	// removed.
 	target, err := decl.Find(name)
-	var missing *mapping.ErrNoSuchMap
-	if errors.As(err, &missing) {
-		ui.Error(fmt.Sprintf("No map named '%s'.", missing.Name))
-		ui.Faint("Run 'emos map list' to see what this robot has.")
-		return fmt.Errorf("map not found")
-	}
 	if err != nil {
-		return err
+		return explain(err)
+	}
+	if target.Active {
+		return explain(&mapping.ErrMapIsActive{Name: name})
 	}
 
 	if !ui.Confirm(fmt.Sprintf("Delete %s? This cannot be undone", target.Path)) {
 		ui.Info("Left alone.")
 		return nil
 	}
-	if decl.Vendor != nil && decl.Vendor.RequiresRoot && len(decl.Vendor.Remove) == 0 {
-		ui.Info("The map store is owned by the robot's own software; sudo will prompt.")
+	if v := decl.Vendor; mapping.Escalates(v.Remove) || (len(v.Remove) == 0 && v.RequiresRoot) {
+		ui.Info("The map store is owned by the robot's own software; sudo may prompt.")
 	}
 
 	if err := decl.Remove(name, mapping.SystemRunner); err != nil {
-		var active *mapping.ErrMapIsActive
-		if errors.As(err, &active) {
-			ui.Error(fmt.Sprintf("'%s' is the map the robot is currently using.", name))
-			ui.Faint("Switch to another map first with 'emos map use <name>'; deleting " +
-				"the active one would leave localization with nothing to localize against.")
-			return fmt.Errorf("refusing to delete the active map")
-		}
-		return err
+		return explain(err)
 	}
 	ui.Success(fmt.Sprintf("Deleted %s.", target.Path))
 	return nil
@@ -255,13 +278,15 @@ func runMapExport(cmd *cobra.Command, args []string) error {
 	name := ""
 	if len(args) == 1 {
 		name = args[0]
-	} else if name = decl.ActiveName(); name == "" {
+	} else if name, err = decl.ActiveName(); err != nil {
+		return explain(err)
+	} else if name == "" {
 		ui.Error("No map is marked active, so there is nothing to export.")
 		ui.Faint("Name one explicitly: 'emos map export <name>'.")
 		return fmt.Errorf("no active map")
 	}
 
-	if decl.Vendor != nil && mapping.Escalates(decl.Vendor.Export) {
+	if mapping.Escalates(decl.Vendor.Export) {
 		ui.Info("Exporting runs the robot's own tool as root; sudo may prompt.")
 	}
 	dest := mapExportDir
@@ -269,13 +294,13 @@ func runMapExport(cmd *cobra.Command, args []string) error {
 		dest = config.MapArchivesDir
 	}
 	archive, err := decl.Export(name, dest, mapping.SystemRunner)
+	if err != nil && archive != "" {
+		ui.Error(err.Error())
+		ui.Faint(fmt.Sprintf("The archive is still at %s.", archive))
+		return fmt.Errorf("could not move the archive")
+	}
 	if err != nil {
-		var missing *mapping.ErrNoSuchMap
-		if errors.As(err, &missing) {
-			ui.Error(fmt.Sprintf("No map named '%s'.", missing.Name))
-			return fmt.Errorf("map not found")
-		}
-		return err
+		return explain(err)
 	}
 	if archive == "" {
 		ui.Success(fmt.Sprintf("Exported '%s'.", name))
@@ -291,18 +316,12 @@ func runMapImport(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if decl.Vendor != nil && mapping.Escalates(decl.Vendor.Import) {
+	if mapping.Escalates(decl.Vendor.Import) {
 		ui.Info("Importing writes into the robot's own map store; sudo may prompt.")
 	}
 	built, err := decl.Import(args[0], config.MapArchivesDir, mapping.SystemRunner)
-	var missing *mapping.ErrNoSuchArchive
-	if errors.As(err, &missing) {
-		ui.Error(fmt.Sprintf("No archive at %s.", missing.Path))
-		ui.Faint(fmt.Sprintf("Give a path, or the name of a file in %s.", config.MapArchivesDir))
-		return fmt.Errorf("archive not found")
-	}
 	if err != nil {
-		return err
+		return explain(err)
 	}
 	ui.Success(fmt.Sprintf("Imported '%s'.", built.Name))
 	if built.Grid == "" {
@@ -322,14 +341,8 @@ func runMapUse(cmd *cobra.Command, args []string) error {
 	}
 
 	target, err := decl.Find(name)
-	var missing *mapping.ErrNoSuchMap
-	if errors.As(err, &missing) {
-		ui.Error(fmt.Sprintf("No map named '%s'.", missing.Name))
-		ui.Faint("Run 'emos map list' to see what this robot has.")
-		return fmt.Errorf("map not found")
-	}
 	if err != nil {
-		return err
+		return explain(err)
 	}
 	if target.Active {
 		ui.Info(fmt.Sprintf("'%s' is already the active map.", name))
@@ -345,11 +358,11 @@ func runMapUse(cmd *cobra.Command, args []string) error {
 		ui.Info("Left alone.")
 		return nil
 	}
-	if decl.Vendor != nil && mapping.Escalates(decl.Vendor.Apply) {
+	if mapping.Escalates(decl.Vendor.Apply) {
 		ui.Info("Switching runs the robot's own tool as root; sudo may prompt.")
 	}
 	if err := decl.Use(name, mapping.SystemRunner); err != nil {
-		return err
+		return explain(err)
 	}
 	ui.Success(fmt.Sprintf("'%s' is now the active map.", name))
 	ui.Faint("Relocalize the robot at its standard starting spot before running a recipe.")

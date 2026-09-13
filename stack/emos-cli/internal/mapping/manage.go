@@ -1,10 +1,13 @@
 package mapping
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // ErrNoSuchMap is returned when the named map is not in the store.
@@ -34,7 +37,8 @@ func (e *ErrMapIsActive) Error() string {
 // Remove deletes a map from the store.
 //
 // The path always comes from List rather than from the caller, and the active
-// map is refused outright.
+// map is refused outright. As with every vendor command, the store settles
+// whether it worked, not the exit code.
 func (d *Declaration) Remove(name string, run Runner) error {
 	if err := d.checkLocal(); err != nil {
 		return err
@@ -47,15 +51,27 @@ func (d *Declaration) Remove(name string, run Runner) error {
 		return &ErrMapIsActive{Name: name}
 	}
 
-	if d.Kind == KindVendor && d.Vendor != nil && len(d.Vendor.Remove) > 0 {
-		return run(d.command(d.Vendor.Remove, vars{"name": name}))
-	}
-	if d.Kind == KindVendor && d.Vendor != nil && d.Vendor.RequiresRoot {
+	var argv []string
+	switch {
+	case len(d.Vendor.Remove) > 0:
+		argv = render(d.Vendor.Remove, vars{"name": name})
+	case d.Vendor.RequiresRoot:
 		// No vendor delete command, and the store is owned by the robot's own
 		// software, so the CLI escalates on its own.
-		return run([]string{"sudo", "rm", "-rf", "--", target.Path})
+		argv = []string{"sudo", "rm", "-rf", "--", target.Path}
+	default:
+		return os.RemoveAll(target.Path)
 	}
-	return os.RemoveAll(target.Path)
+	if err := run(argv); err != nil {
+		return err
+	}
+	var missing *ErrNoSuchMap
+	if _, err := d.Find(name); errors.As(err, &missing) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	return fmt.Errorf("the remove command ran but %s is still there", target.Path)
 }
 
 // Use makes a map the active one by running the declared apply, then
@@ -66,7 +82,7 @@ func (d *Declaration) Use(name string, run Runner) error {
 	if err := d.checkLocal(); err != nil {
 		return err
 	}
-	if d.Kind != KindVendor || d.Vendor == nil || len(d.Vendor.Apply) == 0 {
+	if len(d.Vendor.Apply) == 0 {
 		return fmt.Errorf("this robot's plugin declares no way to make a map active")
 	}
 	target, err := d.Find(name)
@@ -74,17 +90,21 @@ func (d *Declaration) Use(name string, run Runner) error {
 		return err
 	}
 
-	if err := run(d.command(d.Vendor.Apply, vars{"name": target.Name})); err != nil {
+	if err := run(render(d.Vendor.Apply, vars{"name": target.Name})); err != nil {
 		return fmt.Errorf("apply map: %w", err)
 	}
-	if active := d.ActiveName(); active != target.Name {
+	active, err := d.ActiveName()
+	if err != nil {
+		return err
+	}
+	if active != target.Name {
 		if active == "" {
 			return fmt.Errorf("the apply ran but no map is marked active")
 		}
 		return fmt.Errorf("the apply ran but the active map is still %q", active)
 	}
 	if len(d.Vendor.AfterApply) > 0 {
-		if err := run(d.command(d.Vendor.AfterApply, vars{"name": target.Name})); err != nil {
+		if err := run(render(d.Vendor.AfterApply, vars{"name": target.Name})); err != nil {
 			return fmt.Errorf("%q is active, but the follow-up command failed: %w", target.Name, err)
 		}
 	}
@@ -97,12 +117,13 @@ func (d *Declaration) Use(name string, run Runner) error {
 // Vendors commonly package only the *active* map and take no argument, so a
 // name that is not the active one is refused. Vendors also choose where the
 // archive lands so it is moved into dest, somewhere predictable and
-// provider-independent. Empty dest leaves it.
+// provider-independent. Empty dest leaves it. When the move fails, the path
+// returned is where the archive still is.
 func (d *Declaration) Export(name, dest string, run Runner) (string, error) {
 	if err := d.checkLocal(); err != nil {
 		return "", err
 	}
-	if d.Kind != KindVendor || d.Vendor == nil || len(d.Vendor.Export) == 0 {
+	if len(d.Vendor.Export) == 0 {
 		return "", fmt.Errorf("this robot's plugin declares no way to export a map")
 	}
 	target, err := d.Find(name)
@@ -115,7 +136,7 @@ func (d *Declaration) Export(name, dest string, run Runner) (string, error) {
 	}
 
 	before := snapshotDir(d.Vendor.ExportDir)
-	if err := run(d.command(d.Vendor.Export, vars{"name": name})); err != nil {
+	if err := run(render(d.Vendor.Export, vars{"name": name})); err != nil {
 		return "", err
 	}
 	archive := newestNew(d.Vendor.ExportDir, before)
@@ -125,28 +146,51 @@ func (d *Declaration) Export(name, dest string, run Runner) (string, error) {
 	return relocate(archive, dest)
 }
 
-// relocate moves src into the dest directory, falling back to copy-and-delete
-// when the two are on different filesystems.
+// relocate moves the archive src into the dest directory, copying when the two
+// are on different filesystems. An archive of the same name is never replaced.
 func relocate(src, dest string) (string, error) {
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		return src, err
 	}
 	target := filepath.Join(dest, filepath.Base(src))
-	if err := os.Rename(src, target); err == nil {
-		return target, nil
+	if _, err := os.Lstat(target); err == nil {
+		return src, fmt.Errorf("%s already exists", target)
 	}
-	data, err := os.ReadFile(src)
-	if err != nil {
+	switch err := os.Rename(src, target); {
+	case err == nil:
+		return target, nil
+	case !errors.Is(err, syscall.EXDEV):
 		return src, err
 	}
-	if err := os.WriteFile(target, data, 0o644); err != nil {
+	if err := copyFile(src, target); err != nil {
 		return src, err
 	}
-	if err := os.Remove(src); err != nil {
-		// The copy is what matters
-		return target, nil
-	}
+	// The copy is what matters; an original left behind is harmless.
+	_ = os.Remove(src)
 	return target, nil
+}
+
+// copyFile copies src to a new file dst, removing dst again if the copy fails.
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		os.Remove(dst)
+		return err
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(dst)
+		return err
+	}
+	return nil
 }
 
 // Find resolves a map name against the store.
@@ -163,18 +207,18 @@ func (d *Declaration) Find(name string) (*Map, error) {
 	return nil, &ErrNoSuchMap{Name: name, Store: d.Store()}
 }
 
-// ActiveName returns the name of the active map, or "".
-func (d *Declaration) ActiveName() string {
+// ActiveName returns the name of the active map, or "" when none is marked.
+func (d *Declaration) ActiveName() (string, error) {
 	maps, err := d.List()
 	if err != nil {
-		return ""
+		return "", err
 	}
 	for _, m := range maps {
 		if m.Active {
-			return m.Name
+			return m.Name, nil
 		}
 	}
-	return ""
+	return "", nil
 }
 
 func hasPlaceholder(argv []string) bool {
@@ -186,7 +230,7 @@ func hasPlaceholder(argv []string) bool {
 	return false
 }
 
-// snapshotDir records the files in dir, so one appearing later can be named.
+// snapshotDir records the entries in dir, so one appearing later can be named.
 func snapshotDir(dir string) map[string]bool {
 	seen := map[string]bool{}
 	if dir == "" {
@@ -203,7 +247,8 @@ func snapshotDir(dir string) map[string]bool {
 }
 
 // newestNew returns the most recently modified file in dir that was not in
-// before, or "" when the directory is unknown or nothing appeared.
+// before, or "" when the directory is unknown or no file appeared. An archive
+// is a file, so directories are skipped.
 func newestNew(dir string, before map[string]bool) string {
 	if dir == "" {
 		return ""
@@ -214,7 +259,7 @@ func newestNew(dir string, before map[string]bool) string {
 	}
 	best, bestPath := int64(-1), ""
 	for _, e := range entries {
-		if before[e.Name()] {
+		if before[e.Name()] || e.IsDir() {
 			continue
 		}
 		info, err := e.Info()
@@ -237,7 +282,7 @@ func (d *Declaration) Import(archive, dest string, run Runner) (*Map, error) {
 	if err := d.checkLocal(); err != nil {
 		return nil, err
 	}
-	if d.Kind != KindVendor || d.Vendor == nil || len(d.Vendor.Import) == 0 {
+	if len(d.Vendor.Import) == 0 {
 		return nil, fmt.Errorf("this robot's plugin declares no way to import a map")
 	}
 
@@ -261,7 +306,7 @@ func (d *Declaration) Import(archive, dest string, run Runner) (*Map, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := run(d.command(d.Vendor.Import, vars{"path": abs})); err != nil {
+	if err := run(render(d.Vendor.Import, vars{"path": abs})); err != nil {
 		return nil, fmt.Errorf("import map: %w", err)
 	}
 	if m := d.appeared(before); m != nil {

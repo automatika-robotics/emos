@@ -22,16 +22,6 @@ func SystemRunner(argv []string) error {
 	return cmd.Run()
 }
 
-// command renders an argv template. Returns nil when the verb is not declared.
-//
-// A vendor may document sudo on one command and not another.
-func (d *Declaration) command(argv []string, subs vars) []string {
-	if len(argv) == 0 {
-		return nil
-	}
-	return Render(argv, subs)
-}
-
 // Escalates reports whether a declared argv will ask for a password, so a
 // caller can warn before the prompt appears.
 func Escalates(argv []string) bool {
@@ -40,9 +30,6 @@ func Escalates(argv []string) bool {
 
 // checkLocal rejects a provider whose commands run on another machine.
 func (d *Declaration) checkLocal() error {
-	if d.Kind != KindVendor || d.Vendor == nil {
-		return nil
-	}
 	if host := d.Vendor.Host; host != "" && host != "local" {
 		return fmt.Errorf("this robot maps on %s; running commands there is not supported yet", host)
 	}

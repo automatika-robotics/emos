@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -114,18 +115,41 @@ func Confirm(prompt string) bool {
 	return result
 }
 
+// Input asks for a line of text, falling back to defaultVal when the answer is
+// empty or the prompt is cancelled.
 func Input(prompt, defaultVal string) string {
+	result, err := Prompt(prompt, defaultVal)
+	if err != nil {
+		return defaultVal
+	}
+	return result
+}
+
+// Prompt asks for a line of text, returning defaultVal for an empty answer and
+// an error when the user cancels with Ctrl+C.
+func Prompt(prompt, defaultVal string) (string, error) {
 	var result string
-	huh.NewInput().
+	err := huh.NewInput().
 		Title(prompt).
 		Value(&result).
 		Placeholder(defaultVal).
 		WithTheme(huhTheme()).
 		Run()
-	if result == "" {
-		return defaultVal
+	if err != nil {
+		return "", err
 	}
-	return result
+	if result == "" {
+		return defaultVal, nil
+	}
+	return result, nil
+}
+
+// Continue shows title and waits for Enter. It returns an error when the user
+// presses Ctrl+C instead or ctx is cancelled.
+func Continue(ctx context.Context, title, label string) error {
+	return huh.NewForm(huh.NewGroup(
+		huh.NewNote().Title(title).Next(true).NextLabel(label),
+	)).WithTheme(huhTheme()).RunWithContext(ctx)
 }
 
 func Spinner(title string, fn func() error) error {

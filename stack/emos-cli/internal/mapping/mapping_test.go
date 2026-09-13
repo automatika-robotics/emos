@@ -1,6 +1,7 @@
 package mapping
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -62,9 +63,6 @@ func TestResolveVendor(t *testing.T) {
 	if decl.Kind != KindVendor || decl.Vendor == nil {
 		t.Fatalf("want vendor declaration, got kind=%q vendor=%v", decl.Kind, decl.Vendor)
 	}
-	if decl.Native != nil {
-		t.Error("native must stay nil for a vendor declaration")
-	}
 	v := decl.Vendor
 	if got := len(v.Start); got != 5 {
 		t.Errorf("start argv: want 5 tokens, got %d (%v)", got, v.Start)
@@ -83,20 +81,11 @@ func TestResolveVendor(t *testing.T) {
 	}
 }
 
-func TestResolveNative(t *testing.T) {
-	decl, err := Resolve(cfgWith(nativeDescribe))
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-	if decl.Kind != KindNative || decl.Native == nil {
-		t.Fatalf("want native declaration, got kind=%q", decl.Kind)
-	}
-	if decl.Vendor != nil {
-		t.Error("vendor must stay nil for a native declaration")
-	}
-	// Feedback keys, deliberately not topic names.
-	if decl.Native.Cloud != "lidar" || decl.Native.IMU != "lidar_imu" {
-		t.Errorf("inputs = %q / %q", decl.Native.Cloud, decl.Native.IMU)
+func TestResolveRefusesNative(t *testing.T) {
+	// Plugins already declare native mapping; this version must say it cannot
+	// do it rather than treat the robot as mappable.
+	if _, err := Resolve(cfgWith(nativeDescribe)); !errors.Is(err, ErrNativeNotSupported) {
+		t.Errorf("want ErrNativeNotSupported, got %v", err)
 	}
 }
 
@@ -119,27 +108,46 @@ func TestResolveWithoutPluginOrSupport(t *testing.T) {
 }
 
 func TestRenderSubstitutesName(t *testing.T) {
-	got := Render([]string{"drmap", "mapping", "-n", "{name}"}, map[string]string{"name": "warehouse"})
-	want := []string{"drmap", "mapping", "-n", "warehouse"}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("Render = %v, want %v", got, want)
-		}
+	got := render([]string{"sudo", "drmap", "mapping", "-n", "{name}"}, vars{"name": "warehouse"})
+	want := []string{"sudo", "drmap", "mapping", "-n", "warehouse"}
+	if !equal(got, want) {
+		t.Fatalf("render = %v, want %v", got, want)
 	}
 	// The template must not be mutated -- it is read from the plugin once and
 	// reused for every later call.
 	tmpl := []string{"drmap", "apply", "{name}"}
-	Render(tmpl, map[string]string{"name": "a"})
+	render(tmpl, vars{"name": "a"})
 	if tmpl[2] != "{name}" {
-		t.Errorf("Render mutated its input: %v", tmpl)
+		t.Errorf("render mutated its input: %v", tmpl)
 	}
 }
 
 func TestRenderDoesNotReexpandSubstitutedValues(t *testing.T) {
-	got := Render([]string{"{name}", "{path}"}, map[string]string{"name": "{path}", "path": "/a.zip"})
+	got := render([]string{"{name}", "{path}"}, vars{"name": "{path}", "path": "/a.zip"})
 	if got[0] != "{path}" || got[1] != "/a.zip" {
-		t.Errorf("Render = %v, want [{path} /a.zip]", got)
+		t.Errorf("render = %v, want [{path} /a.zip]", got)
 	}
+}
+
+func TestEscalatesReadsTheDeclaredArgv(t *testing.T) {
+	if !Escalates([]string{"sudo", "drmap", "apply", "{name}"}) {
+		t.Error("an argv starting with sudo escalates")
+	}
+	if Escalates([]string{"drmap", "pack"}) || Escalates(nil) {
+		t.Error("only an argv starting with sudo escalates")
+	}
+}
+
+func equal(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // buildStore lays out a map store the way a vendor tool would: map directories
@@ -234,36 +242,40 @@ func TestListRefusesARemoteStore(t *testing.T) {
 	}
 }
 
-func TestNativeStoreIsEmosOwned(t *testing.T) {
-	config.Init()
-	d := &Declaration{Kind: KindNative, Native: &Native{Cloud: "lidar"}}
-	if d.Store() != config.MapsDir {
-		t.Errorf("native store = %q, want %q", d.Store(), config.MapsDir)
+func TestListFindsTheGridTheWayARecipeDoes(t *testing.T) {
+	// An imported map may carry office.yaml rather than the declared name; a
+	// recipe's active_grid_path() still finds it, so the CLI must too.
+	store := buildStore(t, []string{"imported", "ambiguous"}, "", false)
+	os.WriteFile(filepath.Join(store, "imported", "office.yaml"), []byte("image: office.pgm\n"), 0o644)
+	os.WriteFile(filepath.Join(store, "ambiguous", "a.yaml"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(store, "ambiguous", "b.yaml"), []byte("x"), 0o644)
+
+	maps, err := vendorDecl(store).List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	for _, m := range maps {
+		switch m.Name {
+		case "imported":
+			if filepath.Base(m.Grid) != "office.yaml" {
+				t.Errorf("imported grid = %q, want office.yaml", m.Grid)
+			}
+		case "ambiguous":
+			if m.Grid != "" {
+				t.Errorf("two candidate grids must not be guessed between, got %q", m.Grid)
+			}
+		}
 	}
 }
 
-func TestCommandRendersAndEscalates(t *testing.T) {
-	d := vendorDecl("/var/opt/robot/data/maps")
-	d.Vendor.RequiresRoot = true
-	// Escalation lives in the declared argv, not in command(): it is per-verb.
-	got := d.command([]string{"sudo", "drmap", "mapping", "-n", "{name}"}, vars{"name": "warehouse"})
-	want := []string{"sudo", "drmap", "mapping", "-n", "warehouse"}
-	if len(got) != len(want) {
-		t.Fatalf("command = %v, want %v", got, want)
+func TestListResolvesARelativeActiveLink(t *testing.T) {
+	store := buildStore(t, []string{"a", "b"}, "", true)
+	if err := os.Symlink("b", filepath.Join(store, "active")); err != nil {
+		t.Fatal(err)
 	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("command = %v, want %v", got, want)
-		}
-	}
-
-	if got := d.command([]string{"drmap", "stop_mapping"}, nil); got[0] == "sudo" {
-		t.Errorf("command() must not add escalation of its own: %v", got)
-	}
-
-	// An undeclared verb yields no command rather than an empty argv to run.
-	if got := d.command(nil, vars{"name": "x"}); got != nil {
-		t.Errorf("undeclared verb = %v, want nil", got)
+	active, err := vendorDecl(store).ActiveName()
+	if err != nil || active != "b" {
+		t.Errorf("ActiveName = %q, %v; want b", active, err)
 	}
 }
 
@@ -343,7 +355,7 @@ func TestSessionIdentifiesTheMapTheVendorNamed(t *testing.T) {
 		t.Errorf("start argv = %v", got)
 	}
 
-	built, err := s.Stop()
+	built, err := s.Stop(context.Background())
 	if err != nil {
 		t.Fatalf("Stop: %v", err)
 	}
@@ -378,7 +390,7 @@ func TestSessionRetriesStopUntilTheMapAppears(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	built, err := s.Stop()
+	built, err := s.Stop(context.Background())
 	if err != nil {
 		t.Fatalf("Stop: %v", err)
 	}
@@ -400,7 +412,7 @@ func TestSessionReportsWhenNoMapEverAppears(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if _, err := s.Stop(); err == nil {
+	if _, err := s.Stop(context.Background()); err == nil {
 		t.Error("a session that produced nothing must not report success")
 	}
 }
@@ -416,16 +428,62 @@ func TestSessionIgnoresMapsThatExistedBefore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if _, err := s.Stop(); err == nil {
+	if _, err := s.Stop(context.Background()); err == nil {
 		t.Error("the pre-existing map should not count as the session's output")
 	}
 }
 
-func TestStartRefusesNative(t *testing.T) {
-	d := &Declaration{Kind: KindNative, Native: &Native{Cloud: "lidar"}}
+func TestStartNeedsAStopCommand(t *testing.T) {
+	// Starting a session nothing can end would leave the robot mapping.
+	d := sessionDecl(buildStore(t, nil, "", false))
+	d.Vendor.Stop = nil
 	rec := &recorder{}
 	if _, err := d.Start("x", rec.run); err == nil {
-		t.Error("native mapping is not startable through the vendor path")
+		t.Error("a declaration without stop must not start")
+	}
+	if len(rec.ran) != 0 {
+		t.Errorf("nothing should run: %v", rec.ran)
+	}
+}
+
+func TestStartRejectsNamesThatReadAsOptionsOrPaths(t *testing.T) {
+	d := sessionDecl(buildStore(t, nil, "", false))
+	for _, name := range []string{"", "--force", "../etc", "a/b", "-n"} {
+		rec := &recorder{}
+		if _, err := d.Start(name, rec.run); err == nil {
+			t.Errorf("name %q should be refused", name)
+		}
+		if len(rec.ran) != 0 {
+			t.Errorf("name %q: nothing should run, ran %v", name, rec.ran)
+		}
+	}
+	if _, err := d.Start("warehouse_2.b-1", (&recorder{}).run); err != nil {
+		t.Errorf("an ordinary name should start: %v", err)
+	}
+}
+
+func TestStopGivesUpWhenInterrupted(t *testing.T) {
+	fastStop(t, time.Minute)
+	d := sessionDecl(buildStore(t, nil, "", false))
+	d.Vendor.StopRetries = 2
+	calls := 0
+	rec := &recorder{}
+	rec.onStop = func() { calls++ }
+
+	s, err := d.Start("interrupted", rec.run)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := s.Stop(ctx); !errors.Is(err, ErrStopInterrupted) {
+		t.Fatalf("want ErrStopInterrupted, got %v", err)
+	}
+	if calls != 1 {
+		t.Errorf("stop ran %d times; an interrupt must not wait out or retry", calls)
+	}
+	if got := s.StopCommand(); got != "sudo drmap stop_mapping" {
+		t.Errorf("StopCommand = %q", got)
 	}
 }
 
@@ -442,7 +500,7 @@ func TestStopIssuedOnceWhenNoRetriesDeclared(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if _, err := s.Stop(); err == nil {
+	if _, err := s.Stop(context.Background()); err == nil {
 		t.Fatal("no map appeared, so Stop must report failure")
 	}
 	if calls != 1 {
@@ -490,7 +548,7 @@ func TestRemoveUsesThePathFromTheStoreNotTheCaller(t *testing.T) {
 	store := buildStore(t, []string{"gone-20260102-100000"}, "", true)
 	d := vendorDecl(store)
 	d.Vendor.RequiresRoot = true
-	rec := &recorder{}
+	rec := &recorder{after: deletes(filepath.Join(store, "gone-20260102-100000"))}
 	if err := d.Remove("gone-20260102-100000", rec.run); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
@@ -511,13 +569,18 @@ func TestRemovePrefersADeclaredCommand(t *testing.T) {
 	d := vendorDecl(store)
 	d.Vendor.RequiresRoot = true
 	d.Vendor.Remove = []string{"sudo", "vendortool", "delete", "{name}"}
-	rec := &recorder{}
+	rec := &recorder{after: deletes(filepath.Join(store, "gone-20260102-100000"))}
 	if err := d.Remove("gone-20260102-100000", rec.run); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
 	if rec.ran[0][1] != "vendortool" {
 		t.Errorf("a declared delete command should win over rm: %v", rec.ran[0])
 	}
+}
+
+// deletes stands in for a vendor delete command that works.
+func deletes(dir string) func() {
+	return func() { os.RemoveAll(dir) }
 }
 
 func TestRemoveWithoutRootDeletesDirectly(t *testing.T) {
@@ -582,19 +645,83 @@ func TestExportReportsTheArchiveThatAppeared(t *testing.T) {
 	}
 }
 
-func TestExportIsNotEscalated(t *testing.T) {
-	// The vendor documents pack without sudo. Running it as root would leave a
-	// root-owned archive in the operator's own Downloads.
+func TestExportRunsTheDeclaredCommandAsIs(t *testing.T) {
+	// The vendor documents pack without sudo, and requires_root is true for the
+	// provider as a whole; the CLI must not escalate on its behalf.
 	store := buildStore(t, []string{"a-20260101-100000"}, "a-20260101-100000", true)
 	d := vendorDecl(store)
-	d.Vendor.RequiresRoot = true // true for the provider as a whole
+	d.Vendor.RequiresRoot = true
 	d.Vendor.Export = []string{"drmap", "pack"}
 	rec := &recorder{}
 	if _, err := d.Export("a-20260101-100000", "", rec.run); err != nil {
 		t.Fatalf("Export: %v", err)
 	}
-	if rec.ran[0][0] == "sudo" {
-		t.Errorf("export must not be escalated: %v", rec.ran[0])
+	if !equal(rec.ran[0], d.Vendor.Export) {
+		t.Errorf("ran %v, want exactly %v", rec.ran[0], d.Vendor.Export)
+	}
+}
+
+func TestExportNeverOverwritesAnArchive(t *testing.T) {
+	store := buildStore(t, []string{"a"}, "a", true)
+	out, dest := t.TempDir(), t.TempDir()
+	os.WriteFile(filepath.Join(dest, "map.zip"), []byte("earlier"), 0o644)
+
+	d := vendorDecl(store)
+	d.Vendor.Export = []string{"drmap", "pack"}
+	d.Vendor.ExportDir = out
+	rec := &recorder{after: func() {
+		os.WriteFile(filepath.Join(out, "map.zip"), []byte("new"), 0o644)
+	}}
+
+	archive, err := d.Export("a", dest, rec.run)
+	if err == nil {
+		t.Fatal("an archive of the same name in dest must not be replaced")
+	}
+	if archive != filepath.Join(out, "map.zip") {
+		t.Errorf("archive = %q, want where it still is", archive)
+	}
+	if data, _ := os.ReadFile(filepath.Join(dest, "map.zip")); string(data) != "earlier" {
+		t.Error("the existing archive was overwritten")
+	}
+}
+
+func TestExportIgnoresDirectoriesInTheExportDir(t *testing.T) {
+	store := buildStore(t, []string{"a"}, "a", true)
+	out := t.TempDir()
+	d := vendorDecl(store)
+	d.Vendor.Export = []string{"drmap", "pack"}
+	d.Vendor.ExportDir = out
+	rec := &recorder{after: func() {
+		os.MkdirAll(filepath.Join(out, "unrelated"), 0o755)
+	}}
+	archive, err := d.Export("a", "", rec.run)
+	if err != nil || archive != "" {
+		t.Errorf("Export = %q, %v; a new directory is not an archive", archive, err)
+	}
+}
+
+func TestCopyFileStreamsAndRefusesAnExistingTarget(t *testing.T) {
+	dir := t.TempDir()
+	src, dst := filepath.Join(dir, "src.zip"), filepath.Join(dir, "dst.zip")
+	os.WriteFile(src, []byte("archive"), 0o644)
+	if err := copyFile(src, dst); err != nil {
+		t.Fatalf("copyFile: %v", err)
+	}
+	if data, _ := os.ReadFile(dst); string(data) != "archive" {
+		t.Errorf("copied %q", data)
+	}
+	if err := copyFile(src, dst); err == nil {
+		t.Error("an existing target must be refused")
+	}
+}
+
+func TestRemoveReportsAMapTheCommandLeftBehind(t *testing.T) {
+	store := buildStore(t, []string{"stubborn"}, "", true)
+	d := vendorDecl(store)
+	d.Vendor.RequiresRoot = true
+	d.Vendor.Remove = []string{"vendortool", "delete", "{name}"}
+	if err := d.Remove("stubborn", (&recorder{}).run); err == nil {
+		t.Error("a clean exit with the map still in the store must not report success")
 	}
 }
 

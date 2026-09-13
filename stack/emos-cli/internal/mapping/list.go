@@ -7,9 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
-
-	"github.com/automatika-robotics/emos-cli/internal/config"
 )
 
 // Map is one map in the store.
@@ -37,26 +36,7 @@ func (e *ErrStoreUnreadable) Unwrap() error { return e.Err }
 
 // Store returns the directory holding this provider's maps.
 func (d *Declaration) Store() string {
-	if d.Kind == KindVendor && d.Vendor != nil {
-		return d.Vendor.Store
-	}
-	return config.MapsDir
-}
-
-// gridName is the occupancy-grid filename to look for inside a map directory.
-func (d *Declaration) gridName() string {
-	if d.Kind == KindVendor && d.Vendor != nil && d.Vendor.Grid != "" {
-		return d.Vendor.Grid
-	}
-	return "occ_grid.yaml"
-}
-
-// activeLink is the symlink naming the active map, if the provider uses one.
-func (d *Declaration) activeLink() string {
-	if d.Kind == KindVendor && d.Vendor != nil {
-		return d.Vendor.ActiveLink
-	}
-	return "active"
+	return d.Vendor.Store
 }
 
 // List returns every map in the provider's store, oldest first.
@@ -65,11 +45,8 @@ func (d *Declaration) List() ([]Map, error) {
 	if store == "" {
 		return nil, fmt.Errorf("the plugin's mapping declaration names no map store")
 	}
-	if d.Kind == KindVendor && d.Vendor != nil && d.Vendor.Host != "" &&
-		d.Vendor.Host != "local" {
-		return nil, fmt.Errorf(
-			"the map store lives on %s; reading a remote store is not supported yet",
-			d.Vendor.Host)
+	if err := d.checkLocal(); err != nil {
+		return nil, err
 	}
 
 	entries, err := os.ReadDir(store)
@@ -84,12 +61,11 @@ func (d *Declaration) List() ([]Map, error) {
 	}
 
 	active := d.resolveActive(store)
-	grid := d.gridName()
 
 	var maps []Map
 	for _, entry := range entries {
 		name := entry.Name()
-		if name == d.activeLink() {
+		if name == d.Vendor.ActiveLink {
 			// The active marker is a link to one of the entries below.
 			continue
 		}
@@ -99,16 +75,13 @@ func (d *Declaration) List() ([]Map, error) {
 		if err != nil || !info.IsDir() {
 			continue
 		}
-		m := Map{
+		maps = append(maps, Map{
 			Name:     name,
 			Path:     full,
 			Active:   name == active,
 			Modified: info.ModTime(),
-		}
-		if gridPath := filepath.Join(full, grid); fileExists(gridPath) {
-			m.Grid = gridPath
-		}
-		maps = append(maps, m)
+			Grid:     d.findGrid(full),
+		})
 	}
 	sort.Slice(maps, func(i, j int) bool {
 		return maps[i].Modified.Before(maps[j].Modified)
@@ -116,9 +89,36 @@ func (d *Declaration) List() ([]Map, error) {
 	return maps, nil
 }
 
+// findGrid returns the occupancy-grid YAML in a map directory: the declared grid
+// file when present, else the only .yaml there, else "". Filenames vary between
+// maps in one store, and this matches how a recipe finds the grid through
+// sugarcoat's active_grid_path().
+func (d *Declaration) findGrid(dir string) string {
+	if d.Vendor.Grid != "" {
+		if path := filepath.Join(dir, d.Vendor.Grid); fileExists(path) {
+			return path
+		}
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	found := ""
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") {
+			continue
+		}
+		if found != "" {
+			return ""
+		}
+		found = filepath.Join(dir, entry.Name())
+	}
+	return found
+}
+
 // resolveActive returns the name of the map the active link points at, or "".
 func (d *Declaration) resolveActive(store string) string {
-	link := d.activeLink()
+	link := d.Vendor.ActiveLink
 	if link == "" {
 		return ""
 	}

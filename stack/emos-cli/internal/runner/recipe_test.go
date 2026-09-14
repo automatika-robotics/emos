@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -25,8 +26,41 @@ func TestStartRecipeWritesItsOutputAndExitCode(t *testing.T) {
 	if got := out.String(); !strings.Contains(got, "out") || !strings.Contains(got, "err") {
 		t.Errorf("output = %q, want stdout and stderr", got)
 	}
-	if want := "exec python3 -u /emos/recipes/demo/recipe.py"; len(s.shells) != 1 || s.shells[0] != want {
+	want := "cd '/emos/recipes/demo' && exec python3 -u '/emos/recipes/demo/recipe.py'"
+	if len(s.shells) != 1 || s.shells[0] != want {
 		t.Errorf("shell = %q, want %q", s.shells, want)
+	}
+}
+
+// hostStrategy runs commands in a plain shell, with recipes in dir.
+type hostStrategy struct {
+	RuntimeStrategy // only Command and RecipesDir are used
+	dir             string
+}
+
+func (h hostStrategy) Command(shell string) *exec.Cmd { return exec.Command("bash", "-c", shell) }
+func (h hostStrategy) RecipesDir() string             { return h.dir }
+
+func TestRecipeRunsFromItsOwnFolder(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 is needed to run a recipe")
+	}
+	recipes := t.TempDir()
+	dir := filepath.Join(recipes, "demo")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "robot.toml"), []byte("config next to the recipe"), 0o644)
+	os.WriteFile(filepath.Join(dir, "recipe.py"), []byte("print(open('robot.toml').read())\n"), 0o644)
+
+	var out bytes.Buffer
+	h, err := startRecipe(hostStrategy{dir: recipes}, "demo", &out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := h.Wait(); code != 0 {
+		t.Fatalf("exit code = %d: %s", code, out.String())
+	}
+	if !strings.Contains(out.String(), "config next to the recipe") {
+		t.Errorf("the recipe could not open a file next to it: %s", out.String())
 	}
 }
 

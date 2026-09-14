@@ -151,7 +151,10 @@ func StartProcess(cmd *exec.Cmd) (*RunHandle, error) {
 // startRecipe starts a recipe in the strategy's environment, writing its output
 // to out.
 func startRecipe(s RuntimeStrategy, recipeName string, out io.Writer) (*RunHandle, error) {
-	cmd := s.Command("exec python3 -u " + filepath.Join(s.RecipesDir(), recipeName, "recipe.py"))
+	// Run from the recipe's folder, so it finds files next to it by relative path.
+	dir := filepath.Join(s.RecipesDir(), recipeName)
+	cmd := s.Command(fmt.Sprintf("cd %s && exec python3 -u %s",
+		shellQuote(dir), shellQuote(filepath.Join(dir, "recipe.py"))))
 	cmd.Stdout = out
 	cmd.Stderr = out
 	h, err := StartProcess(cmd)

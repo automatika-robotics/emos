@@ -109,7 +109,6 @@ ARG ROS_DISTRO
 ENV ROS_DISTRO=${ROS_DISTRO}
 ENV ROS_ROOT=/opt/ros/${ROS_DISTRO}
 ENV DEBIAN_FRONTEND=noninteractive
-ENV RMW_IMPLEMENTATION=rmw_zenoh_cpp
 
 # Runtime-only system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \

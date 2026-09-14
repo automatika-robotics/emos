@@ -197,7 +197,6 @@ RUN /bin/bash -c "source ${ROS_ROOT}/setup.bash && \
 # --- Final Configuration ---
 WORKDIR /
 ENV ROS_WS=
-ENV RMW_IMPLEMENTATION=rmw_zenoh_cpp
 COPY docker/jetson/entrypoint.sh /ros_entrypoint.sh
 RUN chmod +x /ros_entrypoint.sh
 

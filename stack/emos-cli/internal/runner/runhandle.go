@@ -68,13 +68,13 @@ func (h *RunHandle) Interrupt() { h.signal(syscall.SIGINT) }
 // Kill ends the recipe at once.
 func (h *RunHandle) Kill() { h.signal(syscall.SIGKILL) }
 
-// Cancel sends SIGTERM to the recipe, then SIGKILLs after grace. Returns
-// immediately if the process is already done.
+// Cancel interrupts the recipe, then kills it if it is still running after
+// grace. Returns immediately if the process is already done.
 func (h *RunHandle) Cancel(grace time.Duration) error {
 	if !h.Running() {
 		return nil
 	}
-	h.signal(syscall.SIGTERM)
+	h.Interrupt()
 	select {
 	case <-h.done:
 		return nil

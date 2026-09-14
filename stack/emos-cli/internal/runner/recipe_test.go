@@ -41,6 +41,16 @@ func startShell(t *testing.T, script string) *RunHandle {
 	return h
 }
 
+func TestCancelInterruptsTheRecipeAndWaitsForIt(t *testing.T) {
+	h := startShell(t, `trap "exit 7" INT; while :; do sleep 0.1; done`)
+	if err := h.Cancel(5 * time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := h.Wait(); code != 7 {
+		t.Errorf("exit code = %d; want 7, from the recipe's own shutdown on SIGINT", code)
+	}
+}
+
 func TestWaitForRecipeInterruptsOnTheFirstSignal(t *testing.T) {
 	h := startShell(t, `trap "exit 0" INT; while :; do sleep 0.1; done`)
 	signals := make(chan os.Signal, 2)

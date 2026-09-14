@@ -195,8 +195,13 @@ func (rt *Runtime) CancelPreflight(r *Run) {
 	rt.rotateLocked(r)
 }
 
-// Cancel terminates the active run if its id matches. Routes to either the
-// preparing-phase abort or the running-phase signal-kill.
+// runStopGrace is how long a stopped recipe has to shut down before it is
+// killed. ROS launch alone takes up to 10 s to stop its processes, and the
+// recipe tears its plugins down after that.
+var runStopGrace = 15 * time.Second
+
+// Cancel stops the active run if its id matches. A preparing run is aborted; a
+// running one is interrupted in the background and killed after runStopGrace.
 func (rt *Runtime) Cancel(id string) error {
 	rt.mu.Lock()
 	cur := rt.current
@@ -219,11 +224,12 @@ func (rt *Runtime) Cancel(id string) error {
 		rt.mu.Unlock()
 		return nil
 	}
-	// Running case: mark canceled first so the watcher classifies the
-	// SIGTERM-induced exit correctly, then release the lock and signal.
+	// Running case: mark canceled first so the watcher classifies the exit it
+	// causes correctly. The run stays current until the process exits.
 	cur.Status = RunStatusCanceled
 	rt.mu.Unlock()
-	return handle.Cancel(5 * time.Second)
+	go handle.Cancel(runStopGrace)
+	return nil
 }
 
 // closeOnce closes ch if not already closed. Goroutine-safe via the

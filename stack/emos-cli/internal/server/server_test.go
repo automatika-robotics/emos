@@ -96,7 +96,7 @@ func TestAttachHandleStopsTheProcessOfACancelledRun(t *testing.T) {
 func TestCancelledRunStaysCanceledWhateverItsExit(t *testing.T) {
 	cases := map[string][]string{
 		"killed by the signal": {"sleep", "30"},
-		"exits cleanly":        {"sh", "-c", `trap "exit 0" TERM; while :; do sleep 0.1; done`},
+		"exits cleanly":        {"sh", "-c", `trap "exit 0" INT; while :; do sleep 0.1; done`},
 	}
 	for label, argv := range cases {
 		t.Run(label, func(t *testing.T) {
@@ -124,6 +124,42 @@ func TestCancelledRunStaysCanceledWhateverItsExit(t *testing.T) {
 				t.Fatalf("run = %+v, want canceled", got)
 			}
 		})
+	}
+}
+
+func TestCancelReturnsAtOnceAndKillsARecipeThatWillNotStop(t *testing.T) {
+	saved := runStopGrace
+	runStopGrace = 2 * time.Second
+	t.Cleanup(func() { runStopGrace = saved })
+
+	s := newTestServer(t, true)
+	run := &Run{ID: "r1", Recipe: "r", Status: RunStatusPreparing}
+	if err := s.runtime.TryLock(run); err != nil {
+		t.Fatal(err)
+	}
+	h, err := runner.StartProcess(exec.Command("sh", "-c", `trap "" INT; while :; do sleep 0.1; done`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s.runtime.AttachHandle(run, h) {
+		t.Fatal("AttachHandle refused a preparing run")
+	}
+	time.Sleep(200 * time.Millisecond) // let the trap install
+
+	start := time.Now()
+	if err := s.runtime.Cancel(run.ID); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("Cancel took %v; it must not wait for the recipe", elapsed)
+	}
+	if s.runtime.Current() == nil {
+		t.Error("the run must stay current until its process exits")
+	}
+	select {
+	case <-h.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("a recipe ignoring the interrupt was not killed after the grace")
 	}
 }
 

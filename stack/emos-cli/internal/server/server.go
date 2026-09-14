@@ -241,9 +241,9 @@ func (s *Server) stop() error {
 }
 
 // runDrainTimeout bounds the shutdown wait for the active run to stop and its
-// goroutines to finish, counted from before the cancel. Cancel SIGKILLs the
-// recipe after a 5 s grace, which leaves time for the cleanup to run.
-const runDrainTimeout = 8 * time.Second
+// goroutines to finish. The recipe is killed after runStopGrace, which leaves
+// time for the cleanup to run.
+const runDrainTimeout = 25 * time.Second
 
 // goTracked runs fn on a goroutine registered with the shutdown WaitGroup.
 func (s *Server) goTracked(fn func()) {
@@ -259,7 +259,7 @@ func (s *Server) goTracked(fn func()) {
 // exits. A goroutine stuck mid-preflight past its next cancel checkpoint is logged
 // and abandoned rather than hanging the stop.
 func (s *Server) drainRuns(timeout time.Duration) {
-	deadline := time.After(timeout) // started before Cancel, which can block
+	deadline := time.After(timeout)
 	if cur := s.runtime.Current(); cur != nil {
 		s.log.Info("shutdown: stopping active run", "id", cur.ID, "recipe", cur.Recipe)
 		if err := s.runtime.Cancel(cur.ID); err != nil {

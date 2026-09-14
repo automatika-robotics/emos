@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/plugin"
 	"github.com/automatika-robotics/emos-cli/internal/runner"
 )
@@ -49,10 +47,7 @@ func (s *Server) handleRunsStart(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, codeBadRequest, "invalid recipe name")
 		return
 	}
-	if body.RMW == "" {
-		body.RMW = "rmw_zenoh_cpp"
-	}
-	if !validRMW(body.RMW) {
+	if body.RMW != "" && !runner.ValidRMW(body.RMW) {
 		writeErr(w, http.StatusBadRequest, codeBadRequest, "invalid rmw implementation")
 		return
 	}
@@ -132,20 +127,22 @@ func (s *Server) runRecipeAsync(run *Run, recipeDir string, body startRunBody) {
 		}
 	}
 
-	step("preparing run: recipe=%s rmw=%s", run.Recipe, run.RMW)
+	step("preparing run: recipe=%s", run.Recipe)
 
 	manifest := runner.LoadManifest(filepath.Join(recipeDir, "manifest.json"))
 
-	strategy, err := s.buildStrategy()
+	strategy, err := runner.NewStrategy(s.cfg, body.RMW)
 	if err != nil {
 		step("ERROR: %s", err)
 		s.runtime.FailPreflight(run, err)
 		return
 	}
 
-	// Whatever the strategy starts is cleaned up on every way out of here
+	// Whatever the run starts is cleaned up on every way out of here
+	var router *runner.RunHandle
 	defer func() {
 		if !attached {
+			runner.StopZenohRouter(router)
 			_ = strategy.Cleanup()
 		}
 	}()
@@ -161,16 +158,10 @@ func (s *Server) runRecipeAsync(run *Run, recipeDir string, body startRunBody) {
 		return
 	}
 
-	step("setting RMW implementation: %s", body.RMW)
-	if err := strategy.SetRMWImpl(body.RMW); err != nil {
-		step("ERROR: %s", err)
-		s.runtime.FailPreflight(run, err)
-		return
-	}
-
-	if body.RMW == "rmw_zenoh_cpp" {
+	step("RMW implementation: %s", runner.RMWLabel(body.RMW))
+	if body.RMW == runner.ZenohRMW {
 		step("starting zenoh router")
-		if err := strategy.ConfigureZenoh(run.Recipe, manifest); err != nil {
+		if router, err = runner.StartZenohRouter(strategy, manifest); err != nil {
 			step("ERROR: %s", err)
 			s.runtime.FailPreflight(run, err)
 			return
@@ -194,7 +185,7 @@ func (s *Server) runRecipeAsync(run *Run, recipeDir string, body startRunBody) {
 
 	step("starting recipe process")
 	logf.Close() // strategy will reopen for append; avoid two writers
-	handle, err := strategy.StartRecipe(run.Recipe, manifest, run.LogPath)
+	handle, err := strategy.StartRecipe(run.Recipe, run.LogPath)
 	if err != nil {
 		s.runtime.FailPreflight(run, err)
 		return
@@ -208,6 +199,7 @@ func (s *Server) runRecipeAsync(run *Run, recipeDir string, body startRunBody) {
 	attached = true
 	s.goTracked(func() {
 		<-handle.Done()
+		runner.StopZenohRouter(router)
 		_ = strategy.Cleanup()
 	})
 }
@@ -310,31 +302,4 @@ func (s *Server) handleRunLogs(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-}
-
-func validRMW(rmw string) bool {
-	switch rmw {
-	case "rmw_fastrtps_cpp", "rmw_cyclonedds_cpp", "rmw_zenoh_cpp":
-		return true
-	}
-	return false
-}
-
-// --- strategy factory (mirrors runner.RunRecipe's switch) ---
-
-func (s *Server) buildStrategy() (runner.RuntimeStrategy, error) {
-	if !s.cfg.IsInstalled() {
-		return nil, errors.New("no install config")
-	}
-	switch s.cfg.Mode {
-	case config.ModeOSSContainer:
-		return runner.NewContainerStrategy(false), nil
-	case config.ModeLicensed:
-		return runner.NewContainerStrategy(true), nil
-	case config.ModeNative:
-		return runner.NewNativeStrategy(), nil
-	case config.ModePixi:
-		return runner.NewPixiStrategy(s.cfg.PixiProjectDir), nil
-	}
-	return nil, fmt.Errorf("unknown install mode: %s", s.cfg.Mode)
 }

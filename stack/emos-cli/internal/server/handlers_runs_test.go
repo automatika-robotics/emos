@@ -10,25 +10,6 @@ import (
 	"github.com/automatika-robotics/emos-cli/internal/config"
 )
 
-func TestValidRMW(t *testing.T) {
-	cases := []struct {
-		in   string
-		want bool
-	}{
-		{"rmw_fastrtps_cpp", true},
-		{"rmw_cyclonedds_cpp", true},
-		{"rmw_zenoh_cpp", true},
-		{"", false},
-		{"rmw_other", false},
-		{"FastRTPS", false},
-	}
-	for _, tc := range cases {
-		if got := validRMW(tc.in); got != tc.want {
-			t.Errorf("validRMW(%q) = %v, want %v", tc.in, got, tc.want)
-		}
-	}
-}
-
 func TestHandleRunsListEmpty(t *testing.T) {
 	s := newTestServer(t, true)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/runs", nil)

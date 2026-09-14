@@ -270,6 +270,7 @@ paths:
                 rmw:
                   type: string
                   enum: [rmw_zenoh_cpp, rmw_fastrtps_cpp, rmw_cyclonedds_cpp]
+                  description: Omit to leave RMW_IMPLEMENTATION as the daemon's environment has it, or ROS's default.
       responses:
         "202": { description: accepted }
         "409": { description: another recipe already running, or plugins are being installed, updated or removed }

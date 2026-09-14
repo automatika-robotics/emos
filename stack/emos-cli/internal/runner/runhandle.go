@@ -121,7 +121,7 @@ func (h *RunHandle) finish(code int, err error) {
 func StartProcess(cmd *exec.Cmd, logPath string) (*RunHandle, error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start recipe: %w", err)
+		return nil, err
 	}
 	h := &RunHandle{
 		Pid:       cmd.Process.Pid,

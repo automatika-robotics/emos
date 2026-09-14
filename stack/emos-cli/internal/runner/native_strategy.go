@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"time"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/ui"
@@ -16,20 +15,15 @@ import (
 // ROS setup.bash needs to be sourced.
 type NativeStrategy struct {
 	rosDistro string
-	extraEnv  []string
+	env       []string // added to the environment of every command
 }
 
-func NewNativeStrategy() *NativeStrategy {
+func NewNativeStrategy(env []string) *NativeStrategy {
 	distro := "jazzy"
 	if cfg := config.LoadConfig(); cfg != nil && cfg.ROSDistro != "" {
 		distro = cfg.ROSDistro
 	}
-	return &NativeStrategy{rosDistro: distro}
-}
-
-// envFor stamps the strategy's accumulated env onto a freshly-built command.
-func (s *NativeStrategy) envFor(cmd *exec.Cmd) {
-	cmd.Env = append(os.Environ(), s.extraEnv...)
+	return &NativeStrategy{rosDistro: distro, env: env}
 }
 
 func (s *NativeStrategy) sourceCmd() string {
@@ -43,6 +37,14 @@ func (s *NativeStrategy) sourceCmd() string {
 	return cmd
 }
 
+func (s *NativeStrategy) Command(shell string) *exec.Cmd {
+	cmd := exec.Command("bash", "-c", s.sourceCmd()+" && "+shell)
+	cmd.Env = append(os.Environ(), s.env...)
+	return cmd
+}
+
+func (s *NativeStrategy) RecipesDir() string { return config.RecipesDir }
+
 func (s *NativeStrategy) PrepareEnvironment() error {
 	ui.Header("HOST ENVIRONMENT SETUP")
 
@@ -53,40 +55,12 @@ func (s *NativeStrategy) PrepareEnvironment() error {
 	ui.Success(fmt.Sprintf("ROS 2 %s found.", s.rosDistro))
 
 	// Quick check that EMOS packages are importable
-	checkCmd := exec.Command("bash", "-c", s.sourceCmd()+" && python3 -c 'import agents' 2>/dev/null")
-	if err := checkCmd.Run(); err != nil {
+	if err := s.Command("python3 -c 'import agents' 2>/dev/null").Run(); err != nil {
 		ui.Warn("EMOS packages may not be installed. Run 'emos install --mode native' first.")
 	} else {
 		ui.Success("EMOS packages available.")
 	}
 
-	return nil
-}
-
-func (s *NativeStrategy) SetRMWImpl(rmw string) error {
-	ui.Header("RMW CONFIGURATION")
-	ui.Info("Setting RMW_IMPLEMENTATION=" + rmw)
-	s.extraEnv = append(s.extraEnv, "RMW_IMPLEMENTATION="+rmw)
-	return nil
-}
-
-func (s *NativeStrategy) ConfigureZenoh(recipeName string, manifest *recipeManifest) error {
-	if manifest.ZenohRouterConfig != "" {
-		configPath := filepath.Join(config.RecipesDir, manifest.ZenohRouterConfig)
-		if _, err := os.Stat(configPath); err == nil {
-			ui.Info("Using Zenoh router config: " + configPath)
-			s.extraEnv = append(s.extraEnv, "ZENOH_ROUTER_CONFIG_URI="+configPath)
-		} else {
-			ui.Warn("Zenoh config file not found — using default")
-		}
-	}
-
-	ui.Spinner("Starting zenoh router...", func() error {
-		cmd := exec.Command("bash", "-c", s.sourceCmd()+" && ros2 run rmw_zenoh_cpp rmw_zenohd &")
-		s.envFor(cmd)
-		return cmd.Start()
-	})
-	time.Sleep(2 * time.Second)
 	return nil
 }
 
@@ -100,22 +74,18 @@ func (s *NativeStrategy) LaunchRobotHardware() error {
 	}
 
 	return ui.Spinner("Launching robot base hardware...", func() error {
-		cmd := exec.Command("bash", "-c", s.sourceCmd()+" && ros2 launch "+bringup+" &")
-		s.envFor(cmd)
-		return cmd.Start()
+		return s.Command("ros2 launch " + bringup + " &").Start()
 	})
 }
 
-func (s *NativeStrategy) ExecRecipe(recipeName string, manifest *recipeManifest, logFile string) error {
+func (s *NativeStrategy) ExecRecipe(recipeName string, logFile string) error {
 	ui.Header("LAUNCHING RECIPE: " + recipeName)
 	ui.Info("All output will be saved to: " + logFile)
 	ui.Success("BEGIN RECIPE OUTPUT")
 	fmt.Println()
 
 	recipePath := filepath.Join(config.RecipesDir, recipeName, "recipe.py")
-	shellCmd := fmt.Sprintf("%s && python3 -u %s 2>&1 | tee %s", s.sourceCmd(), recipePath, logFile)
-	cmd := exec.Command("bash", "-c", shellCmd)
-	s.envFor(cmd)
+	cmd := s.Command(fmt.Sprintf("python3 -u %s 2>&1 | tee %s", recipePath, logFile))
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -125,18 +95,19 @@ func (s *NativeStrategy) ExecRecipe(recipeName string, manifest *recipeManifest,
 // StartRecipe launches the recipe non-blocking and writes output only to the
 // log file (no terminal binding). The returned handle is what the daemon
 // stores to track + cancel the run.
-func (s *NativeStrategy) StartRecipe(recipeName string, manifest *recipeManifest, logFile string) (*RunHandle, error) {
+func (s *NativeStrategy) StartRecipe(recipeName string, logFile string) (*RunHandle, error) {
 	recipePath := filepath.Join(config.RecipesDir, recipeName, "recipe.py")
-	shellCmd := fmt.Sprintf("%s && exec python3 -u %s >> %s 2>&1", s.sourceCmd(), recipePath, logFile)
-	cmd := exec.Command("bash", "-c", shellCmd)
-	s.envFor(cmd)
+	cmd := s.Command(fmt.Sprintf("exec python3 -u %s >> %s 2>&1", recipePath, logFile))
 	if err := os.MkdirAll(parentDir(logFile), 0755); err != nil {
 		return nil, err
 	}
-	return StartProcess(cmd, logFile)
+	h, err := StartProcess(cmd, logFile)
+	if err != nil {
+		return nil, fmt.Errorf("start recipe: %w", err)
+	}
+	return h, nil
 }
 
 func (s *NativeStrategy) Cleanup() error {
-	ui.Info("Native mode: no container cleanup needed.")
 	return nil
 }

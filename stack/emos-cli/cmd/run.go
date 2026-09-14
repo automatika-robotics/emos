@@ -28,6 +28,7 @@ var runCmd = &cobra.Command{
 }
 
 func init() {
-	runCmd.Flags().StringVar(&rmwFlag, "rmw", "rmw_zenoh_cpp",
-		"RMW implementation (rmw_fastrtps_cpp, rmw_cyclonedds_cpp, rmw_zenoh_cpp)")
+	runCmd.Flags().StringVar(&rmwFlag, "rmw", "",
+		"RMW implementation (rmw_fastrtps_cpp, rmw_cyclonedds_cpp, rmw_zenoh_cpp); "+
+			"unset keeps the environment's, or ROS's default")
 }

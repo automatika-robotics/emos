@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"time"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/installer"
@@ -17,12 +16,12 @@ import (
 // setup.sh must be sourced before running ROS commands.
 type PixiStrategy struct {
 	projectDir string
-	pixiBin    string // resolved absolute path to the pixi binary;
-	extraEnv   []string
+	pixiBin    string   // resolved absolute path to the pixi binary;
+	env        []string // added to the environment of every command
 }
 
-func NewPixiStrategy(projectDir string) *PixiStrategy {
-	return &PixiStrategy{projectDir: projectDir}
+func NewPixiStrategy(projectDir string, env []string) *PixiStrategy {
+	return &PixiStrategy{projectDir: projectDir, env: env}
 }
 
 // ensurePixi populates s.pixiBin once on first use. Idempotent. Pixi
@@ -40,9 +39,9 @@ func (s *PixiStrategy) ensurePixi() error {
 	return nil
 }
 
-// pixiRun executes a command inside the pixi environment, with the
-// strategy's per-run env additions stamped onto the resulting *exec.Cmd.
-func (s *PixiStrategy) pixiRun(shellCmd string) *exec.Cmd {
+// Command runs shell inside the pixi environment, with the colcon overlays
+// sourced.
+func (s *PixiStrategy) Command(shell string) *exec.Cmd {
 	_ = s.ensurePixi() // resolution errors are surfaced by PrepareEnvironment
 	bin := s.pixiBin
 	if bin == "" {
@@ -53,11 +52,13 @@ func (s *PixiStrategy) pixiRun(shellCmd string) *exec.Cmd {
 	}
 	cmd := exec.Command(bin, "run", "--manifest-path",
 		filepath.Join(s.projectDir, "pixi.toml"),
-		"bash", "-c", shellCmd)
+		"bash", "-c", s.sourceCmd()+" && "+shell)
 	cmd.Dir = s.projectDir
-	cmd.Env = append(os.Environ(), s.extraEnv...)
+	cmd.Env = append(os.Environ(), s.env...)
 	return cmd
 }
+
+func (s *PixiStrategy) RecipesDir() string { return config.RecipesDir }
 
 // sourceCmd returns the shell snippet that sources the colcon install overlay,
 // plus the robot-plugin overlay when a plugin is installed.
@@ -86,39 +87,12 @@ func (s *PixiStrategy) PrepareEnvironment() error {
 	ui.Success("pixi project: " + s.projectDir)
 
 	// Verify EMOS packages are importable
-	cmd := s.pixiRun(s.sourceCmd() + " && python3 -c 'import agents' 2>/dev/null")
-	if err := cmd.Run(); err != nil {
+	if err := s.Command("python3 -c 'import agents' 2>/dev/null").Run(); err != nil {
 		ui.Warn("EMOS packages may not be built. Run 'pixi run setup' in " + s.projectDir)
 	} else {
 		ui.Success("EMOS packages available.")
 	}
 
-	return nil
-}
-
-func (s *PixiStrategy) SetRMWImpl(rmw string) error {
-	ui.Header("RMW CONFIGURATION")
-	ui.Info("Setting RMW_IMPLEMENTATION=" + rmw)
-	s.extraEnv = append(s.extraEnv, "RMW_IMPLEMENTATION="+rmw)
-	return nil
-}
-
-func (s *PixiStrategy) ConfigureZenoh(recipeName string, manifest *recipeManifest) error {
-	if manifest.ZenohRouterConfig != "" {
-		configPath := filepath.Join(config.RecipesDir, manifest.ZenohRouterConfig)
-		if _, err := os.Stat(configPath); err == nil {
-			ui.Info("Using Zenoh router config: " + configPath)
-			s.extraEnv = append(s.extraEnv, "ZENOH_ROUTER_CONFIG_URI="+configPath)
-		} else {
-			ui.Warn("Zenoh config file not found — using default")
-		}
-	}
-
-	ui.Spinner("Starting zenoh router...", func() error {
-		cmd := s.pixiRun(s.sourceCmd() + " && ros2 run rmw_zenoh_cpp rmw_zenohd &")
-		return cmd.Start()
-	})
-	time.Sleep(2 * time.Second)
 	return nil
 }
 
@@ -132,20 +106,18 @@ func (s *PixiStrategy) LaunchRobotHardware() error {
 	}
 
 	return ui.Spinner("Launching robot base hardware...", func() error {
-		cmd := s.pixiRun(s.sourceCmd() + " && ros2 launch " + bringup + " &")
-		return cmd.Start()
+		return s.Command("ros2 launch " + bringup + " &").Start()
 	})
 }
 
-func (s *PixiStrategy) ExecRecipe(recipeName string, manifest *recipeManifest, logFile string) error {
+func (s *PixiStrategy) ExecRecipe(recipeName string, logFile string) error {
 	ui.Header("LAUNCHING RECIPE: " + recipeName)
 	ui.Info("All output will be saved to: " + logFile)
 	ui.Success("BEGIN RECIPE OUTPUT")
 	fmt.Println()
 
 	recipePath := filepath.Join(config.RecipesDir, recipeName, "recipe.py")
-	shellCmd := fmt.Sprintf("%s && python3 -u %s 2>&1 | tee %s", s.sourceCmd(), recipePath, logFile)
-	cmd := s.pixiRun(shellCmd)
+	cmd := s.Command(fmt.Sprintf("python3 -u %s 2>&1 | tee %s", recipePath, logFile))
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -154,17 +126,19 @@ func (s *PixiStrategy) ExecRecipe(recipeName string, manifest *recipeManifest, l
 
 // StartRecipe launches the recipe inside the pixi env non-blocking. Output is
 // redirected to the log file; the daemon tails it via SSE.
-func (s *PixiStrategy) StartRecipe(recipeName string, manifest *recipeManifest, logFile string) (*RunHandle, error) {
+func (s *PixiStrategy) StartRecipe(recipeName string, logFile string) (*RunHandle, error) {
 	recipePath := filepath.Join(config.RecipesDir, recipeName, "recipe.py")
-	shellCmd := fmt.Sprintf("%s && exec python3 -u %s >> %s 2>&1", s.sourceCmd(), recipePath, logFile)
-	cmd := s.pixiRun(shellCmd)
+	cmd := s.Command(fmt.Sprintf("exec python3 -u %s >> %s 2>&1", recipePath, logFile))
 	if err := os.MkdirAll(parentDir(logFile), 0755); err != nil {
 		return nil, err
 	}
-	return StartProcess(cmd, logFile)
+	h, err := StartProcess(cmd, logFile)
+	if err != nil {
+		return nil, fmt.Errorf("start recipe: %w", err)
+	}
+	return h, nil
 }
 
 func (s *PixiStrategy) Cleanup() error {
-	ui.Info("Pixi mode: no cleanup needed.")
 	return nil
 }

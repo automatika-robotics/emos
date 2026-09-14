@@ -3,6 +3,8 @@ package runner
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/container"
@@ -13,10 +15,11 @@ import (
 // It supports both oss-container (licensed=false) and licensed (licensed=true) modes.
 type ContainerStrategy struct {
 	licensed bool
+	env      []string // exported in every command run in the container
 }
 
-func NewContainerStrategy(licensed bool) *ContainerStrategy {
-	return &ContainerStrategy{licensed: licensed}
+func NewContainerStrategy(licensed bool, env []string) *ContainerStrategy {
+	return &ContainerStrategy{licensed: licensed, env: env}
 }
 
 func (s *ContainerStrategy) PrepareEnvironment() error {
@@ -43,16 +46,21 @@ func (s *ContainerStrategy) PrepareEnvironment() error {
 	return nil
 }
 
-func (s *ContainerStrategy) SetRMWImpl(rmw string) error {
-	ui.Header("RMW CONFIGURATION")
-	ui.Info("Setting RMW_IMPLEMENTATION=" + rmw)
-	setRMWImpl(rmw)
-	return nil
+// shell prefixes command with the container's ROS environment.
+func (s *ContainerStrategy) shell(command string) string {
+	parts := []string{"source ros_entrypoint.sh"}
+	for _, kv := range s.env {
+		parts = append(parts, "export "+shellQuote(kv))
+	}
+	return strings.Join(append(parts, command), " && ")
 }
 
-func (s *ContainerStrategy) ConfigureZenoh(recipeName string, manifest *recipeManifest) error {
-	return configureZenoh(recipeName, manifest)
+// Command runs shell in the container through a docker exec on the host.
+func (s *ContainerStrategy) Command(shell string) *exec.Cmd {
+	return exec.Command("docker", "exec", config.ContainerName, "bash", "-c", s.shell(shell))
 }
+
+func (s *ContainerStrategy) RecipesDir() string { return recipesRoot }
 
 func (s *ContainerStrategy) LaunchRobotHardware() error {
 	ui.Header("HARDWARE & SENSOR LAUNCH")
@@ -65,27 +73,27 @@ func (s *ContainerStrategy) LaunchRobotHardware() error {
 
 	return ui.Spinner("Launching robot base hardware...", func() error {
 		return container.ExecDetached(config.ContainerName,
-			"source ros_entrypoint.sh && ros2 launch "+emosRoot+"/robot/launch/bringup_robot.py")
+			s.shell("ros2 launch "+emosRoot+"/robot/launch/bringup_robot.py"))
 	})
 }
 
-func (s *ContainerStrategy) ExecRecipe(recipeName string, manifest *recipeManifest, logFile string) error {
+func (s *ContainerStrategy) ExecRecipe(recipeName string, logFile string) error {
 	ui.Header("LAUNCHING RECIPE: " + recipeName)
 	ui.Info("All output will be saved to: " + logFile)
 	ui.Success("BEGIN RECIPE OUTPUT")
 	fmt.Println()
 
-	recipeCmd := fmt.Sprintf("source ros_entrypoint.sh && python3 -u %s/%s/recipe.py | tee %s",
-		recipesRoot, recipeName, logFile)
+	recipeCmd := s.shell(fmt.Sprintf("python3 -u %s/%s/recipe.py | tee %s",
+		recipesRoot, recipeName, logFile))
 	return container.ExecInteractive(config.ContainerName, recipeCmd)
 }
 
 // StartRecipe runs the recipe inside the container non-blocking. The bash
 // process we spawn here is host-side (`docker exec`); its captured stdout
 // goes to the host log file so the SSE log tail works without bind mounts.
-func (s *ContainerStrategy) StartRecipe(recipeName string, manifest *recipeManifest, logFile string) (*RunHandle, error) {
+func (s *ContainerStrategy) StartRecipe(recipeName string, logFile string) (*RunHandle, error) {
 	recipePath := fmt.Sprintf("%s/%s/recipe.py", recipesRoot, recipeName)
-	recipeCmd := fmt.Sprintf("source ros_entrypoint.sh && exec python3 -u %s", recipePath)
+	recipeCmd := s.shell("exec python3 -u " + recipePath)
 	if err := os.MkdirAll(parentDir(logFile), 0755); err != nil {
 		return nil, err
 	}

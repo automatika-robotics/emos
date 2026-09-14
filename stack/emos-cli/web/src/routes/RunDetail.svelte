@@ -25,7 +25,7 @@
         <div class="text-xs text-emos-text-3 mt-1">
           started {relTime($run.data.started_at)} ·
           duration {formatDuration($run.data.started_at, $run.data.finished_at)} ·
-          rmw {$run.data.rmw}
+          rmw {$run.data.rmw || 'default'}
         </div>
       {/if}
     </div>

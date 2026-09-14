@@ -142,6 +142,8 @@ export interface ExtractedTopic {
   name: string;
   msg_type: string;
   is_sensor: boolean;
+  use_plugin?: boolean; // carried by a plugin: the robot plugin, or plugin_id
+  plugin_id?: string;
 }
 
 export interface RecipeDetail extends LocalRecipe {

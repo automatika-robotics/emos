@@ -107,8 +107,7 @@ func (s *Server) runRecipeAsync(run *Run, recipeDir string, body startRunBody) {
 	}
 	attached := false // a recipe process was started and attached to the run
 	defer func() {
-		// Close only if we never attached a process; the recipe process
-		// inherits the file descriptor when started by StartRecipe.
+		// Once a process is attached, the log is closed when it exits.
 		if !attached {
 			logf.Close()
 		}
@@ -184,8 +183,7 @@ func (s *Server) runRecipeAsync(run *Run, recipeDir string, body startRunBody) {
 	}
 
 	step("starting recipe process")
-	logf.Close() // strategy will reopen for append; avoid two writers
-	handle, err := strategy.StartRecipe(run.Recipe, run.LogPath)
+	handle, err := strategy.StartRecipe(run.Recipe, logf)
 	if err != nil {
 		s.runtime.FailPreflight(run, err)
 		return
@@ -199,14 +197,15 @@ func (s *Server) runRecipeAsync(run *Run, recipeDir string, body startRunBody) {
 	attached = true
 	s.goTracked(func() {
 		<-handle.Done()
+		logf.Close()
 		runner.StopZenohRouter(router)
 		_ = strategy.Cleanup()
 	})
 }
 
 // openSetupLog opens (and creates) the run log file in append mode. Used by
-// the pre-flight goroutine to stream "[setup] ..." progress before the
-// recipe process takes over the file.
+// the pre-flight goroutine to stream "[setup] ..." progress, and then as the
+// recipe process's output.
 func openSetupLog(path string) (*os.File, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return nil, err

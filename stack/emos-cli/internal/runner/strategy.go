@@ -3,16 +3,13 @@ package runner
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
 )
 
 // RuntimeStrategy defines the interface for mode-specific recipe execution.
-//
-// ExecRecipe runs the recipe synchronously (used by the CLI `emos run` path).
-// StartRecipe starts the recipe in the background and returns a handle the
-// caller can Wait on or Cancel (used by the `emos serve` daemon).
 type RuntimeStrategy interface {
 	PrepareEnvironment() error
 	// Command returns a process that runs shell in the mode's ROS environment.
@@ -20,8 +17,9 @@ type RuntimeStrategy interface {
 	// RecipesDir is the recipes directory as a Command sees it.
 	RecipesDir() string
 	LaunchRobotHardware() error
-	ExecRecipe(recipeName string, logFile string) error
-	StartRecipe(recipeName string, logFile string) (*RunHandle, error)
+	// StartRecipe starts the recipe in its own process group, writing its
+	// output to out, and returns a handle to wait on or stop it.
+	StartRecipe(recipeName string, out io.Writer) (*RunHandle, error)
 	Cleanup() error
 }
 

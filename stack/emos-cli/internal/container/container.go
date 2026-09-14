@@ -140,14 +140,6 @@ func ExecDetached(name, command string) error {
 	return err
 }
 
-func ExecInteractive(name, command string) error {
-	cmd := docker("exec", "-it", name, "bash", "-c", command)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
 func FileExists(name, path string) bool {
 	_, err := Exec(name, fmt.Sprintf("test -f '%s'", path))
 	return err == nil

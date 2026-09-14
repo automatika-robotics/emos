@@ -2,9 +2,13 @@ package runner
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
@@ -69,21 +73,28 @@ func RunRecipe(recipeName, rmwImpl string) error {
 
 	manifest := LoadManifest(filepath.Join(recipePath, "manifest.json"))
 
-	// Setup logging
-	os.MkdirAll(config.LogsDir, 0755)
-	timestamp := time.Now().Format("20060102_150405")
-	logFile := filepath.Join(config.LogsDir, fmt.Sprintf("%s_%s.log", recipeName, timestamp))
-
 	cfg := config.LoadConfig()
 	strategy, err := NewStrategy(cfg, rmwImpl)
 	if err != nil {
 		return err
 	}
 
+	logFile := LogFilePath(recipeName)
+	log, err := openLogFile(logFile)
+	if err != nil {
+		return err
+	}
+	defer log.Close()
+
 	ui.Header("EMOS - PRE-RECIPE SETUP")
 	ui.Info("Recipe Name: " + recipeName)
 	ui.Info("Mode: " + string(cfg.Mode))
 	ui.Info("RMW Implementation: " + RMWLabel(rmwImpl))
+
+	// From here a Ctrl+C stops the run, and what it started is cleaned up.
+	signals := make(chan os.Signal, 2)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	defer signal.Stop(signals)
 
 	// Execute the recipe pipeline
 	if err := strategy.PrepareEnvironment(); err != nil {
@@ -103,15 +114,55 @@ func RunRecipe(recipeName, rmwImpl string) error {
 		return err
 	}
 
-	err = strategy.ExecRecipe(recipeName, logFile)
+	select {
+	case <-signals:
+		return errors.New("interrupted before the recipe started")
+	default:
+	}
+
+	ui.Header("LAUNCHING RECIPE: " + recipeName)
+	ui.Info("All output will be saved to: " + logFile)
+	ui.Success("BEGIN RECIPE OUTPUT")
+	fmt.Println()
+
+	handle, err := strategy.StartRecipe(recipeName, io.MultiWriter(os.Stdout, log))
+	if err != nil {
+		return err
+	}
+	stopped, err := waitForRecipe(handle, signals)
 
 	fmt.Println()
-	if err != nil {
-		ui.Error(fmt.Sprintf("Recipe '%s' exited with an error.", recipeName))
-	} else {
+	switch {
+	case err != nil:
+		ui.Error(fmt.Sprintf("Recipe '%s' exited with an error: %v", recipeName, err))
+	case stopped:
+		ui.Success(fmt.Sprintf("Recipe '%s' stopped.", recipeName))
+	default:
 		ui.Success(fmt.Sprintf("Recipe '%s' finished successfully.", recipeName))
 	}
 	return err
+}
+
+// waitForRecipe waits for the recipe to exit. The first signal asks it to shut
+// down, and another kills it.
+func waitForRecipe(h *RunHandle, signals <-chan os.Signal) (stopped bool, err error) {
+	for {
+		select {
+		case <-h.Done():
+			_, err := h.Wait()
+			return stopped, err
+		case <-signals:
+			if stopped {
+				ui.Warn("Killing the recipe.")
+				h.Kill()
+				continue
+			}
+			stopped = true
+			fmt.Println()
+			ui.Info("Stopping the recipe; press Ctrl+C again to force it.")
+			h.Interrupt()
+		}
+	}
 }
 
 // killROSProcesses pkills any ROS processes the current user owns.

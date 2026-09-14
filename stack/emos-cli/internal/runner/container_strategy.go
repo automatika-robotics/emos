@@ -2,8 +2,9 @@ package runner
 
 import (
 	"fmt"
-	"os"
+	"io"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
@@ -74,27 +75,16 @@ func (s *ContainerStrategy) LaunchRobotHardware() error {
 	})
 }
 
-func (s *ContainerStrategy) ExecRecipe(recipeName string, logFile string) error {
-	ui.Header("LAUNCHING RECIPE: " + recipeName)
-	ui.Info("All output will be saved to: " + logFile)
-	ui.Success("BEGIN RECIPE OUTPUT")
-	fmt.Println()
-
-	recipeCmd := s.shell(fmt.Sprintf("python3 -u %s/%s/recipe.py | tee %s",
-		recipesRoot, recipeName, logFile))
-	return container.ExecInteractive(config.ContainerName, recipeCmd)
-}
-
-// StartRecipe runs the recipe inside the container non-blocking. The bash
-// process we spawn here is host-side (`docker exec`); its captured stdout
-// goes to the host log file so the SSE log tail works without bind mounts.
-func (s *ContainerStrategy) StartRecipe(recipeName string, logFile string) (*RunHandle, error) {
-	recipePath := fmt.Sprintf("%s/%s/recipe.py", recipesRoot, recipeName)
-	recipeCmd := s.shell("exec python3 -u " + recipePath)
-	if err := os.MkdirAll(parentDir(logFile), 0755); err != nil {
+// StartRecipe runs the recipe through a docker exec on the host, which is
+// what writes its output, so the log lands on the host.
+func (s *ContainerStrategy) StartRecipe(recipeName string, out io.Writer) (*RunHandle, error) {
+	h, err := startRecipe(s, recipeName, out)
+	if err != nil {
 		return nil, err
 	}
-	return startContainerExec(config.ContainerName, recipeCmd, logFile, recipePath)
+	h.container = config.ContainerName
+	h.killTarget = filepath.Join(recipesRoot, recipeName, "recipe.py")
+	return h, nil
 }
 
 func (s *ContainerStrategy) Cleanup() error {

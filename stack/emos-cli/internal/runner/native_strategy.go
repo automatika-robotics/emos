@@ -2,6 +2,7 @@ package runner
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -68,34 +69,8 @@ func (s *NativeStrategy) LaunchRobotHardware() error {
 	return nil
 }
 
-func (s *NativeStrategy) ExecRecipe(recipeName string, logFile string) error {
-	ui.Header("LAUNCHING RECIPE: " + recipeName)
-	ui.Info("All output will be saved to: " + logFile)
-	ui.Success("BEGIN RECIPE OUTPUT")
-	fmt.Println()
-
-	recipePath := filepath.Join(config.RecipesDir, recipeName, "recipe.py")
-	cmd := s.Command(fmt.Sprintf("python3 -u %s 2>&1 | tee %s", recipePath, logFile))
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-// StartRecipe launches the recipe non-blocking and writes output only to the
-// log file (no terminal binding). The returned handle is what the daemon
-// stores to track + cancel the run.
-func (s *NativeStrategy) StartRecipe(recipeName string, logFile string) (*RunHandle, error) {
-	recipePath := filepath.Join(config.RecipesDir, recipeName, "recipe.py")
-	cmd := s.Command(fmt.Sprintf("exec python3 -u %s >> %s 2>&1", recipePath, logFile))
-	if err := os.MkdirAll(parentDir(logFile), 0755); err != nil {
-		return nil, err
-	}
-	h, err := StartProcess(cmd, logFile)
-	if err != nil {
-		return nil, fmt.Errorf("start recipe: %w", err)
-	}
-	return h, nil
+func (s *NativeStrategy) StartRecipe(recipeName string, out io.Writer) (*RunHandle, error) {
+	return startRecipe(s, recipeName, out)
 }
 
 func (s *NativeStrategy) Cleanup() error {

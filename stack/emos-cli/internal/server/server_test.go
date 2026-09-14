@@ -71,7 +71,7 @@ func TestAttachHandleStopsTheProcessOfACancelledRun(t *testing.T) {
 	if err := s.runtime.Cancel(run.ID); err != nil {
 		t.Fatal(err)
 	}
-	h, err := runner.StartProcess(exec.Command("sleep", "30"), filepath.Join(t.TempDir(), "run.log"))
+	h, err := runner.StartProcess(exec.Command("sleep", "30"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestCancelledRunStaysCanceledWhateverItsExit(t *testing.T) {
 			if err := s.runtime.TryLock(run); err != nil {
 				t.Fatal(err)
 			}
-			h, err := runner.StartProcess(exec.Command(argv[0], argv[1:]...), filepath.Join(t.TempDir(), "run.log"))
+			h, err := runner.StartProcess(exec.Command(argv[0], argv[1:]...))
 			if err != nil {
 				t.Fatal(err)
 			}

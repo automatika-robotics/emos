@@ -43,7 +43,7 @@ func StartZenohRouter(s RuntimeStrategy, manifest *recipeManifest) (*RunHandle, 
 	if path := zenohRouterConfig(s, manifest.ZenohRouterConfig); path != "" {
 		shell = "export ZENOH_ROUTER_CONFIG_URI=" + shellQuote(path) + " && " + shell
 	}
-	router, err := StartProcess(s.Command(shell), "")
+	router, err := StartProcess(s.Command(shell))
 	if err != nil {
 		return nil, fmt.Errorf("start zenoh router: %w", err)
 	}

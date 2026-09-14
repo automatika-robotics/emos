@@ -4,11 +4,126 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
 )
+
+// pixiInstall points the server at a pixi install whose pixi just runs the
+// command it is given, with the recipe "demo" holding source.
+func pixiInstall(t *testing.T, s *Server, source string) {
+	t.Helper()
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 is needed to run a recipe")
+	}
+	bin := t.TempDir()
+	// pixi run --manifest-path <toml> <command...>
+	must(t, os.WriteFile(filepath.Join(bin, "pixi"), []byte("#!/bin/sh\nshift 3\nexec \"$@\"\n"), 0o755))
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	project := t.TempDir()
+	must(t, os.MkdirAll(filepath.Join(project, "install"), 0o755))
+	must(t, os.WriteFile(filepath.Join(project, "pixi.toml"), nil, 0o644))
+	must(t, os.WriteFile(filepath.Join(project, "install", "setup.sh"), nil, 0o644))
+	s.cfg = &config.EMOSConfig{Mode: config.ModePixi, PixiProjectDir: project}
+
+	dir := filepath.Join(config.RecipesDir, "demo")
+	must(t, os.MkdirAll(dir, 0o755))
+	must(t, os.WriteFile(filepath.Join(dir, "recipe.py"), []byte(source), 0o644))
+}
+
+func startDemoRun(t *testing.T, s *Server) Run {
+	t.Helper()
+	rec := httpServe(t, s, jsonRequest(t, http.MethodPost, "/api/v1/runs", map[string]string{"recipe": "demo"}))
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("start run: status %d: %s", rec.Code, rec.Body.String())
+	}
+	var run Run
+	jsonBody(t, rec, &run)
+	return run
+}
+
+// waitForLog waits until the run's log holds want, and returns the log.
+func waitForLog(t *testing.T, path, want string) string {
+	t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		data, _ := os.ReadFile(path)
+		if strings.Contains(string(data), want) {
+			return string(data)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("log never showed %q:\n%s", want, data)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// waitForRunEnd waits for the run and everything it started to be done.
+func waitForRunEnd(t *testing.T, s *Server, id string) *Run {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+	deadline := time.After(20 * time.Second)
+	select {
+	case <-done:
+	case <-deadline:
+		t.Fatal("the run did not finish")
+	}
+	// The exit is recorded by the runtime's own watcher.
+	for s.runtime.Current() != nil {
+		select {
+		case <-deadline:
+			t.Fatal("the run's exit was never recorded")
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+	return s.runtime.Get(id)
+}
+
+func TestDashboardRunRecordsTheRecipesOutputAndExit(t *testing.T) {
+	s := newTestServer(t, true)
+	pixiInstall(t, s, "print('recipe ran', flush=True)\nraise SystemExit(3)\n")
+
+	run := startDemoRun(t, s)
+	got := waitForRunEnd(t, s, run.ID)
+	if got.Status != RunStatusFailed || got.ExitCode != 3 {
+		t.Errorf("run = %s with exit %d, want failed with the recipe's 3", got.Status, got.ExitCode)
+	}
+	log := waitForLog(t, run.LogPath, "recipe ran")
+	for _, stage := range []string{"preparing environment", "launching robot hardware", "starting recipe"} {
+		if !strings.Contains(log, "[setup] "+stage) {
+			t.Errorf("log is missing the %q stage:\n%s", stage, log)
+		}
+	}
+}
+
+func TestDashboardStopInterruptsTheRecipe(t *testing.T) {
+	s := newTestServer(t, true)
+	pixiInstall(t, s, "import signal, sys, time\n"+
+		"def stop(*_):\n    print('recipe stopping', flush=True)\n    sys.exit(0)\n"+
+		"signal.signal(signal.SIGINT, stop)\n"+
+		"print('recipe running', flush=True)\n"+
+		"while True:\n    time.sleep(0.1)\n")
+
+	run := startDemoRun(t, s)
+	waitForLog(t, run.LogPath, "recipe running")
+	rec := httpServe(t, s, httptest.NewRequest(http.MethodDelete, "/api/v1/runs/"+run.ID, nil))
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("stop run: status %d", rec.Code)
+	}
+	if got := waitForRunEnd(t, s, run.ID); got.Status != RunStatusCanceled {
+		t.Errorf("run = %s, want canceled", got.Status)
+	}
+	waitForLog(t, run.LogPath, "recipe stopping")
+}
 
 func TestHandleRunsListEmpty(t *testing.T) {
 	s := newTestServer(t, true)

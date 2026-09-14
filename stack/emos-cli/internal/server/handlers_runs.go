@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -90,9 +91,11 @@ func (s *Server) handleRunsStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A copy, since the run changes as soon as it starts.
+	accepted := s.runtime.Get(run.ID)
 	s.goTracked(func() { s.runRecipeAsync(run, recipeDir, body) })
 
-	writeJSON(w, http.StatusAccepted, run)
+	writeJSON(w, http.StatusAccepted, accepted)
 }
 
 // runRecipeAsync owns the full lifecycle of a single run from preparing
@@ -100,118 +103,65 @@ func (s *Server) handleRunsStart(w http.ResponseWriter, r *http.Request) {
 // Run record's Error field. Cancellation during preparing flips the run to
 // canceled at the next checkpoint.
 func (s *Server) runRecipeAsync(run *Run, recipeDir string, body startRunBody) {
-	logf, err := openSetupLog(run.LogPath)
+	logf, err := runner.OpenLog(run.LogPath)
 	if err != nil {
 		s.runtime.FailPreflight(run, fmt.Errorf("open log file: %w", err))
 		return
 	}
-	attached := false // a recipe process was started and attached to the run
-	defer func() {
-		// Once a process is attached, the log is closed when it exits.
-		if !attached {
-			logf.Close()
-		}
-	}()
-
 	step := func(format string, a ...any) {
 		fmt.Fprintf(logf, "[setup] "+format+"\n", a...)
 	}
-	check := func() bool {
+	// fail ends a run that never started its recipe.
+	fail := func(err error) {
+		if errors.Is(err, errRunCanceled) {
+			s.runtime.CancelPreflight(run)
+		} else {
+			step("ERROR: %s", err)
+			s.runtime.FailPreflight(run, err)
+		}
+		logf.Close()
+	}
+	checkpoint := func(stage string) error {
 		select {
 		case <-run.CancelCh():
 			step("cancelled by user")
-			return true
+			return errRunCanceled
 		default:
-			return false
+			step("%s", stage)
+			return nil
 		}
 	}
 
-	step("preparing run: recipe=%s", run.Recipe)
-
+	step("preparing run: recipe=%s, rmw=%s", run.Recipe, runner.RMWLabel(body.RMW))
 	manifest := runner.LoadManifest(filepath.Join(recipeDir, "manifest.json"))
-
-	strategy, err := runner.NewStrategy(s.cfg, body.RMW)
+	session, err := runner.Prepare(s.cfg, body.RMW, manifest, checkpoint)
 	if err != nil {
-		step("ERROR: %s", err)
-		s.runtime.FailPreflight(run, err)
+		fail(err)
 		return
 	}
-
-	// Whatever the run starts is cleaned up on every way out of here
-	var router *runner.RunHandle
-	defer func() {
-		if !attached {
-			runner.StopZenohRouter(router)
-			_ = strategy.Cleanup()
-		}
-	}()
-
-	step("preparing environment")
-	if err := strategy.PrepareEnvironment(); err != nil {
-		step("ERROR: environment preparation failed: %s", err)
-		s.runtime.FailPreflight(run, err)
-		return
-	}
-	if check() {
-		s.runtime.CancelPreflight(run)
-		return
-	}
-
-	step("RMW implementation: %s", runner.RMWLabel(body.RMW))
-	if body.RMW == runner.ZenohRMW {
-		step("starting zenoh router")
-		if router, err = runner.StartZenohRouter(strategy, manifest); err != nil {
-			step("ERROR: %s", err)
-			s.runtime.FailPreflight(run, err)
-			return
-		}
-	}
-	if check() {
-		s.runtime.CancelPreflight(run)
-		return
-	}
-
-	step("launching robot hardware (if configured)")
-	if err := strategy.LaunchRobotHardware(); err != nil {
-		step("ERROR: %s", err)
-		s.runtime.FailPreflight(run, err)
-		return
-	}
-	if check() {
-		s.runtime.CancelPreflight(run)
-		return
-	}
-
-	step("starting recipe process")
-	handle, err := strategy.StartRecipe(run.Recipe, logf)
+	handle, err := session.StartRecipe(run.Recipe, logf)
 	if err != nil {
-		s.runtime.FailPreflight(run, err)
+		session.Close()
+		fail(err)
 		return
 	}
 
 	// A cancel can land after the last checkpoint, while the process starts;
-	// AttachHandle then stops the process and the deferred cleanup runs.
+	// AttachHandle then stops the process.
 	if !s.runtime.AttachHandle(run, handle) {
+		session.Close()
+		logf.Close()
 		return
 	}
-	attached = true
 	s.goTracked(func() {
 		<-handle.Done()
 		logf.Close()
-		runner.StopZenohRouter(router)
-		_ = strategy.Cleanup()
+		session.Close()
 	})
 }
 
-// openSetupLog opens (and creates) the run log file in append mode. Used by
-// the pre-flight goroutine to stream "[setup] ..." progress, and then as the
-// recipe process's output.
-func openSetupLog(path string) (*os.File, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return nil, err
-	}
-	return os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-}
+// errRunCanceled ends the setup of a run stopped from the dashboard.
+var errRunCanceled = errors.New("run canceled")
 
 func (s *Server) handleRunCancel(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")

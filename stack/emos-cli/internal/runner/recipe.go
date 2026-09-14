@@ -35,13 +35,13 @@ func LoadManifest(path string) *recipeManifest {
 	return m
 }
 
-// ZenohRMW is the RMW implementation that needs a Zenoh router running.
-const ZenohRMW = "rmw_zenoh_cpp"
+// zenohRMW is the RMW implementation that needs a Zenoh router running.
+const zenohRMW = "rmw_zenoh_cpp"
 
 // ValidRMW reports whether rmw is an RMW implementation a run may ask for.
 func ValidRMW(rmw string) bool {
 	switch rmw {
-	case "rmw_fastrtps_cpp", "rmw_cyclonedds_cpp", ZenohRMW:
+	case "rmw_fastrtps_cpp", "rmw_cyclonedds_cpp", zenohRMW:
 		return true
 	}
 	return false
@@ -74,13 +74,12 @@ func RunRecipe(recipeName, rmwImpl string) error {
 	manifest := LoadManifest(filepath.Join(recipePath, "manifest.json"))
 
 	cfg := config.LoadConfig()
-	strategy, err := NewStrategy(cfg, rmwImpl)
-	if err != nil {
-		return err
+	if !cfg.IsInstalled() {
+		return errNotInstalled
 	}
 
 	logFile := LogFilePath(recipeName)
-	log, err := openLogFile(logFile)
+	log, err := OpenLog(logFile)
 	if err != nil {
 		return err
 	}
@@ -96,36 +95,26 @@ func RunRecipe(recipeName, rmwImpl string) error {
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer signal.Stop(signals)
 
-	// Execute the recipe pipeline
-	if err := strategy.PrepareEnvironment(); err != nil {
-		return err
-	}
-	defer strategy.Cleanup()
-
-	if rmwImpl == ZenohRMW {
-		router, err := StartZenohRouter(strategy, manifest)
-		if err != nil {
-			return err
+	interrupted := func(string) error {
+		select {
+		case <-signals:
+			return errors.New("interrupted before the recipe started")
+		default:
+			return nil
 		}
-		defer StopZenohRouter(router)
 	}
-
-	if err := strategy.LaunchRobotHardware(); err != nil {
+	session, err := Prepare(cfg, rmwImpl, manifest, interrupted)
+	if err != nil {
 		return err
 	}
-
-	select {
-	case <-signals:
-		return errors.New("interrupted before the recipe started")
-	default:
-	}
+	defer session.Close()
 
 	ui.Header("LAUNCHING RECIPE: " + recipeName)
 	ui.Info("All output will be saved to: " + logFile)
 	ui.Success("BEGIN RECIPE OUTPUT")
 	fmt.Println()
 
-	handle, err := strategy.StartRecipe(recipeName, io.MultiWriter(os.Stdout, log))
+	handle, err := session.StartRecipe(recipeName, io.MultiWriter(os.Stdout, log))
 	if err != nil {
 		return err
 	}

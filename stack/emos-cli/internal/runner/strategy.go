@@ -23,12 +23,14 @@ type RuntimeStrategy interface {
 	Cleanup() error
 }
 
-// NewStrategy returns the strategy for cfg's install mode. rmw is set as the
+var errNotInstalled = errors.New("no EMOS installation found — run 'emos install' first")
+
+// newStrategy returns the strategy for cfg's install mode. rmw is set as the
 // RMW implementation of everything the run starts; empty leaves the
 // environment's.
-func NewStrategy(cfg *config.EMOSConfig, rmw string) (RuntimeStrategy, error) {
+func newStrategy(cfg *config.EMOSConfig, rmw string) (RuntimeStrategy, error) {
 	if !cfg.IsInstalled() {
-		return nil, errors.New("no EMOS installation found — run 'emos install' first")
+		return nil, errNotInstalled
 	}
 	var env []string
 	if rmw != "" {

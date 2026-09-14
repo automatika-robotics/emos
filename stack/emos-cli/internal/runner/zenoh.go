@@ -27,10 +27,10 @@ func zenohRouterUp() bool {
 	return true
 }
 
-// StartZenohRouter starts a Zenoh router in the strategy's environment and
+// startZenohRouter starts a Zenoh router in the strategy's environment and
 // waits until it listens. A router already running is used as it is, and the
 // handle is nil.
-func StartZenohRouter(s RuntimeStrategy, manifest *recipeManifest) (*RunHandle, error) {
+func startZenohRouter(s RuntimeStrategy, manifest *recipeManifest) (*RunHandle, error) {
 	if zenohRouterUp() {
 		ui.Info("Using the Zenoh router already running on this machine.")
 		if manifest.ZenohRouterConfig != "" {
@@ -82,9 +82,9 @@ func zenohRouterConfig(s RuntimeStrategy, file string) string {
 	return path
 }
 
-// StopZenohRouter stops a router the run started. Nil is a no-op. In a
+// stopZenohRouter stops a router the run started. Nil is a no-op. In a
 // container the router goes with the container.
-func StopZenohRouter(router *RunHandle) {
+func stopZenohRouter(router *RunHandle) {
 	if router != nil {
 		router.Cancel(2 * time.Second)
 	}

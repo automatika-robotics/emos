@@ -36,29 +36,29 @@ func TestValidRMW(t *testing.T) {
 
 func TestNewStrategySetsTheRMWOnlyWhenAsked(t *testing.T) {
 	native := &config.EMOSConfig{Mode: config.ModeNative}
-	s, err := NewStrategy(native, "rmw_zenoh_cpp")
+	s, err := newStrategy(native, "rmw_zenoh_cpp")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if env := s.Command("true").Env; !slices.Contains(env, "RMW_IMPLEMENTATION=rmw_zenoh_cpp") {
 		t.Error("the RMW asked for should be in the command's environment")
 	}
-	s, _ = NewStrategy(native, "")
+	s, _ = newStrategy(native, "")
 	if got, want := len(s.Command("true").Env), len(os.Environ()); got != want {
 		t.Errorf("with none asked for the environment should be left as is: %d vars, want %d", got, want)
 	}
 
 	container := &config.EMOSConfig{Mode: config.ModeOSSContainer}
-	s, _ = NewStrategy(container, "rmw_zenoh_cpp")
+	s, _ = newStrategy(container, "rmw_zenoh_cpp")
 	if got, want := lastArg(s.Command("run")), "source ros_entrypoint.sh && export 'RMW_IMPLEMENTATION=rmw_zenoh_cpp' && run"; got != want {
 		t.Errorf("container command = %q, want %q", got, want)
 	}
-	s, _ = NewStrategy(container, "")
+	s, _ = newStrategy(container, "")
 	if got, want := lastArg(s.Command("run")), "source ros_entrypoint.sh && run"; got != want {
 		t.Errorf("container command = %q, want %q", got, want)
 	}
 
-	if _, err := NewStrategy(nil, ""); err == nil {
+	if _, err := newStrategy(nil, ""); err == nil {
 		t.Error("no install config must be an error")
 	}
 }
@@ -118,22 +118,22 @@ func TestZenohRouterAlreadyRunningIsLeftAlone(t *testing.T) {
 	defer l.Close()
 
 	s := &routerStrategy{command: func() *exec.Cmd { return exec.Command("false") }}
-	router, err := StartZenohRouter(s, &recipeManifest{})
+	router, err := startZenohRouter(s, &recipeManifest{})
 	if err != nil || router != nil || len(s.shells) != 0 {
-		t.Errorf("StartZenohRouter = %v, %v; want the running router used and nothing started", router, err)
+		t.Errorf("startZenohRouter = %v, %v; want the running router used and nothing started", router, err)
 	}
 }
 
 func TestZenohRouterStartedByTheRunIsStopped(t *testing.T) {
 	s := &routerStrategy{command: listener(t, freeRouterAddr(t))}
-	router, err := StartZenohRouter(s, &recipeManifest{})
+	router, err := startZenohRouter(s, &recipeManifest{})
 	if err != nil {
-		t.Fatalf("StartZenohRouter: %v", err)
+		t.Fatalf("startZenohRouter: %v", err)
 	}
 	if router == nil || !zenohRouterUp() {
 		t.Fatal("the router should be running and listening")
 	}
-	StopZenohRouter(router)
+	stopZenohRouter(router)
 	select {
 	case <-router.Done():
 	case <-time.After(5 * time.Second):
@@ -149,11 +149,11 @@ func TestZenohRouterGetsTheRecipesConfigAsTheModeSeesIt(t *testing.T) {
 	os.WriteFile(filepath.Join(config.RecipesDir, "demo", "zenoh.json5"), []byte("{}"), 0o644)
 
 	s := &routerStrategy{command: listener(t, freeRouterAddr(t))}
-	router, err := StartZenohRouter(s, &recipeManifest{ZenohRouterConfig: "demo/zenoh.json5"})
+	router, err := startZenohRouter(s, &recipeManifest{ZenohRouterConfig: "demo/zenoh.json5"})
 	if err != nil {
-		t.Fatalf("StartZenohRouter: %v", err)
+		t.Fatalf("startZenohRouter: %v", err)
 	}
-	defer StopZenohRouter(router)
+	defer stopZenohRouter(router)
 	if len(s.shells) != 1 || !strings.HasPrefix(s.shells[0], "export ZENOH_ROUTER_CONFIG_URI='/emos/recipes/demo/zenoh.json5' && ") {
 		t.Errorf("router shell = %q", s.shells)
 	}
@@ -162,7 +162,7 @@ func TestZenohRouterGetsTheRecipesConfigAsTheModeSeesIt(t *testing.T) {
 func TestZenohRouterThatExitsIsReported(t *testing.T) {
 	freeRouterAddr(t)
 	s := &routerStrategy{command: func() *exec.Cmd { return exec.Command("sh", "-c", "exit 1") }}
-	if _, err := StartZenohRouter(s, &recipeManifest{}); err == nil {
+	if _, err := startZenohRouter(s, &recipeManifest{}); err == nil {
 		t.Error("a router that exits while starting must fail the run")
 	}
 }
@@ -175,7 +175,7 @@ func TestZenohRouterThatNeverListensIsStopped(t *testing.T) {
 
 	cmd := exec.Command("sleep", "30")
 	s := &routerStrategy{command: func() *exec.Cmd { return cmd }}
-	if _, err := StartZenohRouter(s, &recipeManifest{}); err == nil {
+	if _, err := startZenohRouter(s, &recipeManifest{}); err == nil {
 		t.Fatal("a router that never listens must fail the run")
 	}
 	deadline := time.Now().Add(3 * time.Second)

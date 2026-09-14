@@ -65,17 +65,7 @@ func (s *NativeStrategy) PrepareEnvironment() error {
 }
 
 func (s *NativeStrategy) LaunchRobotHardware() error {
-	ui.Header("HARDWARE & SENSOR LAUNCH")
-
-	bringup := filepath.Join(config.HomeDir, "emos", "robot", "launch", "bringup_robot.py")
-	if _, err := os.Stat(bringup); err != nil {
-		ui.Info("Native mode: no robot bringup found. Ensure hardware drivers are running.")
-		return nil
-	}
-
-	return ui.Spinner("Launching robot base hardware...", func() error {
-		return s.Command("ros2 launch " + bringup + " &").Start()
-	})
+	return nil
 }
 
 func (s *NativeStrategy) ExecRecipe(recipeName string, logFile string) error {

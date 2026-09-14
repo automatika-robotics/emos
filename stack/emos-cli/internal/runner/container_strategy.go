@@ -63,14 +63,11 @@ func (s *ContainerStrategy) Command(shell string) *exec.Cmd {
 func (s *ContainerStrategy) RecipesDir() string { return recipesRoot }
 
 func (s *ContainerStrategy) LaunchRobotHardware() error {
-	ui.Header("HARDWARE & SENSOR LAUNCH")
-
 	if !s.licensed {
-		ui.Info("OSS container mode: skipping robot hardware launch.")
-		ui.Faint("Ensure your robot hardware drivers are running externally.")
 		return nil
 	}
 
+	ui.Header("HARDWARE & SENSOR LAUNCH")
 	return ui.Spinner("Launching robot base hardware...", func() error {
 		return container.ExecDetached(config.ContainerName,
 			s.shell("ros2 launch "+emosRoot+"/robot/launch/bringup_robot.py"))

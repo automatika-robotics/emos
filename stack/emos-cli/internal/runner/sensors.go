@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -223,49 +222,4 @@ func topicName(name string) string {
 		return "/" + name
 	}
 	return name
-}
-
-// verifySensorTopicsAST checks that extracted sensor topics are published.
-func verifySensorTopicsAST(sensors []ExtractedTopic, check topicChecker, distro string) error {
-	if len(sensors) == 0 {
-		ui.Info("No sensor verification required.")
-		return nil
-	}
-
-	ui.Info("Verifying sensor topics are available...")
-	var missing []ExtractedTopic
-
-	for _, t := range sensors {
-		topic := topicName(t.Name)
-		found := false
-		for i := 0; i < 10; i++ {
-			out, err := check()
-			if err == nil && strings.Contains(out, topic) {
-				found = true
-				break
-			}
-			time.Sleep(time.Second)
-		}
-		if found {
-			ui.Success(fmt.Sprintf("Topic '%s' (%s) found.", topic, t.MsgType))
-		} else {
-			ui.Error(fmt.Sprintf("Topic '%s' (%s) not found within 10s.", topic, t.MsgType))
-			missing = append(missing, t)
-		}
-	}
-
-	if len(missing) > 0 {
-		fmt.Println()
-		ui.Warn("Missing sensor topics. Ensure the following hardware is connected and publishing:")
-		for _, t := range missing {
-			hw := t.MsgType
-			if info, ok := sensorKnowledge[t.MsgType]; ok {
-				hw = info.DisplayName
-			}
-			fmt.Printf("    %s  <-  %s\n", topicName(t.Name), hw)
-		}
-		fmt.Println()
-		return fmt.Errorf("required sensor topics are missing")
-	}
-	return nil
 }

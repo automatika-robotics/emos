@@ -10,10 +10,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	rmwFlag             string
-	skipSensorCheckFlag bool
-)
+var rmwFlag string
 
 var runCmd = &cobra.Command{
 	Use:   "run <recipe_name>",
@@ -26,13 +23,11 @@ var runCmd = &cobra.Command{
 			ui.Faint("Try again once that finishes.")
 			return fmt.Errorf("plugins are busy")
 		}
-		return runner.RunRecipe(args[0], rmwFlag, skipSensorCheckFlag)
+		return runner.RunRecipe(args[0], rmwFlag)
 	},
 }
 
 func init() {
 	runCmd.Flags().StringVar(&rmwFlag, "rmw", "rmw_zenoh_cpp",
 		"RMW implementation (rmw_fastrtps_cpp, rmw_cyclonedds_cpp, rmw_zenoh_cpp)")
-	runCmd.Flags().BoolVar(&skipSensorCheckFlag, "skip-sensor-check", false,
-		"Skip sensor topic/node verification before running the recipe")
 }

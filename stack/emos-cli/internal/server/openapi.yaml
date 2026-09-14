@@ -270,7 +270,6 @@ paths:
                 rmw:
                   type: string
                   enum: [rmw_zenoh_cpp, rmw_fastrtps_cpp, rmw_cyclonedds_cpp]
-                skip_sensor_check: { type: boolean }
       responses:
         "202": { description: accepted }
         "409": { description: another recipe already running, or plugins are being installed, updated or removed }

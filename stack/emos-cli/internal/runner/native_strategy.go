@@ -106,20 +106,6 @@ func (s *NativeStrategy) LaunchRobotHardware() error {
 	})
 }
 
-func (s *NativeStrategy) VerifySensorTopics(sensors []ExtractedTopic, distro string) error {
-	ui.Header("VERIFYING SENSOR TOPICS")
-	time.Sleep(5 * time.Second)
-
-	src := s.sourceCmd()
-	checker := func() (string, error) {
-		cmd := exec.Command("bash", "-c", src+" && ros2 topic list")
-		s.envFor(cmd)
-		out, err := cmd.CombinedOutput()
-		return string(out), err
-	}
-	return verifySensorTopicsAST(sensors, checker, distro)
-}
-
 func (s *NativeStrategy) ExecRecipe(recipeName string, manifest *recipeManifest, logFile string) error {
 	ui.Header("LAUNCHING RECIPE: " + recipeName)
 	ui.Info("All output will be saved to: " + logFile)

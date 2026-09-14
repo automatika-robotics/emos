@@ -3,7 +3,6 @@ package runner
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/container"
@@ -68,17 +67,6 @@ func (s *ContainerStrategy) LaunchRobotHardware() error {
 		return container.ExecDetached(config.ContainerName,
 			"source ros_entrypoint.sh && ros2 launch "+emosRoot+"/robot/launch/bringup_robot.py")
 	})
-}
-
-func (s *ContainerStrategy) VerifySensorTopics(sensors []ExtractedTopic, distro string) error {
-	ui.Header("VERIFYING SENSOR TOPICS")
-	time.Sleep(5 * time.Second)
-
-	checker := func() (string, error) {
-		return container.Exec(config.ContainerName,
-			"source ros_entrypoint.sh && ros2 topic list")
-	}
-	return verifySensorTopicsAST(sensors, checker, distro)
 }
 
 func (s *ContainerStrategy) ExecRecipe(recipeName string, manifest *recipeManifest, logFile string) error {

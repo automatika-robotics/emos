@@ -137,18 +137,6 @@ func (s *PixiStrategy) LaunchRobotHardware() error {
 	})
 }
 
-func (s *PixiStrategy) VerifySensorTopics(sensors []ExtractedTopic, distro string) error {
-	ui.Header("VERIFYING SENSOR TOPICS")
-	time.Sleep(5 * time.Second)
-
-	checker := func() (string, error) {
-		cmd := s.pixiRun(s.sourceCmd() + " && ros2 topic list")
-		out, err := cmd.CombinedOutput()
-		return string(out), err
-	}
-	return verifySensorTopicsAST(sensors, checker, distro)
-}
-
 func (s *PixiStrategy) ExecRecipe(recipeName string, manifest *recipeManifest, logFile string) error {
 	ui.Header("LAUNCHING RECIPE: " + recipeName)
 	ui.Info("All output will be saved to: " + logFile)

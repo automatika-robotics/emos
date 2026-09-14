@@ -131,8 +131,8 @@ export const usePluginJobsWatch = () =>
 export function useStartRun() {
   const qc = useQueryClient();
   return createMutation({
-    mutationFn: (vars: { recipe: string; rmw?: string; skip_sensor_check?: boolean }) =>
-      api.runStart(vars.recipe, { rmw: vars.rmw, skip_sensor_check: vars.skip_sensor_check }),
+    mutationFn: (vars: { recipe: string; rmw?: string }) =>
+      api.runStart(vars.recipe, { rmw: vars.rmw }),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.runs }),
   });
 }

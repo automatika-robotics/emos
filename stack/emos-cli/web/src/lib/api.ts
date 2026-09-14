@@ -248,7 +248,7 @@ export const api = {
     request<{ job_id: string }>(`/plugins/${encodeURIComponent(slug)}`, { method: 'DELETE' }),
 
   runs: () => request<Run[]>('/runs'),
-  runStart: (recipe: string, opts: { rmw?: string; skip_sensor_check?: boolean } = {}) =>
+  runStart: (recipe: string, opts: { rmw?: string } = {}) =>
     request<Run>('/runs', { method: 'POST', body: JSON.stringify({ recipe, ...opts }) }),
   runGet: (id: string) => request<Run>(`/runs/${encodeURIComponent(id)}`),
   runCancel: (id: string) =>

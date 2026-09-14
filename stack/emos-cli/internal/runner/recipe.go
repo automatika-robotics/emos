@@ -33,7 +33,7 @@ func LoadManifest(path string) *recipeManifest {
 	return m
 }
 
-func RunRecipe(recipeName, rmwImpl string, skipSensorCheck bool) error {
+func RunRecipe(recipeName, rmwImpl string) error {
 	// Validate RMW implementation
 	validRMW := map[string]bool{
 		"rmw_fastrtps_cpp":   true,
@@ -60,13 +60,6 @@ func RunRecipe(recipeName, rmwImpl string, skipSensorCheck bool) error {
 		json.Unmarshal(data, &manifest)
 	}
 
-	// Extract topics from recipe.py via AST
-	topics, err := ExtractTopics(recipeFile)
-	if err != nil {
-		ui.Warn(fmt.Sprintf("Could not extract topics: %v", err))
-	}
-	sensorTopics := SensorTopics(topics)
-
 	// Setup logging
 	os.MkdirAll(config.LogsDir, 0755)
 	timestamp := time.Now().Format("20060102_150405")
@@ -78,22 +71,11 @@ func RunRecipe(recipeName, rmwImpl string, skipSensorCheck bool) error {
 		return fmt.Errorf("no EMOS installation found — run 'emos install' first")
 	}
 	mode := cfg.Mode
-	distro := cfg.ROSDistro
-	if distro == "" {
-		distro = "jazzy"
-	}
 
 	ui.Header("EMOS - PRE-RECIPE SETUP")
 	ui.Info("Recipe Name: " + recipeName)
 	ui.Info("Mode: " + string(mode))
 	ui.Info("RMW Implementation: " + rmwImpl)
-	if len(sensorTopics) > 0 {
-		names := make([]string, len(sensorTopics))
-		for i, t := range sensorTopics {
-			names[i] = topicName(t.Name)
-		}
-		ui.Info("Sensor topics: " + strings.Join(names, ", "))
-	}
 
 	var strategy RuntimeStrategy
 	switch mode {
@@ -128,16 +110,7 @@ func RunRecipe(recipeName, rmwImpl string, skipSensorCheck bool) error {
 		return err
 	}
 
-	if !skipSensorCheck {
-		if err := strategy.VerifySensorTopics(sensorTopics, distro); err != nil {
-			strategy.Cleanup()
-			return err
-		}
-	} else {
-		ui.Info("Sensor check skipped (--skip-sensor-check)")
-	}
-
-	err = strategy.ExecRecipe(recipeName, &manifest, logFile)
+	err := strategy.ExecRecipe(recipeName, &manifest, logFile)
 
 	fmt.Println()
 	if err != nil {
@@ -217,6 +190,3 @@ fi`, zenohConfigURI, zenohConfigURI))
 func runQuiet(name string, args ...string) {
 	execCommand(name, args...).Run()
 }
-
-// topicChecker abstracts how to run `ros2 topic list` for different modes.
-type topicChecker func() (string, error)

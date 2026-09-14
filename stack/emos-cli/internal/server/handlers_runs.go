@@ -17,9 +17,8 @@ import (
 )
 
 type startRunBody struct {
-	Recipe          string `json:"recipe"`
-	RMW             string `json:"rmw,omitempty"`
-	SkipSensorCheck bool   `json:"skip_sensor_check,omitempty"`
+	Recipe string `json:"recipe"`
+	RMW    string `json:"rmw,omitempty"`
 }
 
 func (s *Server) handleRunsList(w http.ResponseWriter, r *http.Request) {
@@ -187,23 +186,6 @@ func (s *Server) runRecipeAsync(run *Run, recipeDir string, body startRunBody) {
 		step("ERROR: %s", err)
 		s.runtime.FailPreflight(run, err)
 		return
-	}
-
-	if !body.SkipSensorCheck {
-		step("verifying required sensor topics")
-		topics, _ := runner.ExtractTopics(filepath.Join(recipeDir, "recipe.py"))
-		sensors := runner.SensorTopics(topics)
-		distro := s.cfg.ROSDistro
-		if distro == "" {
-			distro = "jazzy"
-		}
-		if err := strategy.VerifySensorTopics(sensors, distro); err != nil {
-			step("ERROR: %s", err)
-			s.runtime.FailPreflight(run, err)
-			return
-		}
-	} else {
-		step("sensor verification skipped (--skip-sensor-check)")
 	}
 	if check() {
 		s.runtime.CancelPreflight(run)

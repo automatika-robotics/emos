@@ -159,6 +159,11 @@ cd AdaptiveCpp && mkdir -p build && cd build
 clean_env cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$ACPP_STAGE" \
     -DCMAKE_C_COMPILER="$CLANG_C_PATH" -DCMAKE_CXX_COMPILER="$CLANG_PATH" \
     -DLLVM_DIR="$LLVM_DIR" -DCLANG_EXECUTABLE_PATH="$CLANG_PATH" ..
+# Keep GPUs that AdaptiveCpp can run through CUDA or ROCm from also being reachable through OpenCL
+if grep -qiE '^WITH_(CUDA|ROCM)_BACKEND:BOOL=(ON|TRUE|YES|Y|1)$' CMakeCache.txt; then
+    log INFO "CUDA or ROCm backend found. Disabling the OpenCL backend..."
+    clean_env cmake -DWITH_OPENCL_BACKEND=OFF ..
+fi
 clean_env make -j$(nproc)
 clean_env make install -j$(nproc)
 

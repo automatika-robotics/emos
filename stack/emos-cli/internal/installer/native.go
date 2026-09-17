@@ -162,7 +162,7 @@ func InstallNative(wsPath, distro string) error {
 			"msgpack", "msgpack-numpy", "platformdirs",
 			"tqdm", "pyyaml", "toml", "websockets",
 			"ollama", "redis[hiredis]", "pyaudio",
-			"soundfile", "python-fasthtml", "monsterui",
+			"soundfile", "python-fasthtml>=0.12,<0.15", "monsterui>=1.0,<1.1",
 		}
 		args := append([]string{"-m", "pip", "install", "--no-cache-dir"}, pipPkgs...)
 		cmd := exec.Command("python3", args...)

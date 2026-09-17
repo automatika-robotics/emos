@@ -49,8 +49,8 @@ RUN pip install --no-cache-dir --ignore-installed \
     'redis[hiredis]' \
     pyaudio \
     soundfile \
-    python-fasthtml \
-    monsterui \
+    'python-fasthtml>=0.12,<0.15' \
+    'monsterui>=1.0,<1.1' \
     huggingface-hub \
     sherpa-onnx \
     onnxruntime \

@@ -222,7 +222,7 @@ func InstallNative(wsPath, distro string) error {
 	// -- Stage 2: Build EMOS packages --
 	// Re-source /opt/ros/{distro} which now includes localization packages,
 	// then build only the EMOS packages.
-	emosPkgs := "automatika_ros_sugar automatika_embodied_agents kompass kompass_interfaces"
+	emosPkgs := "automatika_ros_sugar automatika_embodied_agents kompass kompass_interfaces emos_mapping"
 	ui.Info("Building EMOS packages (this may take a while)...")
 	buildCmd = fmt.Sprintf(
 		"unset VIRTUAL_ENV && source %s && cd %s && colcon build --merge-install --packages-select %s --cmake-args -DCMAKE_BUILD_TYPE=Release",
@@ -401,7 +401,7 @@ func UpdateNative(wsPath, distro string) error {
 	}
 
 	// -- Stage 2: Rebuild EMOS packages --
-	emosPkgs := "automatika_ros_sugar automatika_embodied_agents kompass kompass_interfaces"
+	emosPkgs := "automatika_ros_sugar automatika_embodied_agents kompass kompass_interfaces emos_mapping"
 	ui.Info("Rebuilding EMOS packages...")
 	buildCmd = fmt.Sprintf(
 		"unset VIRTUAL_ENV && source %s && cd %s && colcon build --merge-install --packages-select %s --cmake-args -DCMAKE_BUILD_TYPE=Release",

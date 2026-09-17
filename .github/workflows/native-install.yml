@@ -12,6 +12,7 @@ on:
       - "stack/embodied-agents/**"
       - "stack/kompass"
       - "stack/kompass/**"
+      - "stack/emos_mapping/**"
   pull_request:
     paths:
       - "stack/emos-cli"
@@ -22,6 +23,7 @@ on:
       - "stack/embodied-agents/**"
       - "stack/kompass"
       - "stack/kompass/**"
+      - "stack/emos_mapping/**"
   workflow_dispatch:
 
 permissions:

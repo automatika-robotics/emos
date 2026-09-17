@@ -186,6 +186,7 @@ RUN pip install --no-cache-dir 'scikit-build-core>=0.8' 'packaging>=22.0' && \
 COPY stack/sugarcoat sugarcoat
 COPY stack/kompass kompass
 COPY stack/embodied-agents embodied-agents
+COPY stack/emos_mapping emos_mapping
 
 # --- Build EMOS Packages ---
 WORKDIR ${ROS_WS}

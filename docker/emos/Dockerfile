@@ -93,6 +93,7 @@ WORKDIR ${ROS_WS}/src
 COPY stack/sugarcoat sugarcoat
 COPY stack/kompass kompass
 COPY stack/embodied-agents embodied-agents
+COPY stack/emos_mapping emos_mapping
 
 WORKDIR ${ROS_WS}
 RUN /bin/bash -c "source ${ROS_ROOT}/setup.bash && \

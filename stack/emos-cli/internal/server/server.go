@@ -26,7 +26,7 @@ type Options struct {
 	DeviceName  string // human-friendly device name, used by mDNS + dashboard UI
 	DisableMDNS bool   // skip zeroconf publication
 	DisableAuth bool   // dev only: accept all requests
-	EnableTLS   bool   // opt-in HTTPS via a self-signed cert; off by default
+	DisableTLS  bool   // dev only: plain HTTP instead of HTTPS with the robot's certificate
 	UI          fs.FS  // embedded SPA; nil disables the UI
 	Logger      *slog.Logger
 }
@@ -56,6 +56,7 @@ type Server struct {
 	startedAt time.Time
 
 	httpServer *http.Server
+	redirect   *http.Server       // answers plain HTTP on the TLS port
 	endStreams context.CancelFunc // cancels every request's context at shutdown
 	mdns       *mdnsRegistrations
 	tlsInfo    *tlsca.Info // nil when serving plain HTTP
@@ -115,7 +116,7 @@ func New(opts Options) (*Server, error) {
 		sseTickets: newSSETicketStore(),
 		startedAt:  time.Now(),
 	}
-	if opts.EnableTLS {
+	if !opts.DisableTLS {
 		info, err := tlsca.Ensure(opts.DeviceName)
 		if err != nil {
 			return nil, fmt.Errorf("tls: %w", err)
@@ -126,8 +127,8 @@ func New(opts Options) (*Server, error) {
 	return s, nil
 }
 
-// TLSInfo returns the active TLS certificate info, or nil when running
-// in --no-tls mode. Used by the CLI to print the cert fingerprint.
+// TLSInfo returns the active TLS certificate info, or nil with --no-tls. Used
+// by the CLI to print the cert fingerprint.
 func (s *Server) TLSInfo() *tlsca.Info { return s.tlsInfo }
 
 // Scheme returns "https" or "http" depending on whether TLS is active.
@@ -159,7 +160,18 @@ func (s *Server) Run(ctx context.Context) error {
 		s.mdns = mdnsRegs
 	}
 
+	ln, err := net.Listen("tcp", s.opts.Addr)
+	if err != nil {
+		return err
+	}
 	s.httpServer = s.newHTTPServer()
+	if s.tlsInfo != nil {
+		s.redirect = &http.Server{
+			Handler:           http.HandlerFunc(redirectToHTTPS),
+			ReadHeaderTimeout: 10 * time.Second,
+			ErrorLog:          s.httpServer.ErrorLog,
+		}
+	}
 
 	// Background loop that refreshes the cached "latest release" tag.
 	// Tied to ctx so it exits cleanly with the rest of the daemon.
@@ -167,13 +179,15 @@ func (s *Server) Run(ctx context.Context) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		s.log.Info("dashboard listening", "addr", s.opts.Addr, "scheme", s.Scheme())
+		s.log.Info("dashboard listening", "addr", ln.Addr().String(), "scheme", s.Scheme())
 		var err error
 		if s.tlsInfo != nil {
+			tlsConns, plainConns := splitTLS(ln)
+			go s.redirect.Serve(plainConns)
 			// Cert + key are already in TLSConfig, so the file paths can be empty.
-			err = s.httpServer.ListenAndServeTLS("", "")
+			err = s.httpServer.ServeTLS(tlsConns, "", "")
 		} else {
-			err = s.httpServer.ListenAndServe()
+			err = s.httpServer.Serve(ln)
 		}
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
@@ -229,6 +243,9 @@ func (s *Server) stop() error {
 	ctx, cancel := context.WithTimeout(context.Background(), httpShutdownTimeout)
 	defer cancel()
 	err := s.httpServer.Shutdown(ctx)
+	if s.redirect != nil {
+		s.redirect.Close()
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		// A slow request is not a failed stop; it must not fail the unit.
 		s.log.Warn("shutdown: requests still in flight were abandoned")

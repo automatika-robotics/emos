@@ -30,8 +30,8 @@ func TestMain(m *testing.M) {
 // dir so each test has an isolated ~/.config/emos. Restored on cleanup.
 func withTempConfig(t *testing.T) {
 	t.Helper()
-	origHome, origDir, origRecipes, origLogs, origLicense, origCfg, origWs :=
-		config.HomeDir, config.ConfigDir, config.RecipesDir, config.LogsDir, config.LicenseFile, config.ConfigFile, config.WorkspaceDir
+	origHome, origDir, origRecipes, origLogs, origLicense, origCfg, origWs, origUI :=
+		config.HomeDir, config.ConfigDir, config.RecipesDir, config.LogsDir, config.LicenseFile, config.ConfigFile, config.WorkspaceDir, config.UISecurityDir
 
 	tmp := t.TempDir()
 	config.HomeDir = tmp
@@ -41,6 +41,7 @@ func withTempConfig(t *testing.T) {
 	config.LicenseFile = filepath.Join(config.ConfigDir, "license.key")
 	config.ConfigFile = filepath.Join(config.ConfigDir, "config.json")
 	config.WorkspaceDir = filepath.Join(tmp, "emos", "workspace")
+	config.UISecurityDir = filepath.Join(tmp, "emos", ".ui-security")
 
 	t.Cleanup(func() {
 		config.HomeDir = origHome
@@ -50,6 +51,7 @@ func withTempConfig(t *testing.T) {
 		config.LicenseFile = origLicense
 		config.ConfigFile = origCfg
 		config.WorkspaceDir = origWs
+		config.UISecurityDir = origUI
 	})
 }
 

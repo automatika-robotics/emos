@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	emosRoot    = "/emos"
-	recipesRoot = "/emos/recipes"
+	emosRoot       = "/emos"
+	recipesRoot    = "/emos/recipes"
+	uiSecurityRoot = "/emos/.ui-security"
 )
 
 type recipeManifest struct {

@@ -12,13 +12,15 @@ import (
 	"github.com/automatika-robotics/emos-cli/internal/config"
 )
 
-// withTempConfig redirects config.ConfigDir at a fresh tmp dir so every
-// test starts without an existing certificate on disk.
+// withTempConfig redirects the config and certificate directories at a fresh
+// tmp dir so every test starts without an existing certificate on disk.
 func withTempConfig(t *testing.T) {
 	t.Helper()
-	orig := config.ConfigDir
-	config.ConfigDir = filepath.Join(t.TempDir(), "emos")
-	t.Cleanup(func() { config.ConfigDir = orig })
+	origConfig, origUI := config.ConfigDir, config.UISecurityDir
+	tmp := t.TempDir()
+	config.ConfigDir = filepath.Join(tmp, ".config", "emos")
+	config.UISecurityDir = filepath.Join(tmp, "emos", ".ui-security")
+	t.Cleanup(func() { config.ConfigDir, config.UISecurityDir = origConfig, origUI })
 }
 
 func TestEnsureMintsAndPersists(t *testing.T) {

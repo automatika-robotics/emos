@@ -278,7 +278,7 @@ func notifyDaemonReloadAuth() bool {
 
 var configTLSFingerprintCmd = &cobra.Command{
 	Use:   "tls-fingerprint",
-	Short: "Print the dashboard's TLS certificate SHA-256 fingerprint",
+	Short: "Print the robot's TLS certificate SHA-256 fingerprint",
 	Long: `Prints the active TLS certificate's SHA-256 fingerprint, in the same format
 browsers display under the "Not Secure" warning's "view certificate" dialog.
 On first connect, compare the two values to verify there's no MITM before
@@ -287,7 +287,7 @@ clicking through the warning.`,
 		info, err := tlsca.Load()
 		if err != nil {
 			ui.Warn("No TLS certificate on disk yet.")
-			ui.Faint("It is created the first time `emos serve` runs.")
+			ui.Faint("It is created the first time `emos serve` or `emos run` runs.")
 			return
 		}
 		ui.Header("TLS CERTIFICATE")
@@ -302,7 +302,7 @@ clicking through the warning.`,
 
 var configTLSRegenerateCmd = &cobra.Command{
 	Use:   "tls-regenerate",
-	Short: "Mint a fresh self-signed TLS certificate for the dashboard",
+	Short: "Mint a fresh self-signed TLS certificate for the dashboard and recipe UIs",
 	Long: `Generates a new self-signed certificate covering the device's current
 hostname and LAN IP addresses. Run this after the device moves to a new
 network so the certificate's SANs match the addresses callers actually
@@ -321,7 +321,7 @@ they re-trust the cert.`,
 		ui.Success("Fresh TLS certificate minted.")
 		ui.Info("New fingerprint:")
 		ui.Faint("  " + info.Fingerprint)
-		ui.Faint("Restart `emos serve` (or the systemd service) to use it.")
+		ui.Faint("Restart `emos serve` (or the systemd service) and any running recipe to use it.")
 	},
 }
 

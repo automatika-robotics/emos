@@ -35,27 +35,31 @@ func TestValidRMW(t *testing.T) {
 }
 
 func TestNewStrategySetsTheRMWOnlyWhenAsked(t *testing.T) {
+	withTempDirs(t)
+	rmw := "RMW_IMPLEMENTATION=rmw_zenoh_cpp"
 	native := &config.EMOSConfig{Mode: config.ModeNative}
 	s, err := newStrategy(native, "rmw_zenoh_cpp")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if env := s.Command("true").Env; !slices.Contains(env, "RMW_IMPLEMENTATION=rmw_zenoh_cpp") {
+	if !slices.Contains(s.Command("true").Env, rmw) {
 		t.Error("the RMW asked for should be in the command's environment")
 	}
 	s, _ = newStrategy(native, "")
-	if got, want := len(s.Command("true").Env), len(os.Environ()); got != want {
-		t.Errorf("with none asked for the environment should be left as is: %d vars, want %d", got, want)
+	for _, kv := range s.Command("true").Env {
+		if strings.HasPrefix(kv, "RMW_IMPLEMENTATION=") && !slices.Contains(os.Environ(), kv) {
+			t.Errorf("with none asked for, the environment's RMW should be left as is; got %q", kv)
+		}
 	}
 
 	container := &config.EMOSConfig{Mode: config.ModeOSSContainer}
 	s, _ = newStrategy(container, "rmw_zenoh_cpp")
-	if got, want := lastArg(s.Command("run")), "source ros_entrypoint.sh && export 'RMW_IMPLEMENTATION=rmw_zenoh_cpp' && run"; got != want {
-		t.Errorf("container command = %q, want %q", got, want)
+	if got := lastArg(s.Command("run")); !strings.HasPrefix(got, "source ros_entrypoint.sh && export 'RMW_IMPLEMENTATION=rmw_zenoh_cpp' && ") {
+		t.Errorf("container command = %q, want the RMW exported after the entrypoint", got)
 	}
 	s, _ = newStrategy(container, "")
-	if got, want := lastArg(s.Command("run")), "source ros_entrypoint.sh && run"; got != want {
-		t.Errorf("container command = %q, want %q", got, want)
+	if got := lastArg(s.Command("run")); strings.Contains(got, "RMW_IMPLEMENTATION") {
+		t.Errorf("container command = %q, want no RMW set", got)
 	}
 
 	if _, err := newStrategy(nil, ""); err == nil {

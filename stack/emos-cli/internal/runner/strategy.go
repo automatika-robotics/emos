@@ -27,7 +27,8 @@ var errNotInstalled = errors.New("no EMOS installation found — run 'emos insta
 
 // newStrategy returns the strategy for cfg's install mode. rmw is set as the
 // RMW implementation of everything the run starts; empty leaves the
-// environment's.
+// environment's. The recipe UI's state directory and the robot's certificate
+// are set in every mode.
 func newStrategy(cfg *config.EMOSConfig, rmw string) (RuntimeStrategy, error) {
 	if !cfg.IsInstalled() {
 		return nil, errNotInstalled
@@ -36,6 +37,15 @@ func newStrategy(cfg *config.EMOSConfig, rmw string) (RuntimeStrategy, error) {
 	if rmw != "" {
 		env = append(env, "RMW_IMPLEMENTATION="+rmw)
 	}
+	uiDir := config.UISecurityDir
+	if cfg.Mode == config.ModeOSSContainer || cfg.Mode == config.ModeLicensed {
+		uiDir = uiSecurityRoot
+	}
+	uiEnv, err := uiEnv(uiDir)
+	if err != nil {
+		return nil, err
+	}
+	env = append(env, uiEnv...)
 	switch cfg.Mode {
 	case config.ModeOSSContainer:
 		return NewContainerStrategy(false, env), nil

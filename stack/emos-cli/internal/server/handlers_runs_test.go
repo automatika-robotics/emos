@@ -90,14 +90,14 @@ func waitForRunEnd(t *testing.T, s *Server, id string) *Run {
 
 func TestDashboardRunRecordsTheRecipesOutputAndExit(t *testing.T) {
 	s := newTestServer(t, true)
-	pixiInstall(t, s, "print('recipe ran', flush=True)\nraise SystemExit(3)\n")
+	pixiInstall(t, s, "import os\nprint('recipe ran in', os.environ['SUGARCOAT_UI_DATA_DIR'], flush=True)\nraise SystemExit(3)\n")
 
 	run := startDemoRun(t, s)
 	got := waitForRunEnd(t, s, run.ID)
 	if got.Status != RunStatusFailed || got.ExitCode != 3 {
 		t.Errorf("run = %s with exit %d, want failed with the recipe's 3", got.Status, got.ExitCode)
 	}
-	log := waitForLog(t, run.LogPath, "recipe ran")
+	log := waitForLog(t, run.LogPath, "recipe ran in "+config.UISecurityDir)
 	for _, stage := range []string{"preparing environment", "launching robot hardware", "starting recipe"} {
 		if !strings.Contains(log, "[setup] "+stage) {
 			t.Errorf("log is missing the %q stage:\n%s", stage, log)

@@ -14,7 +14,7 @@ GTSAM_POINTS_REPO="https://github.com/koide3/gtsam_points"
 GTSAM_POINTS_REF="v1.2.2"
 # v1.2.2 plus the build fix for fmt >= 11
 GLIM_REPO="https://github.com/aleph-ra/glim"
-GLIM_REF="1f87e0744b9e2c08c27ac88a5ffb824a26fdd323"
+GLIM_REF="v1.2.2-emos1"
 # v1.2.2 plus the fix for the map publisher reading past its submaps
 GLIM_ROS_REPO="https://github.com/koide3/glim_ros2"
 GLIM_ROS_REF="4d4ec524ccf1b02aa09b0af2af767ecc54343798"

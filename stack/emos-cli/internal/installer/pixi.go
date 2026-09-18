@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 )
 
 // PixiInstallHint is the one-liner shown to users who need to install pixi.
@@ -36,24 +38,51 @@ func ResolvePixi() (string, error) {
 		"pixi not found in PATH or %v -- install it from https://pixi.sh", checked)
 }
 
+// PixiAddArgs is the pixi add invocation for pkgs on a goarch host.
+//
+// On an aarch64 robot the packages are resolved for aarch64 alone, so one
+// missing only on x86 cannot block the install. An x86 host still resolves both
+func PixiAddArgs(manifest string, pkgs []string, goarch string) []string {
+	args := []string{"add", "--manifest-path", manifest}
+	if goarch == "arm64" {
+		args = append(args, "--platform", "linux-aarch64")
+	}
+	return append(args, pkgs...)
+}
+
 // mappingBackendTask is the pixi task that builds the native mapping backend.
 const mappingBackendTask = "install-mapping-backend"
 
+// MappingBackendROSPackages are the ROS packages the backend needs that are not
+// in a stock EMOS environment, named without the "ros-<distro>-" prefix.
+var MappingBackendROSPackages = []string{
+	"image-transport",
+}
+
 // InstallMappingBackend builds the native mapping backend into the pixi
-// workspace at projectDir, with the build's output on the terminal. It changes
-// neither the environment nor its manifest.
-func InstallMappingBackend(projectDir string, env []string) error {
+// workspace at projectDir, with the output on the terminal.
+func InstallMappingBackend(projectDir, rosDistro string, env []string) error {
 	pixiBin, err := ResolvePixi()
 	if err != nil {
 		return err
 	}
-	build := exec.Command(pixiBin, "run", mappingBackendTask)
-	build.Dir = projectDir
-	build.Env = env
-	build.Stdout = os.Stdout
-	build.Stderr = os.Stderr
-	if err := build.Run(); err != nil {
-		return fmt.Errorf("pixi run %s failed: %w", mappingBackendTask, err)
+	pkgs := make([]string, len(MappingBackendROSPackages))
+	for i, name := range MappingBackendROSPackages {
+		pkgs[i] = "ros-" + rosDistro + "-" + name
+	}
+	steps := [][]string{
+		PixiAddArgs(filepath.Join(projectDir, "pixi.toml"), pkgs, runtime.GOARCH),
+		{"run", mappingBackendTask},
+	}
+	for _, args := range steps {
+		step := exec.Command(pixiBin, args...)
+		step.Dir = projectDir
+		step.Env = env
+		step.Stdout = os.Stdout
+		step.Stderr = os.Stderr
+		if err := step.Run(); err != nil {
+			return fmt.Errorf("pixi %s failed: %w", strings.Join(args[:2], " "), err)
+		}
 	}
 	return nil
 }

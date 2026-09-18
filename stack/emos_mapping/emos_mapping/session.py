@@ -17,7 +17,7 @@ from ros_sugar.robot import RobotPlugin, RosTopicTransport
 from ros_sugar.robot.cli import load_plugin_class
 from ros_sugar.robot.mapping import NativeMapping
 
-from .backend import backend_version, glim_node, write_glim_config
+from .backend import backend_has_cuda, backend_version, glim_node, write_glim_config
 from .builder import MapBuilder, MapBuilderConfig
 
 
@@ -70,7 +70,6 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument(
         "--store", help="maps directory (default: the plugin's declared store)"
     )
-    parser.add_argument("--gpu", action="store_true", help="use GLIM's CUDA modules")
     args = parser.parse_args(argv)
 
     # get plugin and its mapping declaration
@@ -95,6 +94,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     try:
         version = backend_version()
+        gpu = backend_has_cuda()
     except PackageNotFoundError:
         print("the mapping backend (GLIM) is not installed", file=sys.stderr)
         return 2
@@ -110,7 +110,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         os.path.join(glim_dir, "config"),
         points_topic,
         imu_topic,
-        gpu=args.gpu,
+        gpu=gpu,
         lidar_imu=lidar_imu,
     )
     dump_dir = os.path.join(glim_dir, "dump")
@@ -143,7 +143,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "provider": "native",
         "robot": {"plugin": args.plugin, "name": plugin.metadata.name},
-        "backend": {"name": "glim", "version": version, "gpu": args.gpu},
+        "backend": {"name": "glim", "version": version, "gpu": gpu},
         "inputs": {"cloud": points_topic, "imu": imu_topic, "lidar_imu": lidar_imu},
         "band": {"z_min": declaration.z_min, "z_max": declaration.z_max},
     }

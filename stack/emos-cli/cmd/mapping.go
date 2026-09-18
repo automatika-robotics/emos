@@ -376,19 +376,34 @@ func runMapSetup(cmd *cobra.Command, args []string) error {
 
 	ui.Header("MAPPING BACKEND")
 	ui.Info("GTSAM, gtsam_points, GLIM and glim_ros2 are compiled from source into the EMOS workspace.")
-	ui.Info("The pixi environment itself is not changed.")
+	ui.Info("ROS packages they need are added to the pixi environment: " +
+		strings.Join(installer.MappingBackendROSPackages, ", ") + ".")
+	env := pixiBuildEnv()
+	if cuda := installer.DetectCUDA(); cuda != nil {
+		ui.Info(fmt.Sprintf("CUDA %s was detected at %s, so the CUDA-optimized version of GLIM can be used.",
+			cuda.Version, cuda.Root))
+		if ui.Confirm(fmt.Sprintf("Build GLIM for CUDA %s?", cuda.Version)) {
+			env = append(env, "EMOS_MAPPING_CUDA="+cuda.Root)
+		} else {
+			ui.Info("Building for the CPU alone.")
+		}
+	}
 	ui.Faint("This may take several minutes.")
 	if !ui.Confirm("Build the mapping backend now?") {
 		ui.Info("Left alone.")
 		return nil
 	}
-	if err := installer.InstallMappingBackend(cfg.PixiProjectDir, pixiBuildEnv()); err != nil {
+	const retry = "Run 'emos map setup' again: it continues from what is already fetched and built."
+	if err := installer.InstallMappingBackend(cfg.PixiProjectDir, cfg.ROSDistro, env); err != nil {
+		ui.Error("The mapping backend did not build.")
+		ui.Faint(retry)
 		return err
 	}
 	if installed, err = mapping.BackendInstalled(inEnvironment); err != nil {
 		return err
 	} else if !installed {
 		ui.Error("The build finished, but GLIM is still not found in the EMOS environment.")
+		ui.Faint(retry)
 		return fmt.Errorf("mapping backend not installed")
 	}
 	ui.Success("The mapping backend (GLIM) is installed.")

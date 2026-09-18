@@ -80,3 +80,13 @@ def test_a_missing_backend_is_an_error_not_an_empty_version(monkeypatch):
     monkeypatch.setattr(backend, "get_package_share_directory", missing)
     with pytest.raises(PackageNotFoundError):
         backend.backend_version()
+
+
+def test_cuda_modules_are_used_when_the_installed_glim_has_them(tmp_path, monkeypatch):
+    monkeypatch.setattr(backend, "get_package_prefix", lambda name: str(tmp_path))
+    assert not backend.backend_has_cuda()
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "lib" / "libodometry_estimation_cpu.so").write_text("")
+    assert not backend.backend_has_cuda()
+    (tmp_path / "lib" / "libodometry_estimation_gpu.so").write_text("")
+    assert backend.backend_has_cuda()

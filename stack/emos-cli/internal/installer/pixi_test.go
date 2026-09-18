@@ -3,7 +3,9 @@ package installer
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -80,31 +82,62 @@ func TestResolvePixi_NotFound(t *testing.T) {
 	}
 }
 
-func TestInstallMappingBackendRunsTheTaskInTheProject(t *testing.T) {
+func TestInstallMappingBackendAddsItsROSPackageThenRunsTheTask(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("pixi support is unix-only")
 	}
 	bin, project := t.TempDir(), t.TempDir()
 	record := filepath.Join(t.TempDir(), "record")
-	// Records how it was called, then fails when the project asks it to.
-	fake := "#!/bin/sh\necho \"$PWD|$*|$SKBUILD_STRICT_CONFIG\" > " + record + "\ntest ! -e fail\n"
+	// Records each call, and fails the one the project names in "fail".
+	fake := "#!/bin/sh\necho \"$PWD|$*|$EMOS_MAPPING_CUDA\" >> " + record +
+		"\n! grep -q \"^$1$\" fail 2>/dev/null\n"
 	if err := os.WriteFile(filepath.Join(bin, "pixi"), []byte(fake), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	resolved, _ := filepath.EvalSymlinks(project)
+	add := resolved + "|" + strings.Join(PixiAddArgs(filepath.Join(project, "pixi.toml"),
+		[]string{"ros-jazzy-image-transport"}, runtime.GOARCH), " ") + "|/usr/local/cuda-12.6\n"
+	task := resolved + "|run install-mapping-backend|/usr/local/cuda-12.6\n"
 
-	env := append(os.Environ(), "SKBUILD_STRICT_CONFIG=false")
-	if err := InstallMappingBackend(project, env); err != nil {
+	env := append(os.Environ(), "EMOS_MAPPING_CUDA=/usr/local/cuda-12.6")
+	if err := InstallMappingBackend(project, "jazzy", env); err != nil {
 		t.Fatalf("InstallMappingBackend: %v", err)
 	}
-	got, _ := os.ReadFile(record)
-	resolved, _ := filepath.EvalSymlinks(project)
-	if want := resolved + "|run install-mapping-backend|false\n"; string(got) != want {
-		t.Errorf("pixi was called as %q, want %q", got, want)
+	if got, _ := os.ReadFile(record); string(got) != add+task {
+		t.Errorf("pixi was called as\n%s\nwant\n%s", got, add+task)
 	}
 
-	os.WriteFile(filepath.Join(project, "fail"), nil, 0o644)
-	if err := InstallMappingBackend(project, env); err == nil {
+	// A package that cannot be added ends it before anything is built.
+	os.Remove(record)
+	os.WriteFile(filepath.Join(project, "fail"), []byte("add\n"), 0o644)
+	if err := InstallMappingBackend(project, "jazzy", env); err == nil {
+		t.Error("a failed add must be reported")
+	}
+	if got, _ := os.ReadFile(record); string(got) != add {
+		t.Errorf("nothing should be built after a failed add, pixi was called as\n%s", got)
+	}
+
+	os.WriteFile(filepath.Join(project, "fail"), []byte("run\n"), 0o644)
+	if err := InstallMappingBackend(project, "jazzy", env); err == nil {
 		t.Error("a failed build must be reported")
+	}
+}
+
+func TestPixiAddArgsResolveOnlyAarch64OnTheRobot(t *testing.T) {
+	pkgs := []string{"ros-jazzy-livox-ros-driver2", "libpcap"}
+
+	got := PixiAddArgs("/emos/pixi.toml", pkgs, "arm64")
+	want := []string{"add", "--manifest-path", "/emos/pixi.toml",
+		"--platform", "linux-aarch64", "ros-jazzy-livox-ros-driver2", "libpcap"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("arm64 = %v, want %v", got, want)
+	}
+
+	// An x86 dev machine keeps resolving every platform, aarch64 included.
+	got = PixiAddArgs("/emos/pixi.toml", pkgs, "amd64")
+	want = []string{"add", "--manifest-path", "/emos/pixi.toml", "ros-jazzy-livox-ros-driver2", "libpcap"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("amd64 = %v, want %v", got, want)
 	}
 }

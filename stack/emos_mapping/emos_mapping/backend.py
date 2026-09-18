@@ -10,16 +10,27 @@ from typing import Any, Dict, Optional, Sequence, Tuple
 
 from ament_index_python.packages import (
     PackageNotFoundError,
+    get_package_prefix,
     get_package_share_directory,
 )
 from ros_sugar.robot.mount import quaternion_from_euler
 
 GLIM_PACKAGE = "glim_ros"
+GLIM_CORE_PACKAGE = "glim"
+# The odometry module GLIM's GPU configuration loads (only on CUDA build)
+CUDA_ODOMETRY_MODULE = "libodometry_estimation_gpu.so"
 GLIM_EXECUTABLE = "glim_rosnode"
 GLIM_NODE = "glim"
 # GLIM's rviz_viewer module publishes every finished submap here, merged at its
 # optimised pose, at most every 10 s
 MAP_TOPIC = f"/{GLIM_NODE}/map"
+
+
+def backend_has_cuda() -> bool:
+    """Whether the installed GLIM was built with its CUDA modules."""
+    return os.path.isfile(
+        os.path.join(get_package_prefix(GLIM_CORE_PACKAGE), "lib", CUDA_ODOMETRY_MODULE)
+    )
 
 
 def backend_version() -> str:

@@ -74,21 +74,9 @@ func resolveDepsPixi(cfg *config.EMOSConfig, deps Deps, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	args := pixiAddArgs(filepath.Join(cfg.PixiProjectDir, "pixi.toml"), pkgs, runtime.GOARCH)
+	args := installer.PixiAddArgs(filepath.Join(cfg.PixiProjectDir, "pixi.toml"), pkgs, runtime.GOARCH)
 	fmt.Fprintf(out, "pixi %s\n", strings.Join(args, " "))
 	return runStreaming(pixiBin, args, "", out)
-}
-
-// pixiAddArgs is the pixi add invocation for pkgs on a goarch host.
-//
-// On an aarch64 robot the packages are resolved for aarch64 alone, so one
-// missing only on x86 cannot block the install. An x86 host still resolves both
-func pixiAddArgs(manifest string, pkgs []string, goarch string) []string {
-	args := []string{"add", "--manifest-path", manifest}
-	if goarch == "arm64" {
-		args = append(args, "--platform", "linux-aarch64")
-	}
-	return append(args, pkgs...)
 }
 
 // resolveDepsNative lets rosdep resolve everything under the workspace to apt.

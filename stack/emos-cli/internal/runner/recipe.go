@@ -2,7 +2,6 @@ package runner
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -39,13 +38,25 @@ func LoadManifest(path string) *recipeManifest {
 // zenohRMW is the RMW implementation that needs a Zenoh router running.
 const zenohRMW = "rmw_zenoh_cpp"
 
-// ValidRMW reports whether rmw is an RMW implementation a run may ask for.
+// RMWChoices are the RMW implementations an EMOS install carries.
+const RMWChoices = "rmw_fastrtps_cpp, rmw_zenoh_cpp"
+
+// ValidRMW reports whether rmw is one of RMWChoices.
 func ValidRMW(rmw string) bool {
 	switch rmw {
-	case "rmw_fastrtps_cpp", "rmw_cyclonedds_cpp", zenohRMW:
+	case "rmw_fastrtps_cpp", zenohRMW:
 		return true
 	}
 	return false
+}
+
+// CheckRMW rejects an RMW implementation a run cannot ask for. Empty asks for
+// none, which is allowed.
+func CheckRMW(rmw string) error {
+	if rmw == "" || ValidRMW(rmw) {
+		return nil
+	}
+	return fmt.Errorf("invalid RMW implementation: %s (allowed: %s)", rmw, RMWChoices)
 }
 
 // RMWLabel names the RMW a run asked for, where empty means none was.
@@ -59,8 +70,8 @@ func RMWLabel(rmw string) string {
 // RunRecipe runs a recipe in the foreground. An empty rmwImpl sets no RMW
 // implementation, leaving the environment's.
 func RunRecipe(recipeName, rmwImpl string) error {
-	if rmwImpl != "" && !ValidRMW(rmwImpl) {
-		return fmt.Errorf("invalid RMW implementation: %s (allowed: rmw_fastrtps_cpp, rmw_cyclonedds_cpp, rmw_zenoh_cpp)", rmwImpl)
+	if err := CheckRMW(rmwImpl); err != nil {
+		return err
 	}
 
 	// Check recipe exists
@@ -96,15 +107,8 @@ func RunRecipe(recipeName, rmwImpl string) error {
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer signal.Stop(signals)
 
-	interrupted := func(string) error {
-		select {
-		case <-signals:
-			return errors.New("interrupted before the recipe started")
-		default:
-			return nil
-		}
-	}
-	session, err := Prepare(cfg, rmwImpl, manifest, interrupted)
+	session, err := Prepare(cfg, rmwImpl, manifest,
+		StopOnSignal(signals, "interrupted before the recipe started"))
 	if err != nil {
 		return err
 	}

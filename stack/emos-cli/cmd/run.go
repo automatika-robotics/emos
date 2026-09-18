@@ -18,17 +18,26 @@ var runCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ui.Banner(config.Version)
-		if plugin.Busy() {
-			ui.Error("Plugins are being installed, updated or removed; a recipe would load a half-built overlay.")
-			ui.Faint("Try again once that finishes.")
-			return fmt.Errorf("plugins are busy")
+		if err := refuseWhilePluginsBusy("a recipe"); err != nil {
+			return err
 		}
 		return runner.RunRecipe(args[0], rmwFlag)
 	},
 }
 
+// refuseWhilePluginsBusy says why what cannot start while a plugin operation is
+// rebuilding the overlay it would load.
+func refuseWhilePluginsBusy(what string) error {
+	if !plugin.Busy() {
+		return nil
+	}
+	ui.Error(fmt.Sprintf("Plugins are being installed, updated or removed; %s would load a half-built overlay.", what))
+	ui.Faint("Try again once that finishes.")
+	return fmt.Errorf("plugins are busy")
+}
+
 func init() {
 	runCmd.Flags().StringVar(&rmwFlag, "rmw", "",
-		"RMW implementation (rmw_fastrtps_cpp, rmw_cyclonedds_cpp, rmw_zenoh_cpp); "+
+		"RMW implementation ("+runner.RMWChoices+"); "+
 			"unset keeps the environment's, or ROS's default")
 }

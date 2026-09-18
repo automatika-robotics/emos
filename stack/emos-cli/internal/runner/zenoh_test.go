@@ -21,7 +21,7 @@ func TestValidRMW(t *testing.T) {
 		want bool
 	}{
 		{"rmw_fastrtps_cpp", true},
-		{"rmw_cyclonedds_cpp", true},
+		{"rmw_cyclonedds_cpp", false}, // no EMOS install carries it
 		{"rmw_zenoh_cpp", true},
 		{"", false},
 		{"rmw_other", false},
@@ -31,6 +31,12 @@ func TestValidRMW(t *testing.T) {
 		if got := ValidRMW(tc.in); got != tc.want {
 			t.Errorf("ValidRMW(%q) = %v, want %v", tc.in, got, tc.want)
 		}
+	}
+	if err := CheckRMW(""); err != nil {
+		t.Errorf("asking for no RMW should be allowed, got %v", err)
+	}
+	if err := CheckRMW("rmw_cyclonedds_cpp"); err == nil || !strings.Contains(err.Error(), RMWChoices) {
+		t.Errorf("CheckRMW should name the choices, got %v", err)
 	}
 }
 

@@ -79,3 +79,32 @@ func TestResolvePixi_NotFound(t *testing.T) {
 		t.Fatalf("ResolvePixi err = nil, want failure when pixi missing everywhere")
 	}
 }
+
+func TestInstallMappingBackendRunsTheTaskInTheProject(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("pixi support is unix-only")
+	}
+	bin, project := t.TempDir(), t.TempDir()
+	record := filepath.Join(t.TempDir(), "record")
+	// Records how it was called, then fails when the project asks it to.
+	fake := "#!/bin/sh\necho \"$PWD|$*|$SKBUILD_STRICT_CONFIG\" > " + record + "\ntest ! -e fail\n"
+	if err := os.WriteFile(filepath.Join(bin, "pixi"), []byte(fake), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	env := append(os.Environ(), "SKBUILD_STRICT_CONFIG=false")
+	if err := InstallMappingBackend(project, env); err != nil {
+		t.Fatalf("InstallMappingBackend: %v", err)
+	}
+	got, _ := os.ReadFile(record)
+	resolved, _ := filepath.EvalSymlinks(project)
+	if want := resolved + "|run install-mapping-backend|false\n"; string(got) != want {
+		t.Errorf("pixi was called as %q, want %q", got, want)
+	}
+
+	os.WriteFile(filepath.Join(project, "fail"), nil, 0o644)
+	if err := InstallMappingBackend(project, env); err == nil {
+		t.Error("a failed build must be reported")
+	}
+}

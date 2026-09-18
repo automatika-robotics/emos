@@ -10,13 +10,14 @@ import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from ament_index_python.packages import PackageNotFoundError
 from ros_sugar import Launcher
 from ros_sugar.io import Topic
 from ros_sugar.robot import RobotPlugin, RosTopicTransport
 from ros_sugar.robot.cli import load_plugin_class
 from ros_sugar.robot.mapping import NativeMapping
 
-from .backend import glim_node, write_glim_config
+from .backend import backend_version, glim_node, write_glim_config
 from .builder import MapBuilder, MapBuilderConfig
 
 
@@ -70,7 +71,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         "--store", help="maps directory (default: the plugin's declared store)"
     )
     parser.add_argument("--gpu", action="store_true", help="use GLIM's CUDA modules")
-    parser.add_argument("--backend-version", default="", help="recorded in map.json")
     args = parser.parse_args(argv)
 
     # get plugin and its mapping declaration
@@ -91,6 +91,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         imu_topic = feedback_topic(plugin, declaration.imu)
     except (ValueError, TypeError) as e:
         print(f"cannot map with {args.plugin}: {e}", file=sys.stderr)
+        return 2
+
+    try:
+        version = backend_version()
+    except PackageNotFoundError:
+        print("the mapping backend (GLIM) is not installed", file=sys.stderr)
         return 2
 
     # specify map store
@@ -137,7 +143,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "provider": "native",
         "robot": {"plugin": args.plugin, "name": plugin.metadata.name},
-        "backend": {"name": "glim", "version": args.backend_version, "gpu": args.gpu},
+        "backend": {"name": "glim", "version": version, "gpu": args.gpu},
         "inputs": {"cloud": points_topic, "imu": imu_topic, "lidar_imu": lidar_imu},
         "band": {"z_min": declaration.z_min, "z_max": declaration.z_max},
     }

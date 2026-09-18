@@ -38,6 +38,19 @@ func RunUISecurity(cfg *config.EMOSConfig, out io.Writer, args ...string) error 
 	return err
 }
 
+// StartTool starts shell in the environment recipes run in, without the setup a
+// run does, writing its output to out.
+func StartTool(cfg *config.EMOSConfig, shell string, out io.Writer) (*RunHandle, error) {
+	s, err := newStrategy(cfg, "")
+	if err != nil {
+		return nil, err
+	}
+	cmd := s.Command(shell)
+	cmd.Stdout = out
+	cmd.Stderr = out
+	return StartProcess(cmd)
+}
+
 func uiSecurityShell(args []string) string {
 	quoted := make([]string, len(args))
 	for i, a := range args {

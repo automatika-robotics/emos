@@ -1,6 +1,10 @@
 import json
 import os
 
+import pytest
+from ament_index_python.packages import PackageNotFoundError
+
+import emos_mapping.backend as backend
 from emos_mapping.backend import (
     GLIM_NODE,
     MAP_TOPIC,
@@ -60,3 +64,19 @@ def test_the_lidar_imu_offset_is_written_when_declared(tmp_path):
     # Not declared: GLIM's own value stays
     directory = write_glim_config(str(tmp_path / "d"), "/p", "/i")
     assert load(os.path.join(directory, "config_sensors.json"))["sensors"]["T_lidar_imu"][:3] == [0.006, -0.012, 0.008]
+
+
+
+def test_the_backend_version_is_read_from_glims_manifest(tmp_path, monkeypatch):
+    (tmp_path / "package.xml").write_text("<package><name>glim_ros</name><version>1.2.2</version></package>")
+    monkeypatch.setattr(backend, "get_package_share_directory", lambda name: str(tmp_path))
+    assert backend.backend_version() == "1.2.2"
+
+
+def test_a_missing_backend_is_an_error_not_an_empty_version(monkeypatch):
+    def missing(name):
+        raise PackageNotFoundError(name)
+
+    monkeypatch.setattr(backend, "get_package_share_directory", missing)
+    with pytest.raises(PackageNotFoundError):
+        backend.backend_version()

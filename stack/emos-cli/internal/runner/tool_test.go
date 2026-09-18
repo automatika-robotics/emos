@@ -53,3 +53,29 @@ func TestUISecurityReportsTheToolsFailureQuietly(t *testing.T) {
 		t.Errorf("err = %v, want the tool's exit status", err)
 	}
 }
+
+func TestStartToolRunsInTheRecipesEnvironmentWithoutARunsSetup(t *testing.T) {
+	withTempDirs(t)
+	bin := t.TempDir()
+	// pixi run --manifest-path <toml> bash -c <shell>: just runs the shell.
+	os.WriteFile(filepath.Join(bin, "pixi"), []byte("#!/bin/sh\nshift 3\nexec \"$@\"\n"), 0o755)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	project := t.TempDir()
+	os.MkdirAll(filepath.Join(project, "install"), 0o755)
+	os.WriteFile(filepath.Join(project, "pixi.toml"), nil, 0o644)
+	os.WriteFile(filepath.Join(project, "install", "setup.sh"), []byte("export FROM_WORKSPACE=yes\n"), 0o644)
+	cfg := &config.EMOSConfig{Mode: config.ModePixi, PixiProjectDir: project}
+
+	var out bytes.Buffer
+	h, err := StartTool(cfg, "echo workspace sourced: $FROM_WORKSPACE; exit 3", &out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := h.Wait(); code != 3 || strings.TrimSpace(out.String()) != "workspace sourced: yes" {
+		t.Errorf("exit %d, output %q", code, out.String())
+	}
+
+	if _, err := StartTool(&config.EMOSConfig{}, "true", &out); err == nil {
+		t.Error("an EMOS that is not installed has no environment to start a tool in")
+	}
+}

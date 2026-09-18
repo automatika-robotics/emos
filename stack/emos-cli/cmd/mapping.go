@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
+	"github.com/automatika-robotics/emos-cli/internal/installer"
 	"github.com/automatika-robotics/emos-cli/internal/mapping"
 	"github.com/automatika-robotics/emos-cli/internal/runner"
 	"github.com/automatika-robotics/emos-cli/internal/ui"
@@ -19,8 +20,9 @@ import (
 )
 
 var (
-	mapExportDir string
-	mapRMW       string
+	mapExportDir    string
+	mapRMW          string
+	mapSetupRebuild bool
 )
 
 var mapCmd = &cobra.Command{
@@ -43,6 +45,18 @@ func init() {
 		"RMW implementation for a map EMOS builds itself ("+runner.RMWChoices+"); "+
 			"unset keeps the environment's, or ROS's default")
 	mapCmd.AddCommand(newCmd)
+	setupCmd := &cobra.Command{
+		Use:   "setup",
+		Short: "Install the mapping backend EMOS builds maps with",
+		Long: "Install the mapping backend (GLIM) for a robot whose maps EMOS builds itself.\n\n" +
+			"It is compiled from source into the EMOS workspace, which takes a while.\n" +
+			"A robot that maps with its own software needs none of this.",
+		Args: cobra.NoArgs,
+		RunE: runMapSetup,
+	}
+	setupCmd.Flags().BoolVar(&mapSetupRebuild, "rebuild", false,
+		"build again although the backend is installed, for one an update has broken")
+	mapCmd.AddCommand(setupCmd)
 	exportCmd := &cobra.Command{
 		Use:   "export [name]",
 		Short: "Package a map for copying off the robot (defaults to the active one)",
@@ -313,12 +327,79 @@ func cancelOnSignal(sigs <-chan os.Signal) (context.Context, context.CancelFunc)
 	return ctx, cancel
 }
 
+// refuseInContainer explains that a container install cannot build maps itself.
+func refuseInContainer(cfg *config.EMOSConfig) error {
+	err := mapping.NativeSupported(cfg.Mode)
+	if err != nil {
+		ui.Error("EMOS builds this robot's maps itself, which a container install cannot do in this version.")
+		ui.Faint("Map from a pixi or native EMOS install on the robot.")
+	}
+	return err
+}
+
+func runMapSetup(cmd *cobra.Command, args []string) error {
+	decl, err := resolveMapping()
+	if err != nil {
+		return err
+	}
+	if decl.Kind != mapping.KindNative {
+		ui.Info("This robot maps with its own software, so there is nothing to set up.")
+		return nil
+	}
+	cfg := config.LoadConfig()
+	if err := refuseInContainer(cfg); err != nil {
+		return err
+	}
+	if err := refuseWhilePluginsBusy("the build"); err != nil {
+		return err
+	}
+	inEnvironment := func(shell string, out io.Writer) (mapping.Process, error) {
+		return runner.StartTool(cfg, shell, out)
+	}
+	installed, err := mapping.BackendInstalled(inEnvironment)
+	if err != nil {
+		return err
+	}
+	if installed && !mapSetupRebuild {
+		ui.Success("The mapping backend (GLIM) is already installed.")
+		ui.Faint("Build a map with 'emos map new'. If an update has broken it, 'emos map setup --rebuild' builds it again.")
+		return nil
+	}
+
+	if cfg.Mode != config.ModePixi {
+		ui.Error("Installing the mapping backend is automated for a pixi install only.")
+		ui.Faint("On this install, build GTSAM, gtsam_points, GLIM and glim_ros2 into your ROS workspace " +
+			"yourself. The versions and build options EMOS uses are in " +
+			"stack/emos-cli/scripts/install_mapping_backend_pixi.sh of the EMOS repository.")
+		return fmt.Errorf("mapping backend not installed")
+	}
+
+	ui.Header("MAPPING BACKEND")
+	ui.Info("GTSAM, gtsam_points, GLIM and glim_ros2 are compiled from source into the EMOS workspace.")
+	ui.Info("The pixi environment itself is not changed.")
+	ui.Faint("This may take several minutes.")
+	if !ui.Confirm("Build the mapping backend now?") {
+		ui.Info("Left alone.")
+		return nil
+	}
+	if err := installer.InstallMappingBackend(cfg.PixiProjectDir, pixiBuildEnv()); err != nil {
+		return err
+	}
+	if installed, err = mapping.BackendInstalled(inEnvironment); err != nil {
+		return err
+	} else if !installed {
+		ui.Error("The build finished, but GLIM is still not found in the EMOS environment.")
+		return fmt.Errorf("mapping backend not installed")
+	}
+	ui.Success("The mapping backend (GLIM) is installed.")
+	ui.Faint("Build a map with 'emos map new'.")
+	return nil
+}
+
 // nativeMappingReady says why EMOS cannot build a map itself right now, before
 // the operator is asked for anything.
 func nativeMappingReady(cfg *config.EMOSConfig) error {
-	if err := mapping.NativeSupported(cfg.Mode); err != nil {
-		ui.Error("EMOS builds this robot's maps itself, which a container install cannot do in this version.")
-		ui.Faint("Map from a pixi or native EMOS install on the robot.")
+	if err := refuseInContainer(cfg); err != nil {
 		return err
 	}
 	if err := runner.CheckRMW(mapRMW); err != nil {
@@ -359,6 +440,7 @@ func runNativeMapNew(cfg *config.EMOSConfig, decl *mapping.Declaration, name str
 		return err
 	} else if !installed {
 		ui.Error("The mapping backend (GLIM) is not installed in this EMOS environment.")
+		ui.Faint("Install it with 'emos map setup'.")
 		return fmt.Errorf("mapping backend not installed")
 	}
 

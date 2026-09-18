@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import xml.etree.ElementTree as ET
 from typing import Any, Dict, Optional, Sequence, Tuple
 
 from ament_index_python.packages import (
@@ -19,6 +20,13 @@ GLIM_NODE = "glim"
 # GLIM's rviz_viewer module publishes every finished submap here, merged at its
 # optimised pose, at most every 10 s
 MAP_TOPIC = f"/{GLIM_NODE}/map"
+
+
+def backend_version() -> str:
+    """The installed GLIM's version, from its package manifest. Raises
+    PackageNotFoundError when GLIM is not installed."""
+    manifest = os.path.join(get_package_share_directory(GLIM_PACKAGE), "package.xml")
+    return ET.parse(manifest).getroot().findtext("version")
 
 
 def templates_dir() -> str:

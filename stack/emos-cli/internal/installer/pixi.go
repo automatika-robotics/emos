@@ -35,3 +35,25 @@ func ResolvePixi() (string, error) {
 	return "", fmt.Errorf(
 		"pixi not found in PATH or %v -- install it from https://pixi.sh", checked)
 }
+
+// mappingBackendTask is the pixi task that builds the native mapping backend.
+const mappingBackendTask = "install-mapping-backend"
+
+// InstallMappingBackend builds the native mapping backend into the pixi
+// workspace at projectDir, with the build's output on the terminal. It changes
+// neither the environment nor its manifest.
+func InstallMappingBackend(projectDir string, env []string) error {
+	pixiBin, err := ResolvePixi()
+	if err != nil {
+		return err
+	}
+	build := exec.Command(pixiBin, "run", mappingBackendTask)
+	build.Dir = projectDir
+	build.Env = env
+	build.Stdout = os.Stdout
+	build.Stderr = os.Stderr
+	if err := build.Run(); err != nil {
+		return fmt.Errorf("pixi run %s failed: %w", mappingBackendTask, err)
+	}
+	return nil
+}

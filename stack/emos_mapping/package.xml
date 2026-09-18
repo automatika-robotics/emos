@@ -8,7 +8,9 @@
   <license>MIT</license>
 
   <depend>rclpy</depend>
+  <depend>ament_index_python</depend>
   <depend>sensor_msgs</depend>
+  <depend>sensor_msgs_py</depend>
   <depend>nav_msgs</depend>
   <depend>automatika_ros_sugar</depend>
   <depend>python3-numpy</depend>

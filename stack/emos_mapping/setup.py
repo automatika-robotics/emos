@@ -1,5 +1,6 @@
 import os
 import xml.etree.ElementTree as ET
+from glob import glob
 
 from setuptools import find_packages, setup
 
@@ -15,6 +16,10 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml"]),
+        # GLIM's configuration templates, patched per mapping session
+        (os.path.join("share", package_name, "glim_config"), glob("glim_config/*.json") + ["glim_config/README.md"]),
+        # The component executable, as the launcher runs it
+        (os.path.join("lib", package_name), ["scripts/executable"]),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
@@ -23,5 +28,9 @@ setup(
     description="EMOS native mapping: builds occupancy grids from a SLAM backend's map cloud",
     license="MIT",
     tests_require=["pytest"],
-    entry_points={"console_scripts": []},
+    entry_points={
+        "console_scripts": [
+            "session = emos_mapping.session:main",
+        ]
+    },
 )

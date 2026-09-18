@@ -1,8 +1,7 @@
 """Occupancy grids from a 3D map cloud.
 
-The final map and the live preview come from one raster: a height slice of
-the SLAM backend's global point cloud, written in the ROS map_server format
-that Kompass's MapServer loads. No ROS here, so it runs and tests anywhere.
+A height slice of the SLAM backend's global point cloud, written in the ROS
+map_server format that Kompass's MapServer loads.
 """
 
 from __future__ import annotations

@@ -4,34 +4,45 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/mapping"
+	"github.com/automatika-robotics/emos-cli/internal/runner"
 	"github.com/automatika-robotics/emos-cli/internal/ui"
 	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 )
 
-var mapExportDir string
+var (
+	mapExportDir string
+	mapRMW       string
+)
 
 var mapCmd = &cobra.Command{
 	Use:   "map",
 	Short: "Build and manage maps of the robot's environment",
 	Long: "Build and manage maps.\n\n" +
-		"How a robot maps is its plugin's to declare. EMOS drives the mapping\n" +
-		"software that ships with the robot.",
+		"How a robot maps is declared in its plugin. EMOS drives the mapping\n" +
+		"software that ships with the robot, or builds the map itself from the\n" +
+		"robot's LiDAR when the robot ships none.",
 }
 
 func init() {
-	mapCmd.AddCommand(&cobra.Command{
+	newCmd := &cobra.Command{
 		Use:   "new [name]",
 		Short: "Build a new map by driving the robot",
 		Args:  cobra.MaximumNArgs(1),
 		RunE:  runMapNew,
-	})
+	}
+	newCmd.Flags().StringVar(&mapRMW, "rmw", "",
+		"RMW implementation for a map EMOS builds itself ("+runner.RMWChoices+"); "+
+			"unset keeps the environment's, or ROS's default")
+	mapCmd.AddCommand(newCmd)
 	exportCmd := &cobra.Command{
 		Use:   "export [name]",
 		Short: "Package a map for copying off the robot (defaults to the active one)",
@@ -76,12 +87,6 @@ func resolveMapping() (*mapping.Declaration, error) {
 		return nil, fmt.Errorf("no robot plugin installed")
 	case errors.Is(err, mapping.ErrNotSupported):
 		ui.Error("This robot's plugin declares no mapping support.")
-		ui.Faint("If the plugin was installed before mapping support was added, " +
-			"'emos plugin update' refreshes what EMOS knows about it.")
-		return nil, fmt.Errorf("mapping not supported by this robot")
-	case errors.Is(err, mapping.ErrNativeNotSupported):
-		ui.Error("This robot's plugin expects EMOS to build the map itself, " +
-			"which this version of EMOS does not support.")
 		return nil, fmt.Errorf("mapping not supported by this robot")
 	case err != nil:
 		return nil, err
@@ -162,6 +167,12 @@ func runMapNew(cmd *cobra.Command, args []string) error {
 	if !term.IsTerminal(os.Stdin.Fd()) {
 		return fmt.Errorf("'emos map new' needs an interactive terminal: mapping is stopped from it")
 	}
+	cfg := config.LoadConfig()
+	if decl.Kind == mapping.KindNative {
+		if err := nativeMappingReady(cfg); err != nil {
+			return err
+		}
+	}
 	name := "map"
 	if len(args) == 1 {
 		name = args[0]
@@ -169,7 +180,20 @@ func runMapNew(cmd *cobra.Command, args []string) error {
 		ui.Info("Cancelled.")
 		return nil
 	}
+	if err := mapping.CheckName(name); err != nil {
+		return err
+	}
+	if decl.Kind == mapping.KindNative {
+		return runNativeMapNew(cfg, decl, name)
+	}
+	return runVendorMapNew(decl, name)
+}
 
+// loopAdvice is what makes a map line up with itself, whoever builds it.
+const loopAdvice = "Plan a route that closes loops -- make sure to revisit places you " +
+	"have already scanned, or the map will not line up with itself."
+
+func runVendorMapNew(decl *mapping.Declaration, name string) error {
 	ui.Header("MAPPING")
 	if limit := decl.Vendor.AreaLimitM; limit > 0 {
 		ui.Info(fmt.Sprintf("This robot maps areas up to %.0f x %.0f m.", limit, limit))
@@ -177,26 +201,18 @@ func runMapNew(cmd *cobra.Command, args []string) error {
 	if mapping.Escalates(decl.Vendor.Start) || mapping.Escalates(decl.Vendor.Stop) {
 		ui.Info("Mapping runs the robot's own tool as root; sudo may prompt.")
 	}
-	ui.Faint("Plan a route that closes loops -- make sure to revisit places you " +
-		"have already scanned, or the map will not line up with itself.")
+	ui.Faint(loopAdvice)
 
 	// Caught from before the start command, so no signal can end the CLI while
-	// the robot keeps mapping. The prompt below reads Ctrl+C as a key.
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
-	defer signal.Stop(sigs)
+	// the robot keeps mapping.
+	sigs, release := catchSignals()
+	defer release()
 
-	session, err := decl.Start(name, mapping.SystemRunner)
+	session, err := decl.StartVendor(name, mapping.SystemRunner)
 	if err != nil {
 		return err
 	}
-
-	ui.Success("Mapping started.")
-	ui.Info("Drive the robot along your route with its own controller.")
-	promptCtx, cancelPrompt := cancelOnSignal(sigs)
-	err = ui.Continue(promptCtx, "Press Enter when you have finished driving", "Stop mapping")
-	cancelPrompt()
-	if err != nil {
+	if interrupted := driveUntilStopped(sigs, nil); interrupted {
 		ui.Warn("Interrupted -- stopping mapping so the robot does not keep going.")
 	}
 
@@ -214,15 +230,52 @@ func runMapNew(cmd *cobra.Command, args []string) error {
 		ui.Faint("The robot may still be finishing. Check with 'emos map list'.")
 		return fmt.Errorf("mapping did not complete")
 	}
+	reportSaved(built)
+	return nil
+}
 
+// catchSignals takes over the signals that would end the CLI, so it decides
+// what they mean while mapping goes on. release hands them back.
+func catchSignals() (sigs chan os.Signal, release func()) {
+	sigs = make(chan os.Signal, 2)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	return sigs, func() { signal.Stop(sigs) }
+}
+
+// driveUntilStopped tells the operator to drive, and waits for Enter. The wait
+// also ends when ended closes, which is nil for mapping that cannot end by
+// itself. It reports whether the operator interrupted instead.
+func driveUntilStopped(sigs <-chan os.Signal, ended <-chan struct{}) (interrupted bool) {
+	ui.Success("Mapping started.")
+	ui.Info("Drive the robot along your route with its own controller.")
+	ctx, cancel := cancelOnSignal(sigs)
+	defer cancel()
+	go func() {
+		select {
+		case <-ended:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	return ui.Continue(ctx, "Press Enter when you have finished driving", "Stop mapping") != nil
+}
+
+// reportSaved tells the operator about the map a session left.
+func reportSaved(built *mapping.Map) {
 	ui.Success(fmt.Sprintf("Map '%s' saved.", built.Name))
 	if built.Grid == "" {
 		ui.Warn("It has no occupancy grid yet, so a recipe cannot load it.")
 		ui.Faint("The robot may still be post-processing; re-check with 'emos map list'.")
-	} else {
-		ui.Faint(built.Grid)
+		return
 	}
-	return nil
+	ui.Faint(built.Grid)
+}
+
+// warnWithoutGrid warns about a map a recipe cannot load.
+func warnWithoutGrid(m *mapping.Map) {
+	if m.Grid == "" {
+		ui.Warn("It has no occupancy grid, so a recipe cannot load it.")
+	}
 }
 
 // cancelOnSignal returns a context cancelled by the next signal on sigs.
@@ -236,6 +289,136 @@ func cancelOnSignal(sigs <-chan os.Signal) (context.Context, context.CancelFunc)
 		}
 	}()
 	return ctx, cancel
+}
+
+// nativeMappingReady says why EMOS cannot build a map itself right now, before
+// the operator is asked for anything.
+func nativeMappingReady(cfg *config.EMOSConfig) error {
+	if err := mapping.NativeSupported(cfg.Mode); err != nil {
+		ui.Error("EMOS builds this robot's maps itself, which a container install cannot do in this version.")
+		ui.Faint("Map from a pixi or native EMOS install on the robot.")
+		return err
+	}
+	if err := runner.CheckRMW(mapRMW); err != nil {
+		return err
+	}
+	return refuseWhilePluginsBusy("mapping")
+}
+
+// runNativeMapNew builds a map with EMOS's own mapping session.
+func runNativeMapNew(cfg *config.EMOSConfig, decl *mapping.Declaration, name string) error {
+	logFile := runner.LogFilePath("map-" + name)
+	log, err := runner.OpenLog(logFile)
+	if err != nil {
+		return err
+	}
+	defer log.Close()
+
+	ui.Header("MAPPING")
+	ui.Info("EMOS builds this map itself from the robot's LiDAR.")
+	ui.Info("RMW Implementation: " + runner.RMWLabel(mapRMW))
+
+	// Caught from here on, so the session is never left running behind a CLI
+	// that a signal ended. The session is in its own process group.
+	sigs, release := catchSignals()
+	defer release()
+
+	run, err := runner.Prepare(cfg, mapRMW, nil,
+		runner.StopOnSignal(sigs, "interrupted before mapping started"))
+	if err != nil {
+		return err
+	}
+	defer run.Close()
+	start := func(shell string, out io.Writer) (mapping.Process, error) {
+		return run.Start("starting mapping", shell, out)
+	}
+
+	if installed, err := mapping.BackendInstalled(start); err != nil {
+		return err
+	} else if !installed {
+		ui.Error("The mapping backend (GLIM) is not installed in this EMOS environment.")
+		return fmt.Errorf("mapping backend not installed")
+	}
+
+	ui.Header("BUILDING MAP: " + name)
+	ui.Faint(loopAdvice)
+	ui.Faint("Finish in an area you have already covered.")
+	ui.Info("The session's output is saved to: " + logFile)
+
+	startCtx, cancelStart := cancelOnSignal(sigs)
+	session, err := decl.StartNative(startCtx, cfg.Plugin.EntryPoint, name, start, log)
+	cancelStart()
+	if err != nil {
+		return explainSession(err, logFile)
+	}
+
+	interrupted := driveUntilStopped(sigs, session.Done())
+
+	var built *mapping.Map
+	select {
+	case <-session.Done():
+		ui.Warn("The mapping session ended on its own.")
+		built, err = session.Result()
+	default:
+		if interrupted {
+			ui.Warn("Interrupted -- stopping mapping and saving what it has.")
+		}
+		ui.Info("Stopping mapping and saving the map; Ctrl+C gives up on it.")
+		stopCtx, cancelStop := cancelOnSignal(sigs)
+		built, err = session.Stop(stopCtx)
+		cancelStop()
+	}
+	if err != nil {
+		return explainSession(err, logFile)
+	}
+	reportSaved(built)
+	return nil
+}
+
+// explainSession prints the operator-facing account of a native mapping
+// session that produced no map, and returns the short error cobra reports.
+func explainSession(err error, logFile string) error {
+	var exited *mapping.ErrSessionExited
+	switch {
+	case errors.Is(err, mapping.ErrStopInterrupted):
+		ui.Error("Stopping was interrupted, so the session was ended and no map was saved.")
+		return err
+	case errors.Is(err, context.Canceled):
+		ui.Error("Interrupted before mapping started.")
+		return err
+	case errors.Is(err, mapping.ErrNoMapBuilt):
+		ui.Error("The mapping backend published no map.")
+		ui.Faint("The first one comes some seconds after the robot starts moving. " +
+			"Drive for longer, and check that the LiDAR is running.")
+	case errors.As(err, &exited):
+		ui.Error("Mapping failed: " + err.Error() + ".")
+	default:
+		return err
+	}
+	for _, line := range lastLines(logFile, 15) {
+		ui.Faint("  " + line)
+	}
+	ui.Faint("Full output: " + logFile)
+	ui.Faint("A map directory without a map may be left behind; 'emos map list' shows it and 'emos map rm' removes it.")
+	return fmt.Errorf("mapping did not complete")
+}
+
+// lastLines returns up to n of the last non-empty lines of the file at path.
+func lastLines(path string, n int) []string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var lines []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) != "" {
+			lines = append(lines, line)
+		}
+	}
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return lines
 }
 
 func runMapRm(cmd *cobra.Command, args []string) error {
@@ -259,7 +442,7 @@ func runMapRm(cmd *cobra.Command, args []string) error {
 		ui.Info("Left alone.")
 		return nil
 	}
-	if v := decl.Vendor; mapping.Escalates(v.Remove) || (len(v.Remove) == 0 && v.RequiresRoot) {
+	if v := decl.Vendor; v != nil && (mapping.Escalates(v.Remove) || (len(v.Remove) == 0 && v.RequiresRoot)) {
 		ui.Info("The map store is owned by the robot's own software; sudo may prompt.")
 	}
 
@@ -324,9 +507,7 @@ func runMapImport(cmd *cobra.Command, args []string) error {
 		return explain(err)
 	}
 	ui.Success(fmt.Sprintf("Imported '%s'.", built.Name))
-	if built.Grid == "" {
-		ui.Warn("It has no occupancy grid, so a recipe cannot load it.")
-	}
+	warnWithoutGrid(built)
 	if !built.Active {
 		ui.Faint(fmt.Sprintf("Make it active with 'emos map use %s'.", built.Name))
 	}
@@ -348,9 +529,7 @@ func runMapUse(cmd *cobra.Command, args []string) error {
 		ui.Info(fmt.Sprintf("'%s' is already the active map.", name))
 		return nil
 	}
-	if target.Grid == "" {
-		ui.Warn("It has no occupancy grid, so a recipe cannot load it.")
-	}
+	warnWithoutGrid(target)
 
 	ui.Warn("The robot will localize against this map from now on. It needs " +
 		"relocalizing, and a running recipe will lose its position.")

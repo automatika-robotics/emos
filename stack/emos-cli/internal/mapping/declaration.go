@@ -12,6 +12,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -60,11 +62,19 @@ type Vendor struct {
 	AreaLimitM   float64 `json:"area_limit_m"`
 }
 
-// Declaration is how the active robot maps its environment. Vendor is set for
-// every declaration Resolve returns.
+// Native is mapping performed by EMOS from the plugin's own sensors. The
+// mapping session reads the rest of the declaration from the plugin itself.
+type Native struct {
+	Store      string `json:"store"`
+	ActiveLink string `json:"active_link"`
+}
+
+// Declaration is how the active robot maps its environment. Kind says which of
+// Vendor and Native is set.
 type Declaration struct {
 	Kind   Kind
 	Vendor *Vendor
+	Native *Native
 }
 
 // UnmarshalJSON decodes a mapping block by its "kind" tag.
@@ -81,7 +91,8 @@ func (d *Declaration) UnmarshalJSON(data []byte) error {
 		d.Vendor = &Vendor{}
 		return json.Unmarshal(data, d.Vendor)
 	case KindNative:
-		return nil
+		d.Native = &Native{}
+		return json.Unmarshal(data, d.Native)
 	default:
 		return fmt.Errorf("unknown mapping kind %q", probe.Kind)
 	}
@@ -95,15 +106,51 @@ var ErrNoPlugin = errors.New("no robot plugin is installed")
 // mapping capability.
 var ErrNotSupported = errors.New("this robot's plugin declares no mapping support")
 
-// ErrNativeNotSupported is returned when the plugin declares native mapping,
-// which this version of EMOS does not support.
-var ErrNativeNotSupported = errors.New("native mapping is not supported by this version of EMOS")
+// ErrStopInterrupted is returned when stopping a session is cancelled before a
+// map appears. A vendor's software may still be mapping; a native session has
+// been killed.
+var ErrStopInterrupted = errors.New("stopping mapping was interrupted")
+
+// validName is what a map name may look like. It goes to a vendor tool that
+// may run as root, so it must not read as an option or a path.
+var validName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// CheckName rejects a map name the provider should not be handed.
+func CheckName(name string) error {
+	if !validName.MatchString(name) {
+		return fmt.Errorf(
+			"map name %q: use letters, digits, '.', '_' or '-', starting with a letter or digit", name)
+	}
+	return nil
+}
+
+// CanStart returns why this robot cannot run a mapping session, or nil.
+func (d *Declaration) CanStart() error {
+	if d.Kind == KindNative {
+		return nil
+	}
+	if err := d.checkLocal(); err != nil {
+		return err
+	}
+	if len(d.Vendor.Start) == 0 || len(d.Vendor.Stop) == 0 {
+		return fmt.Errorf("this robot's plugin does not declare how to start and stop mapping")
+	}
+	return nil
+}
+
+// checkLocal rejects a provider whose commands run on another machine.
+func (d *Declaration) checkLocal() error {
+	if d.Kind == KindNative {
+		return nil
+	}
+	if host := d.Vendor.Host; host != "" && host != "local" {
+		return fmt.Errorf("this robot maps on %s; running commands there is not supported yet", host)
+	}
+	return nil
+}
 
 // Resolve returns how the installed robot maps, read from the describe() tree
 // cached when the plugin was installed.
-//
-// A plugin installed before mapping declarations existed has no "mapping" key
-// at all, `emos plugin update` refreshes the cache.
 func Resolve(cfg *config.EMOSConfig) (*Declaration, error) {
 	if cfg == nil || cfg.Plugin == nil {
 		return nil, ErrNoPlugin
@@ -124,10 +171,40 @@ func Resolve(cfg *config.EMOSConfig) (*Declaration, error) {
 	if err := json.Unmarshal(tree.Mapping, &decl); err != nil {
 		return nil, fmt.Errorf("read mapping declaration: %w", err)
 	}
-	if decl.Kind == KindNative {
-		return nil, ErrNativeNotSupported
-	}
 	return &decl, nil
+}
+
+// Store returns the directory holding this provider's maps.
+func (d *Declaration) Store() string {
+	if d.Kind != KindNative {
+		return d.Vendor.Store
+	}
+	// Declared relative to the home of whoever runs EMOS
+	store := d.Native.Store
+	switch {
+	case store == "~":
+		return config.HomeDir
+	case strings.HasPrefix(store, "~/"):
+		return filepath.Join(config.HomeDir, store[2:])
+	}
+	return store
+}
+
+// activeLink is the name of the link in the store that marks the active map.
+func (d *Declaration) activeLink() string {
+	if d.Kind != KindNative {
+		return d.Vendor.ActiveLink
+	}
+	return d.Native.ActiveLink
+}
+
+// gridFile is the occupancy-grid YAML's filename in a map directory, "" when
+// the provider names none.
+func (d *Declaration) gridFile() string {
+	if d.Kind != KindNative {
+		return d.Vendor.Grid
+	}
+	return "occ_grid.yaml"
 }
 
 // vars are the substitutions an argv template may contain, as {key}.

@@ -2,9 +2,9 @@ package mapping
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"regexp"
+	"os"
+	"os/exec"
 	"strings"
 	"time"
 )
@@ -16,44 +16,49 @@ var (
 	stopPoll    = 2 * time.Second
 )
 
-// ErrStopInterrupted is returned when Stop is cancelled before a map appears.
-// The provider may still be mapping.
-var ErrStopInterrupted = errors.New("stopping mapping was interrupted")
+// Runner executes one rendered argv.
+type Runner func(argv []string) error
 
-// validName is what a map name may look like. It goes to a vendor tool that
-// may run as root, so it must not read as an option or a path.
-var validName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+// SystemRunner runs argv with stdio inherited, so a sudo password prompt
+// reaches the terminal and the vendor tool's output stays visible.
+func SystemRunner(argv []string) error {
+	if len(argv) == 0 {
+		return fmt.Errorf("empty command")
+	}
+	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
 
-// Session is a mapping run in progress.
-type Session struct {
+// Escalates reports whether a declared argv will ask for a password, so a
+// caller can warn before the prompt appears.
+func Escalates(argv []string) bool {
+	return len(argv) > 0 && argv[0] == "sudo"
+}
+
+// VendorSession is a mapping run in progress on the robot's own software.
+type VendorSession struct {
 	decl   *Declaration
 	run    Runner
 	name   string
 	before map[string]bool
 }
 
-// CanStart returns why this robot cannot run a mapping session, or nil.
-func (d *Declaration) CanStart() error {
-	if err := d.checkLocal(); err != nil {
-		return err
-	}
-	if len(d.Vendor.Start) == 0 || len(d.Vendor.Stop) == 0 {
-		return fmt.Errorf("this robot's plugin does not declare how to start and stop mapping")
-	}
-	return nil
-}
-
-// Start begins a mapping session.
+// StartVendor begins a mapping session run by the robot's own software.
 //
 // name is passed to the provider as given; it may append its own timestamp, so
 // the map that appears is not necessarily called this.
-func (d *Declaration) Start(name string, run Runner) (*Session, error) {
+func (d *Declaration) StartVendor(name string, run Runner) (*VendorSession, error) {
+	if d.Kind != KindVendor {
+		return nil, fmt.Errorf("this robot does not map with its own software")
+	}
 	if err := d.CanStart(); err != nil {
 		return nil, err
 	}
-	if !validName.MatchString(name) {
-		return nil, fmt.Errorf(
-			"map name %q: use letters, digits, '.', '_' or '-', starting with a letter or digit", name)
+	if err := CheckName(name); err != nil {
+		return nil, err
 	}
 
 	before, err := d.snapshot()
@@ -63,7 +68,7 @@ func (d *Declaration) Start(name string, run Runner) (*Session, error) {
 	if err := run(render(d.Vendor.Start, vars{"name": name})); err != nil {
 		return nil, fmt.Errorf("start mapping: %w", err)
 	}
-	return &Session{decl: d, run: run, name: name, before: before}, nil
+	return &VendorSession{decl: d, run: run, name: name, before: before}, nil
 }
 
 // Stop ends the session and returns the map that appeared.
@@ -72,7 +77,7 @@ func (d *Declaration) Start(name string, run Runner) (*Session, error) {
 // Stop waits on is the store, not the return code. Re-issuing stop is opt-in
 // via the declaration's stop_retries. Cancelling ctx gives up with
 // ErrStopInterrupted.
-func (s *Session) Stop(ctx context.Context) (*Map, error) {
+func (s *VendorSession) Stop(ctx context.Context) (*Map, error) {
 	d := s.decl
 	var lastErr error
 	for attempt := 0; attempt <= d.Vendor.StopRetries; attempt++ {
@@ -97,13 +102,13 @@ func (s *Session) Stop(ctx context.Context) (*Map, error) {
 
 // StopCommand is the stop command as it would run, for an operator who has to
 // run it by hand.
-func (s *Session) StopCommand() string {
+func (s *VendorSession) StopCommand() string {
 	return strings.Join(render(s.decl.Vendor.Stop, vars{"name": s.name}), " ")
 }
 
 // await polls the store until a new map appears, the timeout passes (nil, nil)
 // or ctx is cancelled.
-func (s *Session) await(ctx context.Context, timeout time.Duration) (*Map, error) {
+func (s *VendorSession) await(ctx context.Context, timeout time.Duration) (*Map, error) {
 	deadline := time.Now().Add(timeout)
 	for {
 		if m := s.decl.appeared(s.before); m != nil {

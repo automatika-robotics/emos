@@ -34,11 +34,6 @@ func (e *ErrStoreUnreadable) Error() string {
 
 func (e *ErrStoreUnreadable) Unwrap() error { return e.Err }
 
-// Store returns the directory holding this provider's maps.
-func (d *Declaration) Store() string {
-	return d.Vendor.Store
-}
-
 // List returns every map in the provider's store, oldest first.
 func (d *Declaration) List() ([]Map, error) {
 	store := d.Store()
@@ -65,7 +60,7 @@ func (d *Declaration) List() ([]Map, error) {
 	var maps []Map
 	for _, entry := range entries {
 		name := entry.Name()
-		if name == d.Vendor.ActiveLink {
+		if name == d.activeLink() {
 			// The active marker is a link to one of the entries below.
 			continue
 		}
@@ -94,8 +89,8 @@ func (d *Declaration) List() ([]Map, error) {
 // maps in one store, and this matches how a recipe finds the grid through
 // sugarcoat's active_grid_path().
 func (d *Declaration) findGrid(dir string) string {
-	if d.Vendor.Grid != "" {
-		if path := filepath.Join(dir, d.Vendor.Grid); fileExists(path) {
+	if grid := d.gridFile(); grid != "" {
+		if path := filepath.Join(dir, grid); fileExists(path) {
 			return path
 		}
 	}
@@ -118,7 +113,7 @@ func (d *Declaration) findGrid(dir string) string {
 
 // resolveActive returns the name of the map the active link points at, or "".
 func (d *Declaration) resolveActive(store string) string {
-	link := d.Vendor.ActiveLink
+	link := d.activeLink()
 	if link == "" {
 		return ""
 	}

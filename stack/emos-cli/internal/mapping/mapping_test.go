@@ -41,7 +41,11 @@ const nativeDescribe = `{
     "imu": "lidar_imu",
     "z_min": 0.15,
     "z_max": 0.8,
-    "resolution": 0.05
+    "resolution": 0.05,
+    "imu_xyz": null,
+    "imu_rpy": [0.0, 0.0, 0.0],
+    "store": "~/emos/maps",
+    "active_link": "active"
   }
 }`
 
@@ -81,11 +85,19 @@ func TestResolveVendor(t *testing.T) {
 	}
 }
 
-func TestResolveRefusesNative(t *testing.T) {
-	// Plugins already declare native mapping; this version must say it cannot
-	// do it rather than treat the robot as mappable.
-	if _, err := Resolve(cfgWith(nativeDescribe)); !errors.Is(err, ErrNativeNotSupported) {
-		t.Errorf("want ErrNativeNotSupported, got %v", err)
+func TestResolveDecodesNative(t *testing.T) {
+	decl, err := Resolve(cfgWith(nativeDescribe))
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if decl.Kind != KindNative || decl.Native == nil || decl.Vendor != nil {
+		t.Fatalf("want a native declaration, got kind=%q native=%v vendor=%v", decl.Kind, decl.Native, decl.Vendor)
+	}
+	if decl.Native.Store != "~/emos/maps" || decl.Native.ActiveLink != "active" {
+		t.Errorf("native = %+v", decl.Native)
+	}
+	if err := decl.CanStart(); err != nil {
+		t.Errorf("CanStart: %v", err)
 	}
 }
 
@@ -347,7 +359,7 @@ func TestSessionIdentifiesTheMapTheVendorNamed(t *testing.T) {
 		os.WriteFile(filepath.Join(dir, "occ_grid.yaml"), []byte("image: x\n"), 0o644)
 	}}
 
-	s, err := d.Start("warehouse", rec.run)
+	s, err := d.StartVendor("warehouse", rec.run)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -386,7 +398,7 @@ func TestSessionRetriesStopUntilTheMapAppears(t *testing.T) {
 		os.MkdirAll(filepath.Join(store, "late-20260912-143002"), 0o755)
 	}
 
-	s, err := d.Start("late", rec.run)
+	s, err := d.StartVendor("late", rec.run)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -408,7 +420,7 @@ func TestSessionReportsWhenNoMapEverAppears(t *testing.T) {
 	d := sessionDecl(store)
 	rec := &recorder{}
 
-	s, err := d.Start("doomed", rec.run)
+	s, err := d.StartVendor("doomed", rec.run)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -424,7 +436,7 @@ func TestSessionIgnoresMapsThatExistedBefore(t *testing.T) {
 	d := sessionDecl(store)
 	rec := &recorder{}
 
-	s, err := d.Start("new", rec.run)
+	s, err := d.StartVendor("new", rec.run)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -433,12 +445,12 @@ func TestSessionIgnoresMapsThatExistedBefore(t *testing.T) {
 	}
 }
 
-func TestStartNeedsAStopCommand(t *testing.T) {
+func TestStartVendorNeedsAStopCommand(t *testing.T) {
 	// Starting a session nothing can end would leave the robot mapping.
 	d := sessionDecl(buildStore(t, nil, "", false))
 	d.Vendor.Stop = nil
 	rec := &recorder{}
-	if _, err := d.Start("x", rec.run); err == nil {
+	if _, err := d.StartVendor("x", rec.run); err == nil {
 		t.Error("a declaration without stop must not start")
 	}
 	if len(rec.ran) != 0 {
@@ -446,18 +458,18 @@ func TestStartNeedsAStopCommand(t *testing.T) {
 	}
 }
 
-func TestStartRejectsNamesThatReadAsOptionsOrPaths(t *testing.T) {
+func TestStartVendorRejectsNamesThatReadAsOptionsOrPaths(t *testing.T) {
 	d := sessionDecl(buildStore(t, nil, "", false))
 	for _, name := range []string{"", "--force", "../etc", "a/b", "-n"} {
 		rec := &recorder{}
-		if _, err := d.Start(name, rec.run); err == nil {
+		if _, err := d.StartVendor(name, rec.run); err == nil {
 			t.Errorf("name %q should be refused", name)
 		}
 		if len(rec.ran) != 0 {
 			t.Errorf("name %q: nothing should run, ran %v", name, rec.ran)
 		}
 	}
-	if _, err := d.Start("warehouse_2.b-1", (&recorder{}).run); err != nil {
+	if _, err := d.StartVendor("warehouse_2.b-1", (&recorder{}).run); err != nil {
 		t.Errorf("an ordinary name should start: %v", err)
 	}
 }
@@ -470,7 +482,7 @@ func TestStopGivesUpWhenInterrupted(t *testing.T) {
 	rec := &recorder{}
 	rec.onStop = func() { calls++ }
 
-	s, err := d.Start("interrupted", rec.run)
+	s, err := d.StartVendor("interrupted", rec.run)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -496,7 +508,7 @@ func TestStopIssuedOnceWhenNoRetriesDeclared(t *testing.T) {
 	rec := &recorder{}
 	rec.onStop = func() { calls++ }
 
-	s, err := d.Start("once", rec.run)
+	s, err := d.StartVendor("once", rec.run)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}

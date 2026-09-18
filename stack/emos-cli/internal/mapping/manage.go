@@ -53,6 +53,8 @@ func (d *Declaration) Remove(name string, run Runner) error {
 
 	var argv []string
 	switch {
+	case d.Kind == KindNative:
+		return os.RemoveAll(target.Path)
 	case len(d.Vendor.Remove) > 0:
 		argv = render(d.Vendor.Remove, mapVars(target))
 	case d.Vendor.RequiresRoot:

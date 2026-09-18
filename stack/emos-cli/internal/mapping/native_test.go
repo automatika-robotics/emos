@@ -1,6 +1,7 @@
 package mapping
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -245,6 +247,222 @@ func TestNativeMapsAreListedAndRemovedWithoutTheVendor(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(store, "lab-2")); !os.IsNotExist(err) {
 		t.Error("lab-2 should be gone")
+	}
+}
+
+// nativeStore builds a store with the named maps. Each has the files a session
+// writes, and the backend's working data in a subdirectory.
+func nativeStore(t *testing.T, names ...string) *Declaration {
+	t.Helper()
+	store := t.TempDir()
+	for _, name := range names {
+		dir := filepath.Join(store, name)
+		os.MkdirAll(filepath.Join(dir, "glim", "dump"), 0o755)
+		os.WriteFile(filepath.Join(dir, "occ_grid.yaml"), []byte("image: occ_grid.pgm\n"), 0o644)
+		os.WriteFile(filepath.Join(dir, "occ_grid.pgm"), []byte("P5 1 1 255\n\xfe"), 0o644)
+		os.WriteFile(filepath.Join(dir, "map.json"), []byte(`{"name": "`+name+`"}`), 0o644)
+		os.WriteFile(filepath.Join(dir, "glim", "dump", "graph.bin"), []byte("working data"), 0o644)
+	}
+	return nativeDecl(store)
+}
+
+func noCommand(t *testing.T) Runner {
+	return func([]string) error { t.Fatal("no command should run for a native store"); return nil }
+}
+
+func TestNativeUseRepointsTheActiveLink(t *testing.T) {
+	decl := nativeStore(t, "office-1", "lab-2")
+	for _, name := range []string{"office-1", "lab-2"} { // none active, then a switch
+		if err := decl.Use(name, noCommand(t)); err != nil {
+			t.Fatalf("Use(%s): %v", name, err)
+		}
+		if active, _ := decl.ActiveName(); active != name {
+			t.Errorf("active = %q, want %q", active, name)
+		}
+	}
+	// Relative, so the store can be moved, and what a recipe follows to the grid.
+	if target, _ := os.Readlink(filepath.Join(decl.Store(), "active")); target != "lab-2" {
+		t.Errorf("link target = %q", target)
+	}
+	if _, err := os.Stat(filepath.Join(decl.Store(), "active", "occ_grid.yaml")); err != nil {
+		t.Errorf("the grid should be reachable through the link: %v", err)
+	}
+	if maps, _ := decl.List(); len(maps) != 2 {
+		t.Errorf("nothing but the two maps should be listed, got %+v", maps)
+	}
+}
+
+func TestNativeUseRefusesWhatARecipeCouldNotLoad(t *testing.T) {
+	decl := nativeStore(t, "office-1")
+	os.MkdirAll(filepath.Join(decl.Store(), "unfinished-3"), 0o755)
+
+	var noGrid *ErrNoGrid
+	if err := decl.Use("unfinished-3", noCommand(t)); !errors.As(err, &noGrid) {
+		t.Errorf("a map without a grid: want ErrNoGrid, got %v", err)
+	}
+	var missing *ErrNoSuchMap
+	if err := decl.Use("nowhere", noCommand(t)); !errors.As(err, &missing) {
+		t.Errorf("an unknown map: want ErrNoSuchMap, got %v", err)
+	}
+	if active, _ := decl.ActiveName(); active != "" {
+		t.Errorf("nothing should have become active, got %q", active)
+	}
+}
+
+func TestNativeUseLeavesARealDirectoryNamedLikeTheLinkAlone(t *testing.T) {
+	decl := nativeStore(t, "office-1")
+	os.MkdirAll(filepath.Join(decl.Store(), "active"), 0o755)
+	if err := decl.Use("office-1", noCommand(t)); err == nil {
+		t.Error("want an error: 'active' is a directory, not a link")
+	}
+}
+
+func zipEntries(t *testing.T, path string) []string {
+	t.Helper()
+	r, err := zip.OpenReader(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	var names []string
+	for _, f := range r.File {
+		names = append(names, f.Name)
+	}
+	return names
+}
+
+func TestNativeExportPacksTheMapFilesOnly(t *testing.T) {
+	decl := nativeStore(t, "office-1")
+	dest := filepath.Join(t.TempDir(), "map-archives")
+
+	archive, err := decl.Export("office-1", dest, noCommand(t))
+	if err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	if archive != filepath.Join(dest, "office-1.zip") {
+		t.Errorf("archive = %q", archive)
+	}
+	want := []string{"office-1/map.json", "office-1/occ_grid.pgm", "office-1/occ_grid.yaml"}
+	if got := zipEntries(t, archive); !slices.Equal(got, want) {
+		t.Errorf("entries = %v, want %v", got, want)
+	}
+
+	if _, err := decl.Export("office-1", dest, noCommand(t)); err == nil {
+		t.Error("an archive of the same name must never be replaced")
+	}
+	var missing *ErrNoSuchMap
+	if _, err := decl.Export("nowhere", dest, noCommand(t)); !errors.As(err, &missing) {
+		t.Errorf("an unknown map: want ErrNoSuchMap, got %v", err)
+	}
+	if left, _ := filepath.Glob(filepath.Join(dest, "*.partial")); len(left) != 0 {
+		t.Errorf("partial archives left behind: %v", left)
+	}
+}
+
+func TestNativeExportAndImportRoundTrip(t *testing.T) {
+	robot := nativeStore(t, "office-1")
+	archives := filepath.Join(t.TempDir(), "map-archives")
+	archive, err := robot.Export("office-1", archives, noCommand(t))
+	if err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+
+	other := nativeDecl(filepath.Join(t.TempDir(), "maps"))                    // a store that does not exist yet
+	built, err := other.Import(filepath.Base(archive), archives, noCommand(t)) // bare name, looked up
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	if built.Name != "office-1" || built.Grid == "" || built.Active {
+		t.Errorf("built = %+v", built)
+	}
+	for _, file := range []string{"occ_grid.yaml", "occ_grid.pgm", "map.json"} {
+		want, _ := os.ReadFile(filepath.Join(robot.Store(), "office-1", file))
+		got, err := os.ReadFile(filepath.Join(other.Store(), "office-1", file))
+		if err != nil || !bytes.Equal(got, want) {
+			t.Errorf("%s did not survive the round trip: %v", file, err)
+		}
+	}
+	if err := other.Use("office-1", noCommand(t)); err != nil {
+		t.Errorf("an imported map should be usable: %v", err)
+	}
+
+	var exists *ErrMapExists
+	if _, err := other.Import(archive, archives, noCommand(t)); !errors.As(err, &exists) {
+		t.Errorf("importing it again: want ErrMapExists, got %v", err)
+	}
+	if maps, _ := other.List(); len(maps) != 1 {
+		t.Errorf("only the imported map should be listed, got %+v", maps)
+	}
+}
+
+// writeZip makes an archive with the given entries; a name ending in "/" is a
+// directory, and mode 0 means a plain file.
+func writeZip(t *testing.T, entries map[string]os.FileMode) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "hostile.zip")
+	out, _ := os.Create(path)
+	zw := zip.NewWriter(out)
+	for name, mode := range entries {
+		header := &zip.FileHeader{Name: name}
+		if mode != 0 {
+			header.SetMode(mode)
+		}
+		w, err := zw.CreateHeader(header)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasSuffix(name, "/") {
+			io.WriteString(w, "x")
+		}
+	}
+	zw.Close()
+	out.Close()
+	return path
+}
+
+func TestNativeImportRefusesWhatCouldUnpackOutsideTheMap(t *testing.T) {
+	for label, entries := range map[string]map[string]os.FileMode{
+		"a path that climbs out":   {"../evil.yaml": 0},
+		"a climb inside the map":   {"office-1/../../evil.yaml": 0},
+		"an absolute path":         {"/etc/cron.d/evil": 0},
+		"a file outside a map dir": {"occ_grid.yaml": 0},
+		"a nested directory":       {"office-1/glim/dump.bin": 0},
+		"two maps":                 {"office-1/occ_grid.yaml": 0, "lab-2/occ_grid.yaml": 0},
+		"a symlink":                {"office-1/occ_grid.yaml": os.ModeSymlink | 0o777},
+		"a name that is an option": {"-rf/occ_grid.yaml": 0},
+		"nothing":                  {},
+	} {
+		decl := nativeStore(t)
+		var notArchive *ErrNotAMapArchive
+		if _, err := decl.Import(writeZip(t, entries), "", noCommand(t)); !errors.As(err, &notArchive) {
+			t.Errorf("%s: want ErrNotAMapArchive, got %v", label, err)
+		}
+		if left, _ := os.ReadDir(decl.Store()); len(left) != 0 {
+			t.Errorf("%s: the store should be untouched, got %v", label, left)
+		}
+	}
+}
+
+func TestNativeImportRefusesWhatIsNotAnEMOSArchive(t *testing.T) {
+	decl := nativeStore(t)
+	tarball := filepath.Join(t.TempDir(), "vendor-export.tar.gz")
+	os.WriteFile(tarball, []byte("\x1f\x8b not a zip"), 0o644)
+	var notArchive *ErrNotAMapArchive
+	if _, err := decl.Import(tarball, "", noCommand(t)); !errors.As(err, &notArchive) {
+		t.Errorf("want ErrNotAMapArchive, got %v", err)
+	}
+	var noArchive *ErrNoSuchArchive
+	if _, err := decl.Import("nowhere.zip", t.TempDir(), noCommand(t)); !errors.As(err, &noArchive) {
+		t.Errorf("want ErrNoSuchArchive, got %v", err)
+	}
+	// A map may not take the name of the link that marks the active one.
+	if _, err := decl.Import(writeZip(t, map[string]os.FileMode{"active/occ_grid.yaml": 0}), "", noCommand(t)); err == nil {
+		t.Error("a map named like the active link should be refused")
+	}
+	// The map directory's own entry, which some zip tools add, is fine.
+	ok := writeZip(t, map[string]os.FileMode{"office-1/": os.ModeDir | 0o755, "office-1/occ_grid.yaml": 0})
+	if built, err := decl.Import(ok, "", noCommand(t)); err != nil || built.Grid == "" {
+		t.Errorf("want the map, got %+v, %v", built, err)
 	}
 }
 

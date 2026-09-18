@@ -1,11 +1,14 @@
 package mapping
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	pathpkg "path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -197,4 +200,209 @@ func (a *announcement) Write(p []byte) (int, error) {
 	}
 	a.mu.Unlock()
 	return a.next.Write(p)
+}
+
+// ErrNoGrid refuses to make active a map a recipe could not load.
+type ErrNoGrid struct{ Name string }
+
+func (e *ErrNoGrid) Error() string {
+	return fmt.Sprintf("%q has no occupancy grid", e.Name)
+}
+
+// ErrMapExists refuses an import that would replace a map in the store.
+type ErrMapExists struct{ Name string }
+
+func (e *ErrMapExists) Error() string {
+	return fmt.Sprintf("a map named %q is already in the store", e.Name)
+}
+
+// ErrNotAMapArchive is returned for an archive EMOS did not export.
+type ErrNotAMapArchive struct{ Path, Reason string }
+
+func (e *ErrNotAMapArchive) Error() string {
+	return fmt.Sprintf("%s is not a map archive: %s", e.Path, e.Reason)
+}
+
+// useNative makes a map the active one by repointing the store's active link,
+// which is what a recipe follows to its map.
+func (d *Declaration) useNative(name string) error {
+	target, err := d.Find(name)
+	if err != nil {
+		return err
+	}
+	if target.Grid == "" {
+		return &ErrNoGrid{Name: name}
+	}
+	link := filepath.Join(d.Store(), d.activeLink())
+	if info, err := os.Lstat(link); err == nil && info.Mode()&os.ModeSymlink == 0 {
+		return fmt.Errorf("%s is not a link, so it cannot be pointed at a map", link)
+	}
+	// Swapped in by a rename. Its target is relative, so the store can be moved.
+	staged := link + ".new"
+	_ = os.Remove(staged)
+	if err := os.Symlink(target.Name, staged); err != nil {
+		return err
+	}
+	if err := os.Rename(staged, link); err != nil {
+		_ = os.Remove(staged)
+		return err
+	}
+	return nil
+}
+
+// exportNative packs a map's files into <dest>/<name>.zip and returns its
+// path. The backend's working data stays behind.
+func (d *Declaration) exportNative(name, dest string) (string, error) {
+	target, err := d.Find(name)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return "", err
+	}
+	archive := filepath.Join(dest, target.Name+".zip")
+	if _, err := os.Lstat(archive); err == nil {
+		return "", fmt.Errorf("%s already exists", archive)
+	}
+	partial := archive + ".partial"
+	if err := zipMapFiles(target, partial); err != nil {
+		_ = os.Remove(partial)
+		return "", err
+	}
+	return archive, os.Rename(partial, archive)
+}
+
+// zipMapFiles writes the files of a map directory into a new zip at path, each
+// under the map's name.
+func zipMapFiles(m *Map, path string) error {
+	entries, err := os.ReadDir(m.Path)
+	if err != nil {
+		return err
+	}
+	out, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	zw := zip.NewWriter(out)
+	for _, entry := range entries {
+		if !entry.Type().IsRegular() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		header, err := zip.FileInfoHeader(info)
+		if err != nil {
+			return err
+		}
+		header.Name = m.Name + "/" + entry.Name()
+		header.Method = zip.Deflate
+		w, err := zw.CreateHeader(header)
+		if err != nil {
+			return err
+		}
+		if err := copyInto(w, filepath.Join(m.Path, entry.Name())); err != nil {
+			return err
+		}
+	}
+	if err := zw.Close(); err != nil {
+		return err
+	}
+	return out.Close()
+}
+
+func copyInto(w io.Writer, path string) error {
+	in, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	_, err = io.Copy(w, in)
+	return err
+}
+
+// importNative unpacks an archive made by exportNative into the store and
+// returns the map.
+func (d *Declaration) importNative(path string) (*Map, error) {
+	r, err := zip.OpenReader(path)
+	if err != nil {
+		return nil, &ErrNotAMapArchive{Path: path, Reason: "it is not a zip file"}
+	}
+	defer r.Close()
+	name, err := archivedMapName(r.File)
+	if err != nil {
+		return nil, &ErrNotAMapArchive{Path: path, Reason: err.Error()}
+	}
+	store := d.Store()
+	final := filepath.Join(store, name)
+	if _, err := os.Lstat(final); err == nil || name == d.activeLink() {
+		return nil, &ErrMapExists{Name: name}
+	}
+	if err := os.MkdirAll(store, 0o755); err != nil {
+		return nil, err
+	}
+
+	staging := filepath.Join(store, ".importing-"+name)
+	if err := os.RemoveAll(staging); err != nil {
+		return nil, err
+	}
+	if err := os.Mkdir(staging, 0o755); err != nil {
+		return nil, err
+	}
+	for _, f := range r.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		if err := unzipFile(f, filepath.Join(staging, pathpkg.Base(f.Name))); err != nil {
+			_ = os.RemoveAll(staging)
+			return nil, err
+		}
+	}
+	if err := os.Rename(staging, final); err != nil {
+		_ = os.RemoveAll(staging)
+		return nil, err
+	}
+	return d.Find(name)
+}
+
+// archivedMapName returns the map an archive holds. Every entry has to be a
+// plain file directly under one directory, named as a map may be.
+func archivedMapName(files []*zip.File) (string, error) {
+	name := ""
+	for _, f := range files {
+		dir, file, _ := strings.Cut(f.Name, "/")
+		if CheckName(dir) != nil || (name != "" && dir != name) {
+			return "", fmt.Errorf("entry %q is not inside one map directory", f.Name)
+		}
+		name = dir
+		if file == "" && f.FileInfo().IsDir() {
+			continue // the map directory's own entry
+		}
+		if file == "" || file == "." || file == ".." || strings.Contains(file, "/") || !f.Mode().IsRegular() {
+			return "", fmt.Errorf("entry %q is not a plain file in the map directory", f.Name)
+		}
+	}
+	if name == "" {
+		return "", errors.New("it is empty")
+	}
+	return name, nil
+}
+
+func unzipFile(f *zip.File, path string) error {
+	in, err := f.Open()
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }

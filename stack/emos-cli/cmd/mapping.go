@@ -102,8 +102,23 @@ func explain(err error) error {
 		unreadable *mapping.ErrStoreUnreadable
 		noArchive  *mapping.ErrNoSuchArchive
 		active     *mapping.ErrMapIsActive
+		noGrid     *mapping.ErrNoGrid
+		exists     *mapping.ErrMapExists
+		notArchive *mapping.ErrNotAMapArchive
 	)
 	switch {
+	case errors.As(err, &noGrid):
+		ui.Error(fmt.Sprintf("'%s' has no occupancy grid, so a recipe could not load it.", noGrid.Name))
+		ui.Faint(fmt.Sprintf("A mapping session that did not finish leaves such a map behind; "+
+			"'emos map rm %s' removes it.", noGrid.Name))
+		return fmt.Errorf("map has no occupancy grid")
+	case errors.As(err, &exists):
+		ui.Error(fmt.Sprintf("A map named '%s' is already in the store.", exists.Name))
+		ui.Faint(fmt.Sprintf("Remove it first with 'emos map rm %s' to replace it.", exists.Name))
+		return fmt.Errorf("map already exists")
+	case errors.As(err, &notArchive):
+		ui.Error(fmt.Sprintf("%s is not a map archive exported by EMOS: %s.", notArchive.Path, notArchive.Reason))
+		return fmt.Errorf("not a map archive")
 	case errors.As(err, &missing):
 		ui.Error(fmt.Sprintf("No map named '%s'.", missing.Name))
 		ui.Faint("Run 'emos map list' to see what this robot has.")
@@ -271,6 +286,13 @@ func reportSaved(built *mapping.Map) {
 	ui.Faint(built.Grid)
 }
 
+// hintUse says how to make a map the active one, unless it already is.
+func hintUse(m *mapping.Map) {
+	if !m.Active {
+		ui.Faint(fmt.Sprintf("Make it active with 'emos map use %s'.", m.Name))
+	}
+}
+
 // warnWithoutGrid warns about a map a recipe cannot load.
 func warnWithoutGrid(m *mapping.Map) {
 	if m.Grid == "" {
@@ -372,6 +394,7 @@ func runNativeMapNew(cfg *config.EMOSConfig, decl *mapping.Declaration, name str
 		return explainSession(err, logFile)
 	}
 	reportSaved(built)
+	hintUse(built)
 	return nil
 }
 
@@ -469,7 +492,7 @@ func runMapExport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no active map")
 	}
 
-	if mapping.Escalates(decl.Vendor.Export) {
+	if v := decl.Vendor; v != nil && mapping.Escalates(v.Export) {
 		ui.Info("Exporting runs the robot's own tool as root; sudo may prompt.")
 	}
 	dest := mapExportDir
@@ -491,6 +514,9 @@ func runMapExport(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	ui.Success(fmt.Sprintf("Exported '%s' to %s", name, archive))
+	if decl.Kind == mapping.KindNative {
+		ui.Faint("It holds the map's files; the mapping backend's working data stays on the robot.")
+	}
 	return nil
 }
 
@@ -499,7 +525,7 @@ func runMapImport(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if mapping.Escalates(decl.Vendor.Import) {
+	if v := decl.Vendor; v != nil && mapping.Escalates(v.Import) {
 		ui.Info("Importing writes into the robot's own map store; sudo may prompt.")
 	}
 	built, err := decl.Import(args[0], config.MapArchivesDir, mapping.SystemRunner)
@@ -508,9 +534,7 @@ func runMapImport(cmd *cobra.Command, args []string) error {
 	}
 	ui.Success(fmt.Sprintf("Imported '%s'.", built.Name))
 	warnWithoutGrid(built)
-	if !built.Active {
-		ui.Faint(fmt.Sprintf("Make it active with 'emos map use %s'.", built.Name))
-	}
+	hintUse(built)
 	return nil
 }
 
@@ -520,7 +544,6 @@ func runMapUse(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-
 	target, err := decl.Find(name)
 	if err != nil {
 		return explain(err)
@@ -529,21 +552,41 @@ func runMapUse(cmd *cobra.Command, args []string) error {
 		ui.Info(fmt.Sprintf("'%s' is already the active map.", name))
 		return nil
 	}
-	warnWithoutGrid(target)
+	if decl.Kind == mapping.KindNative {
+		return useNativeMap(decl, target)
+	}
+	return useVendorMap(decl, target)
+}
 
+// useNativeMap repoints the store's active link. Nothing that is running is
+// affected, so it does not ask first. A map without a grid is refused.
+func useNativeMap(decl *mapping.Declaration, target *mapping.Map) error {
+	if err := decl.Use(target.Name, mapping.SystemRunner); err != nil {
+		return explain(err)
+	}
+	ui.Success(fmt.Sprintf("'%s' is now the active map.", target.Name))
+	ui.Faint("Recipes load it the next time they start.")
+	return nil
+}
+
+// useVendorMap has the robot's own software switch maps, which changes what the
+// robot localizes against at once. A map without a grid is
+// only warned about as the vendor's tool may still be processing it.
+func useVendorMap(decl *mapping.Declaration, target *mapping.Map) error {
+	warnWithoutGrid(target)
 	ui.Warn("The robot will localize against this map from now on. It needs " +
 		"relocalizing, and a running recipe will lose its position.")
-	if !ui.Confirm(fmt.Sprintf("Make '%s' the active map?", name)) {
+	if !ui.Confirm(fmt.Sprintf("Make '%s' the active map?", target.Name)) {
 		ui.Info("Left alone.")
 		return nil
 	}
 	if mapping.Escalates(decl.Vendor.Apply) {
 		ui.Info("Switching runs the robot's own tool as root; sudo may prompt.")
 	}
-	if err := decl.Use(name, mapping.SystemRunner); err != nil {
+	if err := decl.Use(target.Name, mapping.SystemRunner); err != nil {
 		return explain(err)
 	}
-	ui.Success(fmt.Sprintf("'%s' is now the active map.", name))
+	ui.Success(fmt.Sprintf("'%s' is now the active map.", target.Name))
 	ui.Faint("Relocalize the robot at its standard starting spot before running a recipe.")
 	return nil
 }

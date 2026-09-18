@@ -81,6 +81,9 @@ func (d *Declaration) Remove(name string, run Runner) error {
 //
 // The exit code is not trusted: the active link is re-read after apply.
 func (d *Declaration) Use(name string, run Runner) error {
+	if d.Kind == KindNative {
+		return d.useNative(name)
+	}
 	if err := d.checkLocal(); err != nil {
 		return err
 	}
@@ -122,6 +125,9 @@ func (d *Declaration) Use(name string, run Runner) error {
 // provider-independent. Empty dest leaves it. When the move fails, the path
 // returned is where the archive still is.
 func (d *Declaration) Export(name, dest string, run Runner) (string, error) {
+	if d.Kind == KindNative {
+		return d.exportNative(name, dest)
+	}
 	if err := d.checkLocal(); err != nil {
 		return "", err
 	}
@@ -287,25 +293,20 @@ func newestNew(dir string, before map[string]bool) string {
 // A bare filename is looked up in dest so an export and an import round-trip
 // without the operator retyping a path.
 func (d *Declaration) Import(archive, dest string, run Runner) (*Map, error) {
+	if d.Kind == KindNative {
+		abs, err := findArchive(archive, dest)
+		if err != nil {
+			return nil, err
+		}
+		return d.importNative(abs)
+	}
 	if err := d.checkLocal(); err != nil {
 		return nil, err
 	}
 	if len(d.Vendor.Import) == 0 {
 		return nil, fmt.Errorf("this robot's plugin declares no way to import a map")
 	}
-
-	path := archive
-	if _, err := os.Stat(path); err != nil && dest != "" && filepath.Base(archive) == archive {
-		path = filepath.Join(dest, archive)
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, &ErrNoSuchArchive{Path: archive}
-	}
-	if info.IsDir() {
-		return nil, fmt.Errorf("%s is a directory, not an archive", path)
-	}
-	abs, err := filepath.Abs(path)
+	abs, err := findArchive(archive, dest)
 	if err != nil {
 		return nil, err
 	}
@@ -323,4 +324,21 @@ func (d *Declaration) Import(archive, dest string, run Runner) (*Map, error) {
 	return nil, fmt.Errorf(
 		"the import ran but no new map appeared in %s; a map of the same name may already be there",
 		d.Store())
+}
+
+// findArchive returns the absolute path of an archive to import. A bare
+// filename that is not in the working directory is looked up in dest.
+func findArchive(archive, dest string) (string, error) {
+	path := archive
+	if _, err := os.Stat(path); err != nil && dest != "" && filepath.Base(archive) == archive {
+		path = filepath.Join(dest, archive)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", &ErrNoSuchArchive{Path: archive}
+	}
+	if info.IsDir() {
+		return "", fmt.Errorf("%s is a directory, not an archive", path)
+	}
+	return filepath.Abs(path)
 }

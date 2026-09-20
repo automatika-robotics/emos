@@ -36,15 +36,6 @@ log() {
     esac
 }
 
-# One compile job per 2 GB of free memory.
-jobs() {
-    local by_memory=$(awk '/MemAvailable/ {print int($2 / 1024 / 1024 / 2)}' /proc/meminfo)
-    local n=$(nproc)
-    [ "$by_memory" -lt "$n" ] && n=$by_memory
-    [ "$n" -lt 1 ] && n=1
-    echo "$n"
-}
-
 # fetch <name> <repo> <ref>: check out exactly ref, a tag or a commit.
 fetch() {
     local dir="$WORK/src/$1"
@@ -96,7 +87,7 @@ if [ -n "$CUDA_ROOT" ]; then
         -DCMAKE_EXE_LINKER_FLAGS=-Wl,--allow-shlib-undefined)
 fi
 
-export MAKEFLAGS="-j$(jobs)"
+export MAKEFLAGS="-j$(nproc)"
 log INFO "Building the mapping backend in $WORK with $MAKEFLAGS${CUDA_ROOT:+, with CUDA from $CUDA_ROOT}"
 mkdir -p "$WORK/src"
 

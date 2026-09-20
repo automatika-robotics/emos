@@ -93,7 +93,8 @@ fi
 # ---- apt: LLVM/Clang, OpenCL headers and loader, build tools ----
 
 log INFO "Installing LLVM/Clang via apt..."
-clean_env $SUDO apt update -y
+# Do not let one unreachable source fail the whole install
+clean_env $SUDO apt update -y || log WARN "apt update reported errors, continuing with the package lists it has."
 clean_env $SUDO apt install -y lsb-release bc wget gnupg software-properties-common \
     git cmake make ocl-icd-opencl-dev opencl-c-headers
 

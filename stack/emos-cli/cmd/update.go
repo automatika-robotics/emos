@@ -104,7 +104,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 // selfUpdateCLI checks for a newer CLI release and replaces the current binary.
 // Returns true if the binary was updated and the caller should exit.
 func selfUpdateCLI() (bool, error) {
-	if config.Version == "dev" {
+	if strings.HasPrefix(config.Version, "dev") {
 		ui.Info("Development build, skipping CLI update check.")
 		return false, nil
 	}
@@ -117,7 +117,7 @@ func selfUpdateCLI() (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to check releases: %w", err)
 	}
-	if latestVersion == config.Version {
+	if !updcheck.IsNewer(config.Version, latestVersion) {
 		ui.Success("CLI is already up to date (v" + config.Version + ")")
 		return false, nil
 	}

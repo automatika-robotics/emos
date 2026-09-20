@@ -120,6 +120,10 @@ install-kompass-core = "bash stack/emos-cli/scripts/install_kompass_core_pixi.sh
 # On demand, through 'emos map setup'.
 install-mapping-backend = "bash stack/emos-cli/scripts/install_mapping_backend_pixi.sh"
 
+# Build sherpa-onnx and llama-cpp-python with CUDA, from source.
+# Offered when CUDA is found during setup.
+install-cuda-packages = "bash stack/emos-cli/scripts/install_cuda_packages_pixi.sh"
+
 # Build EMOS ROS packages (sugarcoat, kompass, embodied-agents, kompass_interfaces, emos_mapping)
 build = """colcon build \
   --merge-install \

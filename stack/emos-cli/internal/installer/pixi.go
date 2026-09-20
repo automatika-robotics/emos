@@ -50,6 +50,28 @@ func PixiAddArgs(manifest string, pkgs []string, goarch string) []string {
 	return append(args, pkgs...)
 }
 
+// RunPixi runs pixi with args in the workspace at projectDir, with the output on
+// the terminal.
+func RunPixi(projectDir string, env []string, args ...string) error {
+	pixiBin, err := ResolvePixi()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(pixiBin, args...)
+	cmd.Dir = projectDir
+	cmd.Env = env
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		step := args[0]
+		if step == "run" {
+			step += " " + args[1]
+		}
+		return fmt.Errorf("pixi %s failed: %w", step, err)
+	}
+	return nil
+}
+
 // mappingBackendTask is the pixi task that builds the native mapping backend.
 const mappingBackendTask = "install-mapping-backend"
 
@@ -62,27 +84,87 @@ var MappingBackendROSPackages = []string{
 // InstallMappingBackend builds the native mapping backend into the pixi
 // workspace at projectDir, with the output on the terminal.
 func InstallMappingBackend(projectDir, rosDistro string, env []string) error {
-	pixiBin, err := ResolvePixi()
-	if err != nil {
-		return err
-	}
 	pkgs := make([]string, len(MappingBackendROSPackages))
 	for i, name := range MappingBackendROSPackages {
 		pkgs[i] = "ros-" + rosDistro + "-" + name
 	}
-	steps := [][]string{
-		PixiAddArgs(filepath.Join(projectDir, "pixi.toml"), pkgs, runtime.GOARCH),
-		{"run", mappingBackendTask},
+	add := PixiAddArgs(filepath.Join(projectDir, "pixi.toml"), pkgs, runtime.GOARCH)
+	if err := RunPixi(projectDir, env, add...); err != nil {
+		return err
 	}
-	for _, args := range steps {
-		step := exec.Command(pixiBin, args...)
-		step.Dir = projectDir
-		step.Env = env
-		step.Stdout = os.Stdout
-		step.Stderr = os.Stderr
-		if err := step.Run(); err != nil {
-			return fmt.Errorf("pixi %s failed: %w", strings.Join(args[:2], " "), err)
+	return RunPixi(projectDir, env, "run", mappingBackendTask)
+}
+
+// cudaPackagesTask is the pixi task that builds CUDAPackages into cudaWheelsDir.
+const cudaPackagesTask = "install-cuda-packages"
+
+// cudaWheelsDir holds the CUDA wheels in the pixi workspace. pixi installs them
+// from there, so they have to stay.
+const cudaWheelsDir = "cuda_wheels"
+
+// CUDAPackages are the PyPI packages EMOS rebuilds from source to use CUDA.
+var CUDAPackages = []string{"sherpa-onnx", "llama-cpp-python"}
+
+// cudaWheelSpecs returns "<package> @ file://<wheel>" for each of CUDAPackages,
+// from the wheels the build left.
+func cudaWheelSpecs(projectDir string) ([]string, error) {
+	built, err := filepath.Glob(filepath.Join(projectDir, cudaWheelsDir, "*.whl"))
+	if err != nil {
+		return nil, err
+	}
+	wheels := map[string]string{}
+	for _, wheel := range built {
+		// <distribution>-<version>-...whl, with the package's dashes as underscores
+		dist, _, _ := strings.Cut(filepath.Base(wheel), "-")
+		wheels[strings.ReplaceAll(dist, "_", "-")] = wheel
+	}
+	specs := make([]string, len(CUDAPackages))
+	for i, pkg := range CUDAPackages {
+		if wheels[pkg] == "" {
+			return nil, fmt.Errorf("the build left no wheel for %s in %s", pkg, filepath.Join(projectDir, cudaWheelsDir))
 		}
+		specs[i] = pkg + " @ file://" + wheels[pkg]
 	}
-	return nil
+	return specs, nil
+}
+
+// HasCUDAPackages reports whether the manifest of the workspace at projectDir
+// names the CUDA wheels.
+func HasCUDAPackages(projectDir string) bool {
+	manifest, err := os.ReadFile(filepath.Join(projectDir, "pixi.toml"))
+	return err == nil && strings.Contains(string(manifest), "/"+cudaWheelsDir+"/")
+}
+
+// InstallCUDAPackages builds CUDAPackages with the CUDA toolkit at cudaRoot in
+// the pixi workspace at projectDir, with the output on the terminal, and hands
+// the wheels to pixi.
+func InstallCUDAPackages(projectDir, cudaRoot string, env []string) error {
+	env = append(env, "EMOS_CUDA="+cudaRoot)
+	if err := RunPixi(projectDir, env, "run", cudaPackagesTask); err != nil {
+		return err
+	}
+	specs, err := cudaWheelSpecs(projectDir)
+	if err != nil {
+		return err
+	}
+	return RunPixi(projectDir, env, cudaPackagesArgs("add", specs, runtime.GOARCH)...)
+}
+
+// RemoveCUDAPackages puts the workspace at projectDir back on the repository's
+// packages, and forgets the wheels. An update does this before it pulls.
+func RemoveCUDAPackages(projectDir string, env []string) error {
+	if err := RunPixi(projectDir, env, cudaPackagesArgs("remove", CUDAPackages, runtime.GOARCH)...); err != nil {
+		return err
+	}
+	return os.RemoveAll(filepath.Join(projectDir, cudaWheelsDir))
+}
+
+// cudaPackagesArgs is the pixi add or remove of PyPI pkgs for the platform of a
+// goarch host alone.
+func cudaPackagesArgs(verb string, pkgs []string, goarch string) []string {
+	platform := "linux-64"
+	if goarch == "arm64" {
+		platform = "linux-aarch64"
+	}
+	return append([]string{verb, "--pypi", "--platform", platform}, pkgs...)
 }

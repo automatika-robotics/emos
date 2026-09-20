@@ -291,8 +291,7 @@ func updatePixi(cfg *config.EMOSConfig) error {
 		return fmt.Errorf("pixi project dir not set")
 	}
 
-	pixiBin, err := installer.ResolvePixi()
-	if err != nil {
+	if _, err := installer.ResolvePixi(); err != nil {
 		ui.Error("pixi is required to update a pixi-mode install but was not found.")
 		fmt.Println("  Install it with: " + installer.PixiInstallHint)
 		return err
@@ -300,6 +299,15 @@ func updatePixi(cfg *config.EMOSConfig) error {
 
 	fmt.Println("  Updating EMOS pixi workspace...")
 	fmt.Println()
+
+	// The CUDA wheels are built for the versions the release names, so they go
+	// before the pull and are offered again at the end.
+	if installer.HasCUDAPackages(projectDir) {
+		ui.Info("Putting the CUDA packages aside for the update...")
+		if err := installer.RemoveCUDAPackages(projectDir, pixiBuildEnv()); err != nil {
+			return err
+		}
+	}
 
 	// Preserve user-added pixi dependencies across the git pull: stash the
 	// manifest, pull, then reapply.
@@ -339,28 +347,19 @@ func updatePixi(cfg *config.EMOSConfig) error {
 
 	// Reinstall dependencies
 	ui.Info("Updating pixi environment...")
-	pixiInstall := exec.Command(pixiBin, "install")
-	pixiInstall.Dir = projectDir
-	pixiInstall.Env = pixiBuildEnv()
-	pixiInstall.Stdout = os.Stdout
-	pixiInstall.Stderr = os.Stderr
-	if err := pixiInstall.Run(); err != nil {
-		return fmt.Errorf("pixi install failed: %w", err)
+	if err := installer.RunPixi(projectDir, pixiBuildEnv(), "install"); err != nil {
+		return err
 	}
 
 	// Rebuild
 	ui.Info("Rebuilding EMOS packages...")
-	pixiSetup := exec.Command(pixiBin, "run", "setup")
-	pixiSetup.Dir = projectDir
-	pixiSetup.Env = pixiBuildEnv()
-	pixiSetup.Stdout = os.Stdout
-	pixiSetup.Stderr = os.Stderr
-	if err := pixiSetup.Run(); err != nil {
-		return fmt.Errorf("pixi run setup failed: %w", err)
+	if err := installer.RunPixi(projectDir, pixiBuildEnv(), "run", "setup"); err != nil {
+		return err
 	}
 
 	fmt.Println()
 	ui.SuccessBox("EMOS pixi workspace updated successfully!")
+	offerCUDAPackages(projectDir)
 	return nil
 }
 

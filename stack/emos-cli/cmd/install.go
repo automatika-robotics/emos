@@ -329,22 +329,12 @@ func installPixi() error {
 	ui.Header("BUILDING EMOS PACKAGES (pixi)")
 	ui.Faint("This can take 10-20 minutes on a first install.")
 
-	pixiInstall := exec.Command(pixiBin, "install")
-	pixiInstall.Dir = projectDir
-	pixiInstall.Env = pixiBuildEnv()
-	pixiInstall.Stdout = os.Stdout
-	pixiInstall.Stderr = os.Stderr
-	if err := pixiInstall.Run(); err != nil {
-		return fmt.Errorf("pixi install failed: %w", err)
+	if err := installer.RunPixi(projectDir, pixiBuildEnv(), "install"); err != nil {
+		return err
 	}
 
-	pixiSetup := exec.Command(pixiBin, "run", "setup")
-	pixiSetup.Dir = projectDir
-	pixiSetup.Env = pixiBuildEnv()
-	pixiSetup.Stdout = os.Stdout
-	pixiSetup.Stderr = os.Stderr
-	if err := pixiSetup.Run(); err != nil {
-		return fmt.Errorf("pixi run setup failed: %w", err)
+	if err := installer.RunPixi(projectDir, pixiBuildEnv(), "run", "setup"); err != nil {
+		return err
 	}
 
 	// Re-save the full struct here so the canonical fields are authoritative
@@ -364,8 +354,33 @@ func installPixi() error {
 	ui.SuccessBox("EMOS installed successfully (pixi mode)!")
 	ui.Faint("Workspace: " + projectDir)
 	ui.Faint("Run recipes with: emos pull <recipe> && emos run <recipe>")
+	offerCUDAPackages(projectDir)
 	offerDashboardAutoStart()
 	return nil
+}
+
+// offerCUDAPackages offers to rebuild the packages that can use CUDA on a machine with it. A build that fails leaves the install on the CPU packages.
+func offerCUDAPackages(projectDir string) {
+	cuda := installer.DetectCUDA()
+	if cuda == nil {
+		return
+	}
+	packages := strings.Join(installer.CUDAPackages, " and ")
+	fmt.Println()
+	ui.Info(fmt.Sprintf("CUDA %s was detected at %s, so the CUDA-optimized versions of %s can be used.",
+		cuda.Version, cuda.Root, packages))
+	ui.Faint("They are compiled from source, which took about 25 minutes on a Jetson AGX Orin " +
+		"and takes longer on a smaller board.")
+	if !ui.Confirm(fmt.Sprintf("Build %s for CUDA %s now?", packages, cuda.Version)) {
+		ui.Info("Keeping the CPU versions.")
+		return
+	}
+	if err := installer.InstallCUDAPackages(projectDir, cuda.Root, pixiBuildEnv()); err != nil {
+		ui.Error("The CUDA versions did not build, so the CPU versions stay: " + err.Error())
+		ui.Faint("Run 'emos update' to be offered the build again.")
+		return
+	}
+	ui.Success(fmt.Sprintf("%s now use CUDA %s.", packages, cuda.Version))
 }
 
 func installLicensed(licenseKey string) error {

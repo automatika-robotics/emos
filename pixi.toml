@@ -101,7 +101,9 @@ monsterui = ">=1.0,<1.1"
 sherpa-onnx = "*"
 ollama = "*"
 soundfile = "*"
-llama-cpp-python = "*"
+# Install llama-cpp-python from its own index. --only-binary takes the newest
+# wheel there.
+llama-cpp-python = { version = "*", index = "https://abetlen.github.io/llama-cpp-python/whl/cpu" }
 onnxruntime = "*"
 
 [target.linux-aarch64.pypi-dependencies]

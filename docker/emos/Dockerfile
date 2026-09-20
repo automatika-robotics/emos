@@ -57,11 +57,10 @@ RUN pip install --no-cache-dir --ignore-installed \
     grpcio \
     protobuf
 
-# llama-cpp-python needs scikit-build-core which requires packaging>=22.0.
-# On humble (pip 22.0), build isolation doesn't install it correctly,
-# so we pre-install build deps and use --no-build-isolation.
-RUN pip install --no-cache-dir 'scikit-build-core>=0.8' 'packaging>=22.0' && \
-    pip install --no-cache-dir --no-build-isolation llama-cpp-python
+# Install llama-cpp-python from its own index. --only-binary takes the newest
+# wheel there.
+RUN pip install --no-cache-dir --only-binary=llama-cpp-python \
+    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu llama-cpp-python
 
 # Install kompass-core with GPU support (also works on non-GPU machines)
 ADD https://raw.githubusercontent.com/automatika-robotics/kompass-core/main/build_dependencies/install_gpu.sh /tmp/install_gpu.sh

@@ -31,11 +31,6 @@ if [ ! -x "$CUDA_ROOT/bin/nvcc" ]; then
 fi
 CUDA_MAJOR=$("$CUDA_ROOT/bin/nvcc" --version | sed -n 's/.*release \([0-9]*\)\..*/\1/p')
 
-# TODO: On aarch64 the environment adds the system's glibc headers to CFLAGS for
-# one PyPI source build. Ahead of the environment's own sysroot they break every
-# C source that includes math.h. Needs to be fixed at source (pyaudio build)
-export CFLAGS="${CFLAGS//-I\/usr\/include\/aarch64-linux-gnu/}"
-
 # The CUDA libraries use the system's glibc, newer than the sysroot the linker checks against.
 LINK_ARGS="-DCMAKE_EXE_LINKER_FLAGS=-Wl,--allow-shlib-undefined -DCMAKE_SHARED_LINKER_FLAGS=-Wl,--allow-shlib-undefined"
 

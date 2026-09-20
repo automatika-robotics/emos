@@ -12,9 +12,9 @@ SKBUILD_STRICT_CONFIG = "false"
 [target.linux-aarch64.activation]
 scripts = ["stack/emos-cli/scripts/pixi_activate_aarch64.sh"]
 
-# Let the pyaudio aarch64 source build find the multiarch glibc headers.
+# Pyaudio gets built from src on aarch64
 [target.linux-aarch64.activation.env]
-CFLAGS = "-I/usr/include/aarch64-linux-gnu"
+CFLAGS = "-idirafter /usr/include" # Make GCC drop -I/usr/include of the pyaudio source build, keeping the environment's glibc headers first
 
 # --- Conda Dependencies ---
 [dependencies]

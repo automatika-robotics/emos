@@ -68,11 +68,6 @@ if [ -z "$PIXI_PROJECT_ROOT" ] && [ -z "$CONDA_PREFIX" ]; then
     exit 1
 fi
 
-# TODO: On aarch64 the environment adds the system's glibc headers to CFLAGS for
-# one PyPI source build. Ahead of the environment's own sysroot they break every
-# C source that includes math.h. Needs to be fixed at source (pyaudio build)
-export CFLAGS="${CFLAGS//-I\/usr\/include\/aarch64-linux-gnu/}"
-
 CUDA_ARGS=(-DBUILD_WITH_CUDA=OFF)
 if [ -n "$CUDA_ROOT" ]; then
     if [ ! -x "$CUDA_ROOT/bin/nvcc" ]; then

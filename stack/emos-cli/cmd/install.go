@@ -369,14 +369,13 @@ func offerCUDAPackages(projectDir string) {
 	fmt.Println()
 	ui.Info(fmt.Sprintf("CUDA %s was detected at %s, so the CUDA-optimized versions of %s can be used.",
 		cuda.Version, cuda.Root, packages))
-	ui.Faint("They are compiled from source, which took about 25 minutes on a Jetson AGX Orin " +
-		"and takes longer on a smaller board.")
+	ui.Faint("They are compiled from source, which may take upto half an hour or more.")
 	if !ui.Confirm(fmt.Sprintf("Build %s for CUDA %s now?", packages, cuda.Version)) {
 		ui.Info("Keeping the CPU versions.")
 		return
 	}
 	if err := installer.InstallCUDAPackages(projectDir, cuda.Root, pixiBuildEnv()); err != nil {
-		ui.Error("The CUDA versions did not build, so the CPU versions stay: " + err.Error())
+		ui.Error("The CUDA versions did not build, so the CPU versions will be installed: " + err.Error())
 		ui.Faint("Run 'emos update' to be offered the build again.")
 		return
 	}

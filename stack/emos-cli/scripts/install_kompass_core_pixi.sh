@@ -41,6 +41,7 @@ env_pkg_version() {
 }
 
 SUDO=$(is_in_container && echo "" || echo "sudo")
+JOBS="${EMOS_BUILD_JOBS:-$(nproc)}" # parallel compile jobs, all cores unless capped
 
 # Check sudo
 if [[ -n "$SUDO" ]] && ! sudo -n true 2>/dev/null; then
@@ -165,8 +166,8 @@ if grep -qiE '^WITH_(CUDA|ROCM)_BACKEND:BOOL=(ON|TRUE|YES|Y|1)$' CMakeCache.txt;
     log INFO "CUDA or ROCm backend found. Disabling the OpenCL backend..."
     clean_env cmake -DWITH_OPENCL_BACKEND=OFF ..
 fi
-clean_env make -j$(nproc)
-clean_env make install -j$(nproc)
+clean_env make -j"$JOBS"
+clean_env make install -j"$JOBS"
 
 log INFO "Copying AdaptiveCpp artefacts into $ACPP_PREFIX (requires sudo)..."
 clean_env $SUDO cp -a "$ACPP_STAGE/." "$ACPP_PREFIX/"
@@ -208,7 +209,7 @@ log INFO "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH"
 export LDFLAGS="-L$PIXI_PREFIX/lib${LDFLAGS:+ $LDFLAGS}"
 export SKBUILD_CMAKE_ARGS="-DCMAKE_INSTALL_RPATH=$PIXI_PREFIX/lib${SKBUILD_CMAKE_ARGS:+;$SKBUILD_CMAKE_ARGS}"
 
-export CMAKE_BUILD_PARALLEL_LEVEL="$(nproc)"
+export CMAKE_BUILD_PARALLEL_LEVEL="$JOBS"
 CXX=$CLANG_PATH python3 -m pip install --no-build-isolation .
 
 cd /tmp && rm -rf kompass-core

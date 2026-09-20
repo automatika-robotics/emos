@@ -91,23 +91,23 @@ grpcio = "*"
 protobuf = "*"
 huggingface_hub = "*"
 
-[target.linux-64.dependencies]
-# conda pyaudio on x86
-pyaudio = "*"
-
-# --- PyPI Dependencies (not on conda-forge or missing for aarch64) ---
+# --- PyPI Dependencies (not on conda-forge) ---
 [pypi-dependencies]
 monsterui = ">=1.0,<1.1"
 sherpa-onnx = "*"
 ollama = "*"
 soundfile = "*"
-# Install llama-cpp-python from its own index. --only-binary takes the newest
-# wheel there.
+# Install llama-cpp-python from its own index (pypi only has src for aarch64)
 llama-cpp-python = { version = "*", index = "https://abetlen.github.io/llama-cpp-python/whl/cpu" }
 onnxruntime = "*"
 
+# --- PyAudio (conda-forge has it for x86 only) ---
+# conda package on x86
+[target.linux-64.dependencies]
+pyaudio = "*"
+
+# built from src on aarch64, with the CFLAGS set above
 [target.linux-aarch64.pypi-dependencies]
-# pypi pyaudio on x86
 PyAudio = "*"
 
 # --- Tasks ---

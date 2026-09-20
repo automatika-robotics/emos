@@ -253,6 +253,16 @@ func pixiBuildEnv() []string {
 	return append(os.Environ(), "SKBUILD_STRICT_CONFIG=false")
 }
 
+// pixiCloneArgs is the git invocation that fetches the EMOS workspace. The
+// default branch, or ref when the binary was built from one.
+func pixiCloneArgs(ref, url, dir string) []string {
+	args := []string{"clone", "--depth", "1"}
+	if ref != "" {
+		args = append(args, "--branch", ref)
+	}
+	return append(args, url, dir)
+}
+
 func installPixi() error {
 	// Pixi is required for this mode; fail early with install guidance.
 	pixiBin, err := installer.ResolvePixi()
@@ -292,8 +302,11 @@ func installPixi() error {
 
 	ui.Header("CLONING EMOS WORKSPACE")
 	ui.Faint("Target: " + projectDir)
+	if config.SourceRef != "" {
+		ui.Faint("Source: " + config.SourceRef)
+	}
 	if err := ui.Spinner("Cloning EMOS repository...", func() error {
-		c := exec.Command("git", "clone", "--depth", "1", config.RepoURL(), projectDir)
+		c := exec.Command("git", pixiCloneArgs(config.SourceRef, config.RepoURL(), projectDir)...)
 		if out, err := c.CombinedOutput(); err != nil {
 			return fmt.Errorf("%s", strings.TrimSpace(string(out)))
 		}

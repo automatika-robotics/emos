@@ -14,6 +14,11 @@ import (
 // The "dev" fallback only appears when built with plain `go build`
 var Version = "dev"
 
+// SourceRef is the branch or tag of the EMOS repository a pixi install clones.
+// A development build sets it to its own branch at link time, so it installs
+// the code it was built from. Empty clones the default branch.
+var SourceRef = ""
+
 type InstallMode string
 
 const (

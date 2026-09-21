@@ -38,7 +38,7 @@ func withTempConfig(t *testing.T) {
 	config.ConfigDir = filepath.Join(tmp, ".config", "emos")
 	config.RecipesDir = filepath.Join(tmp, "emos", "recipes")
 	config.LogsDir = filepath.Join(tmp, "emos", "logs")
-	config.LicenseFile = filepath.Join(config.ConfigDir, "license.key")
+	config.LicenseFile = filepath.Join(config.ConfigDir, "license.json")
 	config.ConfigFile = filepath.Join(config.ConfigDir, "config.json")
 	config.WorkspaceDir = filepath.Join(tmp, "emos", "workspace")
 	config.UISecurityDir = filepath.Join(tmp, "emos", ".ui-security")

@@ -16,7 +16,6 @@ type RuntimeStrategy interface {
 	Command(shell string) *exec.Cmd
 	// RecipesDir is the recipes directory as a Command sees it.
 	RecipesDir() string
-	LaunchRobotHardware() error
 	// StartRecipe starts the recipe in its own process group, writing its
 	// output to out, and returns a handle to wait on or stop it.
 	StartRecipe(recipeName string, out io.Writer) (*RunHandle, error)
@@ -38,7 +37,7 @@ func newStrategy(cfg *config.EMOSConfig, rmw string) (RuntimeStrategy, error) {
 		env = append(env, "RMW_IMPLEMENTATION="+rmw)
 	}
 	uiDir := config.UISecurityDir
-	if cfg.Mode == config.ModeOSSContainer || cfg.Mode == config.ModeLicensed {
+	if cfg.Mode == config.ModeOSSContainer {
 		uiDir = uiSecurityRoot
 	}
 	uiEnv, err := uiEnv(uiDir)
@@ -48,9 +47,7 @@ func newStrategy(cfg *config.EMOSConfig, rmw string) (RuntimeStrategy, error) {
 	env = append(env, uiEnv...)
 	switch cfg.Mode {
 	case config.ModeOSSContainer:
-		return NewContainerStrategy(false, env), nil
-	case config.ModeLicensed:
-		return NewContainerStrategy(true, env), nil
+		return NewContainerStrategy(env), nil
 	case config.ModeNative:
 		return NewNativeStrategy(env), nil
 	case config.ModePixi:

@@ -35,7 +35,7 @@ var statusCmd = &cobra.Command{
 		ui.Info("ROS Distro: " + cfg.ROSDistro)
 
 		switch cfg.Mode {
-		case config.ModeOSSContainer, config.ModeLicensed:
+		case config.ModeOSSContainer:
 			status := container.Status(config.ContainerName)
 			switch status {
 			case "running":
@@ -54,14 +54,6 @@ var statusCmd = &cobra.Command{
 
 		case config.ModePixi:
 			pixiStatus(cfg)
-		}
-
-		if cfg.Mode == config.ModeLicensed {
-			if cfg.LicenseKey != "" {
-				ui.Success("License Key: Configured")
-			} else {
-				ui.Warn("License Key: Not set")
-			}
 		}
 	},
 }

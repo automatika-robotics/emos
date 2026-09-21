@@ -133,7 +133,7 @@ func TestDashboardUnitBootHardening(t *testing.T) {
 }
 
 func TestSystemdUnitOmitsZeroLimits(t *testing.T) {
-	// Other units (e.g. ContainerUnit) leave the boot-hardening fields at
+	// A unit that does not set the boot-hardening fields leaves them at
 	// their zero value. Render() must not emit StartLimit*/RestartSec when
 	// they're 0 -- otherwise systemd parses garbage like "RestartSec=0" as
 	// "restart immediately" and we'd accidentally regress existing units.
@@ -149,35 +149,6 @@ func TestSystemdUnitOmitsZeroLimits(t *testing.T) {
 		if strings.Contains(body, forbidden) {
 			t.Errorf("unit with zero-valued limits emitted %q\n--- got ---\n%s", forbidden, body)
 		}
-	}
-}
-
-func TestContainerUnitHardening(t *testing.T) {
-	u := ContainerUnit("emos")
-	body := u.Render()
-	for _, w := range []string{"NoNewPrivileges=true", "ProtectSystem=strict", "PrivateTmp=true"} {
-		if !strings.Contains(body, w) {
-			t.Errorf("Render output missing %q\n--- got ---\n%s", w, body)
-		}
-	}
-}
-
-func TestContainerUnit(t *testing.T) {
-	u := ContainerUnit("emos")
-	if u.Name != config.ServiceName {
-		t.Fatalf("Name = %q, want %q", u.Name, config.ServiceName)
-	}
-	if u.Restart != "always" {
-		t.Fatalf("Restart = %q, want always", u.Restart)
-	}
-	if !strings.Contains(u.ExecStart, "docker start -a emos") {
-		t.Fatalf("ExecStart = %q, want docker start", u.ExecStart)
-	}
-	if !strings.Contains(u.ExecStop, "docker stop -t 2 emos") {
-		t.Fatalf("ExecStop = %q, want docker stop", u.ExecStop)
-	}
-	if !contains(u.Requires, "docker.service") {
-		t.Fatalf("Requires = %v, want docker.service", u.Requires)
 	}
 }
 

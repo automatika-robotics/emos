@@ -32,18 +32,18 @@ Always:
   - stops + removes the dashboard systemd service (emos-dashboard.service).
 
 By install mode:
-  - container / licensed: removes the Docker container; image is preserved unless
-    --remove-image is passed; licensed mode also removes the container auto-restart
-    unit and ~/emos/robot.
-  - native:               removes the build workspace and uninstalls kompass-core.
-                          Files in /opt/ros/<distro>/ are co-mingled with ROS by
-                          colcon and cannot be cleanly uninstalled — the command
-                          prints the manual rm commands instead of running them.
-  - pixi:                 removes .pixi/, build/, install/, log/ under the EMOS
-                          repo directory. The cloned repo itself is preserved.
+  - container: removes the Docker container; the image is preserved unless
+               --remove-image is passed.
+  - native:    removes the build workspace and uninstalls kompass-core.
+               Files in /opt/ros/<distro>/ are co-mingled with ROS by
+               colcon and cannot be cleanly uninstalled — the command
+               prints the manual rm commands instead of running them.
+  - pixi:      removes .pixi/, build/, install/, log/ under the EMOS
+               repo directory. The cloned repo itself is preserved.
 
 By default, also removes ~/emos/recipes, ~/emos/logs, and ~/.config/emos.
-Use --keep-data and --keep-config to preserve these.
+Use --keep-data and --keep-config to preserve these. A license is kept either
+way: 'emos license remove' deletes it.
 
 The CLI binary at /usr/local/bin/emos is never removed automatically — running
 process can't reliably delete itself. The command prints the rm command for you.`,
@@ -56,7 +56,7 @@ func init() {
 	uninstallCmd.Flags().BoolVar(&uninstallKeepConfig, "keep-config", false,
 		"Preserve ~/.config/emos")
 	uninstallCmd.Flags().BoolVar(&uninstallRemoveImage, "remove-image", false,
-		"Also remove the Docker image (container / licensed modes)")
+		"Also remove the Docker image (container mode)")
 	uninstallCmd.Flags().BoolVarP(&uninstallYes, "yes", "y", false,
 		"Skip the confirmation prompt")
 }
@@ -100,7 +100,7 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 
 	// Mode-specific cleanup.
 	switch cfg.Mode {
-	case config.ModeOSSContainer, config.ModeLicensed:
+	case config.ModeOSSContainer:
 		uninstallContainerMode(cfg)
 	case config.ModeNative:
 		uninstallNativeMode(cfg)
@@ -153,18 +153,6 @@ func printRemovalPlan(cfg *config.EMOSConfig) {
 		} else {
 			ui.Faint("    (image " + img + " preserved; pass --remove-image to also drop it)")
 		}
-	case config.ModeLicensed:
-		ui.Faint("  - Docker container '" + config.ContainerName + "'")
-		if existsUnitFile(config.ServiceName) {
-			ui.Faint("  - container restart unit (" + config.ServiceName + ")")
-		}
-		if uninstallRemoveImage && cfg.ImageTag != "" {
-			ui.Faint("  - Docker image " + cfg.ImageTag)
-		}
-		robotDir := filepath.Join(config.HomeDir, "emos", "robot")
-		if _, err := os.Stat(robotDir); err == nil {
-			ui.Faint("  - " + robotDir)
-		}
 	case config.ModeNative:
 		if cfg.WorkspacePath != "" {
 			ui.Faint("  - native build workspace: " + cfg.WorkspacePath)
@@ -210,40 +198,14 @@ func uninstallContainerMode(cfg *config.EMOSConfig) {
 		}
 	}
 
-	// Container auto-restart unit (licensed flow installs this).
-	if existsUnitFile(config.ServiceName) {
-		ui.Info("Removing " + config.ServiceName + "...")
-		unit := installer.SystemdUnit{Name: config.ServiceName}
-		if err := unit.Uninstall(); err != nil {
-			ui.Warn(err.Error())
-		} else {
-			ui.Success("Container restart unit removed.")
-		}
-	}
-
 	if uninstallRemoveImage {
-		var img string
-		switch cfg.Mode {
-		case config.ModeOSSContainer:
-			img = config.PublicImageTag(distroOr(cfg, "jazzy"))
-		case config.ModeLicensed:
-			img = cfg.ImageTag
-		}
-		if img != "" {
-			ui.Info("Removing image " + img + "...")
-			c := exec.Command("docker", "rmi", img)
-			if out, err := c.CombinedOutput(); err != nil {
-				ui.Warn("docker rmi: " + strings.TrimSpace(string(out)))
-			} else {
-				ui.Success("Image removed.")
-			}
-		}
-	}
-
-	if cfg.Mode == config.ModeLicensed {
-		robotDir := filepath.Join(config.HomeDir, "emos", "robot")
-		if _, err := os.Stat(robotDir); err == nil {
-			removePathQuiet("licensed deployment files", robotDir)
+		img := config.PublicImageTag(distroOr(cfg, "jazzy"))
+		ui.Info("Removing image " + img + "...")
+		c := exec.Command("docker", "rmi", img)
+		if out, err := c.CombinedOutput(); err != nil {
+			ui.Warn("docker rmi: " + strings.TrimSpace(string(out)))
+		} else {
+			ui.Success("Image removed.")
 		}
 	}
 }

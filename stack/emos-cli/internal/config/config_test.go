@@ -36,11 +36,10 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	withTempConfig(t)
 
 	want := &EMOSConfig{
-		Mode:       ModeNative,
-		Name:       "epic-otter",
-		Port:       9000,
-		LicenseKey: "lic-123",
-		ROSDistro:  "jazzy",
+		Mode:      ModeNative,
+		Name:      "epic-otter",
+		Port:      9000,
+		ROSDistro: "jazzy",
 		Auth: AuthState{
 			PairingCodeHash: "abc",
 			PairingCreated:  time.Now().UTC().Truncate(time.Second),
@@ -57,7 +56,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		t.Fatalf("LoadConfig: got nil")
 	}
 	if got.Mode != want.Mode || got.Name != want.Name || got.Port != want.Port ||
-		got.LicenseKey != want.LicenseKey || got.ROSDistro != want.ROSDistro {
+		got.ROSDistro != want.ROSDistro {
 		t.Fatalf("scalar fields mismatch: got=%+v want=%+v", got, want)
 	}
 	if got.Auth.PairingCodeHash != want.Auth.PairingCodeHash {

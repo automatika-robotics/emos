@@ -65,10 +65,6 @@ func (s *NativeStrategy) PrepareEnvironment() error {
 	return nil
 }
 
-func (s *NativeStrategy) LaunchRobotHardware() error {
-	return nil
-}
-
 func (s *NativeStrategy) StartRecipe(recipeName string, out io.Writer) (*RunHandle, error) {
 	return startRecipe(s, recipeName, out)
 }

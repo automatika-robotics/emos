@@ -44,7 +44,7 @@ func useTempInstall(t *testing.T) {
 	origDir, origFile, origLicense, origWs := config.ConfigDir, config.ConfigFile, config.LicenseFile, config.WorkspaceDir
 	config.ConfigDir = filepath.Join(root, "config")
 	config.ConfigFile = filepath.Join(config.ConfigDir, "config.json")
-	config.LicenseFile = filepath.Join(config.ConfigDir, "license.key")
+	config.LicenseFile = filepath.Join(config.ConfigDir, "license.json")
 	config.WorkspaceDir = filepath.Join(root, "emos", "workspace")
 	t.Cleanup(func() {
 		config.ConfigDir, config.ConfigFile, config.LicenseFile, config.WorkspaceDir = origDir, origFile, origLicense, origWs

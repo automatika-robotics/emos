@@ -48,7 +48,7 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 		if s.cfg.PixiProjectDir != "" {
 			resp["pixi_project_dir"] = s.cfg.PixiProjectDir
 		}
-		if s.cfg.LicenseKey != "" {
+		if config.LoadLicense() != nil {
 			resp["license_present"] = true
 		}
 	}

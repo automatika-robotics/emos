@@ -205,24 +205,3 @@ func userHomeDir(username string) string {
 	}
 	return ""
 }
-
-// ContainerUnit auto-restarts the EMOS Docker container at boot. Used by
-// the licensed install flow. No ReadWritePaths because the unit only shells
-// `docker` (which talks to /var/run/docker.sock, outside ProtectSystem's
-// reach), and the container itself has its own mounts.
-func ContainerUnit(containerName string) SystemdUnit {
-	return SystemdUnit{
-		Name:        config.ServiceName,
-		Description: "EmbodiedOS Container",
-		After:       []string{"docker.service"},
-		Requires:    []string{"docker.service"},
-		ExecStart:   "/usr/bin/docker start -a " + containerName,
-		ExecStop:    "/usr/bin/docker stop -t 2 " + containerName,
-		Restart:     "always",
-		Hardening: []string{
-			"NoNewPrivileges=true",
-			"ProtectSystem=strict",
-			"PrivateTmp=true",
-		},
-	}
-}

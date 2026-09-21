@@ -46,8 +46,8 @@ var configShowCmd = &cobra.Command{
 		fmt.Fprintf(w, "  Identity:\t%s\n", display(cfg.Name))
 		fmt.Fprintf(w, "  Mode:\t%s\n", display(string(cfg.Mode)))
 		fmt.Fprintf(w, "  ROS distro:\t%s\n", display(cfg.ROSDistro))
-		if cfg.LicenseKey != "" {
-			fmt.Fprintf(w, "  License:\t%s\n", redact(cfg.LicenseKey))
+		if lic := config.LoadLicense(); lic != nil {
+			fmt.Fprintf(w, "  License:\t%s\n", redact(lic.Key))
 		}
 		port := cfg.Port
 		if port == 0 {

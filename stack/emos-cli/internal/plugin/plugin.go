@@ -437,7 +437,7 @@ func build(cfg *config.EMOSConfig, out io.Writer) error {
 			quote(config.WorkspaceDir), colconBuild)
 		return runStreaming(pixiBin, pixiRunArgs(cfg, shell), "", out)
 
-	case config.ModeOSSContainer, config.ModeLicensed:
+	case config.ModeOSSContainer:
 		// The image entrypoint sources the ROS stack; the overlay lands in the
 		// mounted /emos/workspace, which is ~/emos/workspace on the host.
 		shell := "cd /emos/workspace && " + colconBuild
@@ -472,7 +472,7 @@ func inspect(cfg *config.EMOSConfig, entryPoint string) ([]byte, error) {
 			quote(filepath.Join(cfg.PixiProjectDir, "install", "setup.sh")), quote(overlaySh), py)
 		describe, err = captureStdout(pixiBin, pixiRunArgs(cfg, shell), "")
 
-	case config.ModeOSSContainer, config.ModeLicensed:
+	case config.ModeOSSContainer:
 		shell := "source /emos/workspace/install/setup.bash && " + py
 		var s string
 		s, err = container.RunEphemeralCapture(cfg.ImageTag, shell)

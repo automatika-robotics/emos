@@ -80,7 +80,7 @@ func BackendInstalled(start Starter) (bool, error) {
 
 // NativeSupported returns why an install in mode cannot build maps itself, or nil.
 func NativeSupported(mode config.InstallMode) error {
-	if mode == config.ModeOSSContainer || mode == config.ModeLicensed {
+	if mode == config.ModeOSSContainer {
 		return ErrNeedsHostInstall
 	}
 	return nil

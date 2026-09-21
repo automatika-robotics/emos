@@ -469,7 +469,7 @@ func TestNativeImportRefusesWhatIsNotAnEMOSArchive(t *testing.T) {
 func TestNativeNeedsAHostInstall(t *testing.T) {
 	for mode, supported := range map[config.InstallMode]bool{
 		config.ModePixi: true, config.ModeNative: true,
-		config.ModeOSSContainer: false, config.ModeLicensed: false,
+		config.ModeOSSContainer: false,
 	} {
 		if err := NativeSupported(mode); (err == nil) != supported {
 			t.Errorf("NativeSupported(%s) = %v", mode, err)

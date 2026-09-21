@@ -42,7 +42,7 @@ func resolveDeps(cfg *config.EMOSConfig, manifest *Manifest, srcRoot string, out
 		return resolveDepsPixi(cfg, deps, out)
 	case config.ModeNative:
 		return resolveDepsNative(cfg, srcRoot, deps, out)
-	case config.ModeOSSContainer, config.ModeLicensed:
+	case config.ModeOSSContainer:
 		if depsEmpty(deps) {
 			return nil
 		}

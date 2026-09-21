@@ -23,7 +23,6 @@ type InstallMode string
 
 const (
 	ModeOSSContainer InstallMode = "oss-container"
-	ModeLicensed     InstallMode = "licensed"
 	ModeNative       InstallMode = "native"
 	ModePixi         InstallMode = "pixi"
 )
@@ -32,7 +31,6 @@ type EMOSConfig struct {
 	Mode           InstallMode  `json:"mode"`
 	Name           string       `json:"name,omitempty"` // human-friendly device name (e.g. "epic-otter")
 	Port           int          `json:"port,omitempty"` // dashboard bind port; 0 means DefaultDashboardPort
-	LicenseKey     string       `json:"license_key,omitempty"`
 	ROSDistro      string       `json:"ros_distro"`
 	ImageTag       string       `json:"image_tag,omitempty"`
 	WorkspacePath  string       `json:"workspace_path,omitempty"`
@@ -179,7 +177,6 @@ func (c *EMOSConfig) IsInstalled() bool {
 
 const (
 	ContainerName        = "emos"
-	ServiceName          = "emos.service"           // container auto-restart unit
 	DashboardServiceName = "emos-dashboard.service" // `emos serve` daemon unit
 	GitHubOrg            = "automatika-robotics"
 	GitHubRepo           = "emos"
@@ -261,7 +258,7 @@ func LoadConfig() *EMOSConfig {
 }
 
 // SaveConfig persists the EMOS config to disk. Mode 0600 because the file
-// holds license keys and hashed auth tokens.
+// holds hashed auth tokens.
 //
 // The file is replaced by rename, so a reader never sees it half-written.
 func SaveConfig(cfg *EMOSConfig) error {
@@ -333,7 +330,12 @@ func ResolveDeviceName() (string, error) {
 	if cfg.Name != "" {
 		return cfg.Name, nil
 	}
-	cfg.Name = identity.Compute(cfg.LicenseKey)
+	// A licence outlives an uninstall, so a name seeded by its key does too
+	var key string
+	if lic := LoadLicense(); lic != nil {
+		key = lic.Key
+	}
+	cfg.Name = identity.Compute(key)
 	if err := SaveConfig(cfg); err != nil {
 		return cfg.Name, err
 	}

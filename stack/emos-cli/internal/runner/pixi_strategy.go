@@ -97,10 +97,6 @@ func (s *PixiStrategy) PrepareEnvironment() error {
 	return nil
 }
 
-func (s *PixiStrategy) LaunchRobotHardware() error {
-	return nil
-}
-
 func (s *PixiStrategy) StartRecipe(recipeName string, out io.Writer) (*RunHandle, error) {
 	return startRecipe(s, recipeName, out)
 }

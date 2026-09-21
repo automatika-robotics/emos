@@ -26,10 +26,6 @@ func (f *fakeStrategy) PrepareEnvironment() error {
 }
 func (f *fakeStrategy) Command(string) *exec.Cmd { return f.listen() }
 func (f *fakeStrategy) RecipesDir() string       { return "/recipes" }
-func (f *fakeStrategy) LaunchRobotHardware() error {
-	f.calls = append(f.calls, "hardware")
-	return nil
-}
 func (f *fakeStrategy) StartRecipe(string, io.Writer) (*RunHandle, error) {
 	f.calls = append(f.calls, "start")
 	return nil, nil
@@ -60,10 +56,10 @@ func TestSessionRunsTheStagesInOrder(t *testing.T) {
 	s.StartRecipe("demo", io.Discard)
 	s.Close()
 
-	if want := []string{"preparing environment", "launching robot hardware", "starting recipe"}; !slices.Equal(seen, want) {
+	if want := []string{"preparing environment", "starting recipe"}; !slices.Equal(seen, want) {
 		t.Errorf("stages = %v, want %v", seen, want)
 	}
-	if want := []string{"prepare", "hardware", "start", "cleanup"}; !slices.Equal(f.calls, want) {
+	if want := []string{"prepare", "start", "cleanup"}; !slices.Equal(f.calls, want) {
 		t.Errorf("calls = %v, want %v", f.calls, want)
 	}
 }
@@ -71,7 +67,7 @@ func TestSessionRunsTheStagesInOrder(t *testing.T) {
 func TestSessionStoppedAtACheckpointCleansUp(t *testing.T) {
 	f := &fakeStrategy{}
 	var seen []string
-	if _, err := prepare(f, "", &recipeManifest{}, stages(&seen, "launching robot hardware")); err == nil {
+	if _, err := prepare(f, zenohRMW, &recipeManifest{}, stages(&seen, "starting zenoh router")); err == nil {
 		t.Fatal("a checkpoint error must end the setup")
 	}
 	if want := []string{"prepare", "cleanup"}; !slices.Equal(f.calls, want) {

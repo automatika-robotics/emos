@@ -13,14 +13,12 @@ import (
 )
 
 // ContainerStrategy handles recipe execution inside a Docker container.
-// It supports both oss-container (licensed=false) and licensed (licensed=true) modes.
 type ContainerStrategy struct {
-	licensed bool
-	env      []string // exported in every command run in the container
+	env []string // exported in every command run in the container
 }
 
-func NewContainerStrategy(licensed bool, env []string) *ContainerStrategy {
-	return &ContainerStrategy{licensed: licensed, env: env}
+func NewContainerStrategy(env []string) *ContainerStrategy {
+	return &ContainerStrategy{env: env}
 }
 
 func (s *ContainerStrategy) PrepareEnvironment() error {
@@ -62,18 +60,6 @@ func (s *ContainerStrategy) Command(shell string) *exec.Cmd {
 }
 
 func (s *ContainerStrategy) RecipesDir() string { return recipesRoot }
-
-func (s *ContainerStrategy) LaunchRobotHardware() error {
-	if !s.licensed {
-		return nil
-	}
-
-	ui.Header("HARDWARE & SENSOR LAUNCH")
-	return ui.Spinner("Launching robot base hardware...", func() error {
-		return container.ExecDetached(config.ContainerName,
-			s.shell("ros2 launch "+emosRoot+"/robot/launch/bringup_robot.py"))
-	})
-}
 
 // StartRecipe runs the recipe through a docker exec on the host, which is
 // what writes its output, so the log lands on the host.

@@ -70,10 +70,7 @@ func (s *Session) setUp(rmw string, manifest *recipeManifest) error {
 		}
 		s.router = router
 	}
-	if err := s.checkpoint("launching robot hardware"); err != nil {
-		return err
-	}
-	return s.strategy.LaunchRobotHardware()
+	return nil
 }
 
 // StartRecipe starts the recipe, writing its output to out.

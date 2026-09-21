@@ -26,7 +26,7 @@ func adminTestSetup(t *testing.T) *Auth {
 	})
 	config.ConfigDir = tmp
 	config.ConfigFile = filepath.Join(tmp, "config.json")
-	config.LicenseFile = filepath.Join(tmp, "license.key")
+	config.LicenseFile = filepath.Join(tmp, "license.json")
 
 	// Lower bcrypt cost so RegeneratePairingCode is fast under -race.
 	origCost := pairingHashCost

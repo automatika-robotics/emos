@@ -17,55 +17,9 @@ import (
 	"github.com/automatika-robotics/emos-cli/internal/config"
 )
 
-type Credentials struct {
-	Registry       string `json:"container_registry"`
-	ImageName      string `json:"image_name"`
-	Username       string `json:"username"`
-	Password       string `json:"password"`
-	DeploymentRepo string `json:"deployment_repository_name"`
-}
-
-func (c *Credentials) FullImage() string {
-	return c.Registry + "/" + c.ImageName
-}
-
 type Recipe struct {
 	Filename string `json:"filename"`
 	Name     string `json:"name"`
-}
-
-type apiError struct {
-	Error string `json:"error"`
-}
-
-func ValidateLicense(key string) (*Credentials, error) {
-	body := fmt.Sprintf(`{"license_key": "%s"}`, key)
-	resp, err := http.Post(config.CredentialsEndpoint, "application/json", strings.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("could not connect to the license API: %w", err)
-	}
-	defer resp.Body.Close()
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read API response: %w", err)
-	}
-
-	var apiErr apiError
-	if json.Unmarshal(data, &apiErr) == nil && apiErr.Error != "" {
-		return nil, fmt.Errorf("API error: %s", apiErr.Error)
-	}
-
-	var creds Credentials
-	if err := json.Unmarshal(data, &creds); err != nil {
-		return nil, fmt.Errorf("invalid API response: %w", err)
-	}
-
-	if creds.Registry == "" || creds.Username == "" || creds.Password == "" || creds.ImageName == "" || creds.DeploymentRepo == "" {
-		return nil, fmt.Errorf("API returned incomplete credentials")
-	}
-
-	return &creds, nil
 }
 
 // ErrInvalidLicense is the portal's answer to a key it does not know or has

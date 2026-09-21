@@ -186,11 +186,10 @@ const (
 	PublicImage          = "ghcr.io/automatika-robotics/emos"
 
 	// API endpoints
-	APIBaseURL          = "https://support-api.automatikarobotics.com/api"
-	CredentialsEndpoint = APIBaseURL + "/registrations/credentials"
-	VerifyEndpoint      = APIBaseURL + "/registrations/verify"
-	RecipesEndpoint     = APIBaseURL + "/recipes"
-	PluginsEndpoint     = APIBaseURL + "/plugins"
+	APIBaseURL      = "https://support-api.automatikarobotics.com/api"
+	VerifyEndpoint  = APIBaseURL + "/registrations/verify"
+	RecipesEndpoint = APIBaseURL + "/recipes"
+	PluginsEndpoint = APIBaseURL + "/plugins"
 
 	// SupportURL is the support portal, where a licence is activated and where
 	// its holder gets help.

@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -71,8 +72,6 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	switch cfg.Mode {
 	case config.ModeOSSContainer:
 		modeErr = updateOSSContainer(cfg)
-	case config.ModeLicensed:
-		modeErr = updateLicensed(cfg)
 	case config.ModeNative:
 		modeErr = updateNative(cfg)
 	case config.ModePixi:
@@ -98,7 +97,27 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
+	refreshLicense()
 	return nil
+}
+
+// refreshLicense verifies the kept licence again when the portal can be
+// reached. An update never fails on it, and an unreachable portal goes unsaid.
+func refreshLicense() {
+	old := config.LoadLicense()
+	if old == nil {
+		return
+	}
+	lic, err := api.VerifyLicense(old.Key)
+	switch {
+	case err == nil:
+		if config.SaveLicense(lic) == nil && lic.PluginSlug != old.PluginSlug {
+			ui.Warn("The license on this machine is now for " + licensedRobot(lic) + ", it was for " + licensedRobot(old) + ".")
+			ui.Faint("Install its plugin with 'emos plugin install " + lic.PluginSlug + "'.")
+		}
+	case errors.Is(err, api.ErrInvalidLicense), errors.Is(err, api.ErrLicenseNotClaimed):
+		ui.Warn("The portal no longer accepts the license kept on this machine. Ask about it at " + config.SupportURL + ".")
+	}
 }
 
 // selfUpdateCLI checks for a newer CLI release and replaces the current binary.
@@ -236,46 +255,6 @@ func updateOSSContainer(cfg *config.EMOSConfig) error {
 
 	fmt.Println()
 	ui.SuccessBox("EMOS container updated successfully!")
-	return nil
-}
-
-func updateLicensed(cfg *config.EMOSConfig) error {
-	licenseKey := cfg.LicenseKey
-	if licenseKey == "" {
-		ui.Error("No license key found.")
-		return fmt.Errorf("no license key")
-	}
-
-	fmt.Println("  Checking for EmbodiedOS container updates...")
-	fmt.Println()
-
-	var creds *api.Credentials
-	err := ui.Spinner("Verifying license...", func() error {
-		var e error
-		creds, e = api.ValidateLicense(licenseKey)
-		return e
-	})
-	if err != nil {
-		return err
-	}
-
-	if container.Exists(config.ContainerName) {
-		if err := ui.Spinner("Removing existing container...", func() error {
-			return container.Remove(config.ContainerName)
-		}); err != nil {
-			return fmt.Errorf("failed to remove container: %w", err)
-		}
-	}
-
-	if err := deployRobotFiles(creds); err != nil {
-		return err
-	}
-	if err := deployContainer(creds); err != nil {
-		return err
-	}
-
-	fmt.Println()
-	ui.SuccessBox("EmbodiedOS container updated successfully!")
 	return nil
 }
 

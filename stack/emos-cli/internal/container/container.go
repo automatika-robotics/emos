@@ -57,17 +57,6 @@ func Remove(name string) error {
 	return err
 }
 
-func Login(registry, user, token string) error {
-	cmd := docker("login", registry, "-u", user, "--password-stdin")
-	cmd.Stdin = strings.NewReader(token)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("docker login failed: %s", strings.TrimSpace(stderr.String()))
-	}
-	return nil
-}
-
 func Pull(image string) error {
 	cmd := docker("pull", image)
 	cmd.Stdout = os.Stdout

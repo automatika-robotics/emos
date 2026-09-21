@@ -69,6 +69,7 @@ if [ -z "$PIXI_PROJECT_ROOT" ] && [ -z "$CONDA_PREFIX" ]; then
 fi
 
 CUDA_ARGS=(-DBUILD_WITH_CUDA=OFF)
+POINTS_ARGS=()
 if [ -n "$CUDA_ROOT" ]; then
     if [ ! -x "$CUDA_ROOT/bin/nvcc" ]; then
         log ERROR "No CUDA compiler at $CUDA_ROOT/bin/nvcc"
@@ -80,6 +81,12 @@ if [ -n "$CUDA_ROOT" ]; then
     CUDA_ARGS=(-DBUILD_WITH_CUDA=ON -DCMAKE_CUDA_COMPILER="$CUDA_ROOT/bin/nvcc"
         -DCUDAToolkit_ROOT="$CUDA_ROOT" -DCMAKE_CUDA_HOST_COMPILER=/usr/bin/g++
         -DCMAKE_EXE_LINKER_FLAGS=-Wl,--allow-shlib-undefined)
+    # NOTE: gtsam_points uses thrust::cuda::par_nosync, not available in Thrust < 1.16.
+    # Older toolkits (JetPack 5) get the synchronising policy in its place.
+    THRUST=$(sed -n 's/^#define THRUST_VERSION \([0-9]*\).*/\1/p' "$CUDA_ROOT/include/thrust/version.h" 2>/dev/null || true)
+    if [ -n "$THRUST" ] && [ "$THRUST" -lt 101600 ]; then
+        POINTS_ARGS=(-DCMAKE_CUDA_FLAGS=-Dpar_nosync=par)
+    fi
 fi
 
 export MAKEFLAGS="-j$(nproc)"
@@ -94,7 +101,7 @@ fetch glim_ros2 "$GLIM_ROS_REPO" "$GLIM_ROS_REF"
 # Each one needs the one before it installed
 build gtsam -DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF -DGTSAM_BUILD_TESTS=OFF -DGTSAM_WITH_TBB=OFF \
     -DGTSAM_BUILD_WITH_MARCH_NATIVE=OFF -DGTSAM_USE_SYSTEM_EIGEN=ON
-build gtsam_points "${CUDA_ARGS[@]}" -DBUILD_WITH_MARCH_NATIVE=OFF
+build gtsam_points "${CUDA_ARGS[@]}" "${POINTS_ARGS[@]}" -DBUILD_WITH_MARCH_NATIVE=OFF
 # Turn off OpenCV
 build glim "${CUDA_ARGS[@]}" -DBUILD_WITH_VIEWER=OFF -DBUILD_WITH_OPENCV=OFF -DBUILD_WITH_MARCH_NATIVE=OFF
 build glim_ros2 "${CUDA_ARGS[@]}" -DBUILD_WITH_VIEWER=OFF -DBUILD_WITH_CV_BRIDGE=OFF

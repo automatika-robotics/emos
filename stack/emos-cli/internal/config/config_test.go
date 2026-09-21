@@ -22,7 +22,7 @@ func withTempConfig(t *testing.T) string {
 	ConfigDir = filepath.Join(tmp, ".config", "emos")
 	RecipesDir = filepath.Join(tmp, "emos", "recipes")
 	LogsDir = filepath.Join(tmp, "emos", "logs")
-	LicenseFile = filepath.Join(ConfigDir, "license.key")
+	LicenseFile = filepath.Join(ConfigDir, "license.json")
 	ConfigFile = filepath.Join(ConfigDir, "config.json")
 
 	t.Cleanup(func() {
@@ -141,32 +141,6 @@ func TestUpdateConfigSerialisesConcurrentWriters(t *testing.T) {
 	wg.Wait()
 	if got := len(LoadConfig().SensorPlugins); got != writers {
 		t.Errorf("%d of %d concurrent updates survived", got, writers)
-	}
-}
-
-func TestLoadConfigLegacyLicenseMigration(t *testing.T) {
-	withTempConfig(t)
-
-	if err := os.MkdirAll(ConfigDir, 0o700); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
-	}
-	if err := os.WriteFile(LicenseFile, []byte("legacy-key"), 0o600); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-
-	cfg := LoadConfig()
-	if cfg == nil {
-		t.Fatalf("LoadConfig: nil after legacy license migration")
-	}
-	if cfg.Mode != ModeLicensed {
-		t.Fatalf("Mode = %q, want %q", cfg.Mode, ModeLicensed)
-	}
-	if cfg.LicenseKey != "legacy-key" {
-		t.Fatalf("LicenseKey = %q, want %q", cfg.LicenseKey, "legacy-key")
-	}
-	// Migration must persist a config.json so subsequent loads short-circuit.
-	if _, err := os.Stat(ConfigFile); err != nil {
-		t.Fatalf("expected config.json to be written by migration: %v", err)
 	}
 }
 

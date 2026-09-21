@@ -188,8 +188,13 @@ const (
 	// API endpoints
 	APIBaseURL          = "https://support-api.automatikarobotics.com/api"
 	CredentialsEndpoint = APIBaseURL + "/registrations/credentials"
+	VerifyEndpoint      = APIBaseURL + "/registrations/verify"
 	RecipesEndpoint     = APIBaseURL + "/recipes"
 	PluginsEndpoint     = APIBaseURL + "/plugins"
+
+	// SupportURL is the support portal, where a licence is activated and where
+	// its holder gets help.
+	SupportURL = "https://support.automatikarobotics.com"
 )
 
 var (
@@ -211,7 +216,7 @@ func Init() {
 	ConfigDir = filepath.Join(HomeDir, ".config", "emos")
 	RecipesDir = filepath.Join(HomeDir, "emos", "recipes")
 	LogsDir = filepath.Join(HomeDir, "emos", "logs")
-	LicenseFile = filepath.Join(ConfigDir, "license.key")
+	LicenseFile = filepath.Join(ConfigDir, "license.json")
 	ConfigFile = filepath.Join(ConfigDir, "config.json")
 	PixiDir = pixiDataDir()
 	WorkspaceDir = filepath.Join(HomeDir, "emos", "workspace")
@@ -243,29 +248,17 @@ func PublicImageTag(distro string) string {
 	return PublicImage + ":" + distro + "-latest"
 }
 
-// LoadConfig loads the persistent EMOS config. If config.json is missing but
-// license.key exists, it infers licensed mode and migrates.
+// LoadConfig loads the persistent EMOS config, or nil when there is none.
 func LoadConfig() *EMOSConfig {
 	data, err := os.ReadFile(ConfigFile)
-	if err == nil {
-		var cfg EMOSConfig
-		if json.Unmarshal(data, &cfg) == nil {
-			return &cfg
-		}
+	if err != nil {
+		return nil
 	}
-
-	// Backward compat: if license.key exists, infer licensed mode
-	if keyBytes, err := os.ReadFile(LicenseFile); err == nil && len(keyBytes) > 0 {
-		cfg := &EMOSConfig{
-			Mode:       ModeLicensed,
-			LicenseKey: string(keyBytes),
-			ROSDistro:  "jazzy",
-		}
-		SaveConfig(cfg)
-		return cfg
+	var cfg EMOSConfig
+	if json.Unmarshal(data, &cfg) != nil {
+		return nil
 	}
-
-	return nil
+	return &cfg
 }
 
 // SaveConfig persists the EMOS config to disk. Mode 0600 because the file
@@ -273,14 +266,19 @@ func LoadConfig() *EMOSConfig {
 //
 // The file is replaced by rename, so a reader never sees it half-written.
 func SaveConfig(cfg *EMOSConfig) error {
-	if err := os.MkdirAll(ConfigDir, 0700); err != nil {
-		return err
-	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(ConfigDir, "config-*.json") // created 0600
+	return writeAtomic(ConfigFile, data)
+}
+
+// writeAtomic replaces path, a file in ConfigDir, with data. Mode 0600.
+func writeAtomic(path string, data []byte) error {
+	if err := os.MkdirAll(ConfigDir, 0700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(ConfigDir, filepath.Base(path)+"-*") // created 0600
 	if err != nil {
 		return err
 	}
@@ -292,7 +290,7 @@ func SaveConfig(cfg *EMOSConfig) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), ConfigFile)
+	return os.Rename(tmp.Name(), path)
 }
 
 // UpdateConfig applies change to the config as it is on disk now and saves it.

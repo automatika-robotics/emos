@@ -2,14 +2,17 @@ package api
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
 )
@@ -63,6 +66,68 @@ func ValidateLicense(key string) (*Credentials, error) {
 	}
 
 	return &creds, nil
+}
+
+// ErrInvalidLicense is the portal's answer to a key it does not know or has
+// deactivated. It does not say which of the two.
+var ErrInvalidLicense = errors.New("invalid or inactive license key")
+
+// ErrLicenseNotClaimed is the answer for a real key that its holder has not
+// activated on the support portal, which is where the licence agreement is
+// accepted. Such a key is not verified.
+var ErrLicenseNotClaimed = errors.New("this license has not been activated yet: sign in at " + config.SupportURL +
+	", activate it with the robot's serial number and this key, accept the license agreement, then run this again")
+
+// licenseClient bounds the one request that runs before an install starts.
+var licenseClient = &http.Client{Timeout: 20 * time.Second}
+
+// VerifyLicense asks the portal what key entitles its holder to.
+func VerifyLicense(key string) (*config.License, error) {
+	key = strings.TrimSpace(key)
+	body, err := json.Marshal(map[string]string{"license_key": key})
+	if err != nil {
+		return nil, err
+	}
+	resp, err := licenseClient.Post(config.VerifyEndpoint, "application/json", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("could not reach the license server: %w", err)
+	}
+	defer resp.Body.Close()
+	return parseVerifyResponse(resp, key, time.Now().UTC().Truncate(time.Second))
+}
+
+func parseVerifyResponse(resp *http.Response, key string, now time.Time) (*config.License, error) {
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusUnauthorized:
+		return nil, ErrInvalidLicense
+	case http.StatusTooManyRequests:
+		return nil, errors.New("too many license checks from this network, try again in a minute")
+	default:
+		return nil, fmt.Errorf("the license server answered %s", resp.Status)
+	}
+
+	var answer struct {
+		Valid     bool `json:"valid"`
+		IsClaimed bool `json:"is_claimed"`
+		config.License
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&answer); err != nil {
+		return nil, fmt.Errorf("the license server sent an answer that could not be read: %w", err)
+	}
+	if !answer.Valid {
+		return nil, ErrInvalidLicense
+	}
+	if !answer.IsClaimed {
+		return nil, ErrLicenseNotClaimed
+	}
+	if answer.PluginSlug == "" {
+		return nil, errors.New("the license server did not name the robot this license is for")
+	}
+	lic := answer.License
+	lic.Key = key
+	lic.VerifiedAt = now
+	return &lic, nil
 }
 
 func ListRecipes() ([]Recipe, error) {

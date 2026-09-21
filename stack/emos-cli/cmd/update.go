@@ -242,13 +242,8 @@ func updateOSSContainer(cfg *config.EMOSConfig) error {
 func updateLicensed(cfg *config.EMOSConfig) error {
 	licenseKey := cfg.LicenseKey
 	if licenseKey == "" {
-		// Fallback to license file
-		keyBytes, err := os.ReadFile(config.LicenseFile)
-		if err != nil {
-			ui.Error("No license key found.")
-			return fmt.Errorf("no license key")
-		}
-		licenseKey = string(keyBytes)
+		ui.Error("No license key found.")
+		return fmt.Errorf("no license key")
 	}
 
 	fmt.Println("  Checking for EmbodiedOS container updates...")

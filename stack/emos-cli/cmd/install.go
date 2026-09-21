@@ -418,11 +418,6 @@ func installLicensed(licenseKey string) error {
 		}
 	}
 
-	// Save license key
-	if err := os.WriteFile(config.LicenseFile, []byte(licenseKey), 0600); err != nil {
-		ui.Warn("Failed to save license file: " + err.Error())
-	}
-
 	// Create directories
 	os.MkdirAll(filepath.Join(config.HomeDir, "emos", "recipes"), 0755)
 	os.MkdirAll(filepath.Join(config.HomeDir, "emos", "logs"), 0755)

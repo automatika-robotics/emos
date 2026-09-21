@@ -1,10 +1,12 @@
 package api
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 // mkResp builds a minimal *http.Response for parseRecipesResponse to chew on.
@@ -146,5 +148,97 @@ func TestParsePluginsResponse_200NonJSON(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "non-JSON") {
 		t.Errorf("error should mention the non-JSON response; got: %v", err)
+	}
+}
+
+var verifiedAt = time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
+
+const claimedAnswer = `{
+  "valid": true, "plugin_slug": "emos-plugin-lite3", "plugin_name": "DeepRobotics Lite3",
+  "client_name": "ACME Security GmbH", "serial_number": "L3-2026-00417", "tier": "pro",
+  "is_claimed": true, "claimed_at": "2026-09-21T10:42:07.123456Z",
+  "support_months": 6, "support_until": "2027-03-21"
+}`
+
+func TestParseVerifyResponse_ClaimedLicense(t *testing.T) {
+	lic, err := parseVerifyResponse(mkResp(200, "application/json", claimedAnswer), "KEY-1", verifiedAt)
+	if err != nil {
+		t.Fatalf("parseVerifyResponse: %v", err)
+	}
+	if lic.Key != "KEY-1" || !lic.VerifiedAt.Equal(verifiedAt) {
+		t.Errorf("key and verification time come from the caller, got %q at %v", lic.Key, lic.VerifiedAt)
+	}
+	if lic.PluginSlug != "emos-plugin-lite3" || lic.PluginName != "DeepRobotics Lite3" ||
+		lic.ClientName != "ACME Security GmbH" || lic.SerialNumber != "L3-2026-00417" || lic.Tier != "pro" {
+		t.Errorf("licence fields not carried over: %+v", lic)
+	}
+	if lic.ClaimedAt == nil || lic.ClaimedAt.Year() != 2026 {
+		t.Errorf("activation date not carried over: %+v", lic)
+	}
+}
+
+// A key is verified only once its holder has activated it on the support
+// portal: that is where the licence agreement is accepted.
+func TestParseVerifyResponse_UnclaimedKeyIsNotVerified(t *testing.T) {
+	body := `{"valid": true, "plugin_slug": "emos-plugin-m20", "plugin_name": "DeepRobotics M20",
+	  "client_name": "ACME", "serial_number": "M20-7", "tier": "pro", "is_claimed": false,
+	  "claimed_at": null, "support_months": 6, "support_until": null}`
+	lic, err := parseVerifyResponse(mkResp(200, "application/json", body), "KEY-2", verifiedAt)
+	if !errors.Is(err, ErrLicenseNotClaimed) || lic != nil {
+		t.Fatalf("unclaimed key = %+v, %v, want no licence and ErrLicenseNotClaimed", lic, err)
+	}
+	if !strings.Contains(err.Error(), "https://support.automatikarobotics.com") {
+		t.Errorf("the error must say where to activate the licence, got %q", err)
+	}
+	// An answer that leaves is_claimed out counts as unclaimed too.
+	_, err = parseVerifyResponse(mkResp(200, "application/json", `{"valid": true, "plugin_slug": "emos-plugin-m20"}`), "KEY-2", verifiedAt)
+	if !errors.Is(err, ErrLicenseNotClaimed) {
+		t.Errorf("answer without is_claimed = %v, want ErrLicenseNotClaimed", err)
+	}
+}
+
+// A licence issued before tiers existed comes with nulls. It is still a
+// verified licence.
+func TestParseVerifyResponse_ClaimedLicenseWithNulls(t *testing.T) {
+	body := `{"valid": true, "plugin_slug": "emos-plugin-m20", "plugin_name": "DeepRobotics M20",
+	  "client_name": null, "serial_number": "M20-7", "tier": null, "is_claimed": true,
+	  "claimed_at": "2026-09-21T10:42:07Z", "support_months": null, "support_until": null}`
+	lic, err := parseVerifyResponse(mkResp(200, "application/json", body), "KEY-3", verifiedAt)
+	if err != nil {
+		t.Fatalf("parseVerifyResponse: %v", err)
+	}
+	if lic.PluginSlug != "emos-plugin-m20" || lic.ClaimedAt == nil ||
+		lic.ClientName != "" || lic.Tier != "" {
+		t.Errorf("unexpected licence: %+v", lic)
+	}
+}
+
+func TestParseVerifyResponse_RefusedKey(t *testing.T) {
+	_, err := parseVerifyResponse(mkResp(401, "application/json", `{"detail":"Invalid or inactive license key"}`), "K", verifiedAt)
+	if !errors.Is(err, ErrInvalidLicense) {
+		t.Errorf("401 = %v, want ErrInvalidLicense", err)
+	}
+	_, err = parseVerifyResponse(mkResp(200, "application/json", `{"valid": false}`), "K", verifiedAt)
+	if !errors.Is(err, ErrInvalidLicense) {
+		t.Errorf("valid false = %v, want ErrInvalidLicense", err)
+	}
+}
+
+// Anything else is the portal failing to answer, never a verdict on the key.
+func TestParseVerifyResponse_NoAnswerIsNotARefusal(t *testing.T) {
+	for name, resp := range map[string]*http.Response{
+		"rate limited":   mkResp(429, "application/json", `{"error":"Rate limit exceeded: 10 per 1 minute"}`),
+		"server error":   mkResp(502, "text/html", "<html>Bad Gateway</html>"),
+		"not json":       mkResp(200, "text/html", "<html>maintenance</html>"),
+		"no robot named": mkResp(200, "application/json", `{"valid": true, "is_claimed": true}`),
+	} {
+		resp.Status = http.StatusText(resp.StatusCode)
+		lic, err := parseVerifyResponse(resp, "K", verifiedAt)
+		if err == nil || lic != nil {
+			t.Errorf("%s: want an error and no licence, got %+v, %v", name, lic, err)
+		}
+		if errors.Is(err, ErrInvalidLicense) || errors.Is(err, ErrLicenseNotClaimed) {
+			t.Errorf("%s: must not be reported as a verdict on the key: %v", name, err)
+		}
 	}
 }

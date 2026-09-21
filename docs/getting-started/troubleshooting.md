@@ -138,9 +138,9 @@ The config file at `~/.config/emos/config.json` is missing.
 
 ---
 
-## The board resets or powers off while kompass-core is building
+## The board resets or powers off during a pixi install
 
-A pixi install compiles kompass-core on every core at once. On a board with a marginal power supply the sudden load can drop the voltage far enough to reset it, even when it is neither hot nor short of memory.
+A pixi install compiles kompass-core, and then the EMOS packages, on every core at once. On a board with a marginal power supply the sudden load can drop the voltage far enough to reset it, even when it is neither hot nor short of memory.
 
 **Fix:** Cap the number of compile jobs for the install, and for later updates:
 

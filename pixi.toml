@@ -125,11 +125,14 @@ install-mapping-backend = "bash stack/emos-cli/scripts/install_mapping_backend_p
 install-cuda-packages = "bash stack/emos-cli/scripts/install_cuda_packages_pixi.sh"
 
 # Build EMOS ROS packages (sugarcoat, kompass, embodied-agents, kompass_interfaces, emos_mapping)
-build = """colcon build \
+# With EMOS_BUILD_JOBS set, one package at a time with that many compile jobs.
+build = """bash -c '
+if [ -n "$EMOS_BUILD_JOBS" ]; then export MAKEFLAGS="-j$EMOS_BUILD_JOBS"; sequential="--executor sequential"; fi
+colcon build $sequential \
   --merge-install \
   --symlink-install \
   --base-paths stack/sugarcoat stack/kompass stack/embodied-agents stack/emos_mapping \
-  --cmake-args -DCMAKE_BUILD_TYPE=Release"""
+  --cmake-args -DCMAKE_BUILD_TYPE=Release'"""
 
 # Register pixi installation with EMOS CLI config.
 register = """python3 -c "

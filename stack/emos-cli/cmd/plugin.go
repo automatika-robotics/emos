@@ -84,6 +84,7 @@ func runPluginList(cmd *cobra.Command, args []string) error {
 	ui.PrintTable([]string{"PLUGIN", "NAME", "VENDOR", "ROLE", ""}, rows)
 	fmt.Println()
 	ui.Faint("Install with: emos plugin install <plugin>")
+	licenseNudge()
 	return nil
 }
 

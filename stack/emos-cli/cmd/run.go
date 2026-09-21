@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/plugin"
 	"github.com/automatika-robotics/emos-cli/internal/runner"
 	"github.com/automatika-robotics/emos-cli/internal/ui"
@@ -17,7 +16,7 @@ var runCmd = &cobra.Command{
 	Short: "Execute an automation recipe",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ui.Banner(config.Version)
+		banner()
 		if err := refuseWhilePluginsBusy("a recipe"); err != nil {
 			return err
 		}

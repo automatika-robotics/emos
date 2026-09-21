@@ -191,6 +191,9 @@ const (
 	// SupportURL is the support portal, where a licence is activated and where
 	// its holder gets help.
 	SupportURL = "https://support.automatikarobotics.com"
+
+	// SalesEmail is where a licence is asked for.
+	SalesEmail = "contact@automatikarobotics.com"
 )
 
 var (

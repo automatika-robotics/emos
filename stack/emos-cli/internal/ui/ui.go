@@ -39,9 +39,13 @@ const banner = `
 ███████╗██║ ╚═╝ ██║╚██████╔╝███████║
 ╚══════╝╚═╝     ╚═╝ ╚═════╝ ╚══════╝`
 
-func Banner(version string) {
+// Banner prints the logo and the version, and under them any lines given.
+func Banner(version string, lines ...string) {
 	fmt.Println(bannerStyle.Render(banner))
 	fmt.Println(boldBlue.Render(fmt.Sprintf("  EmbodiedOS Management CLI v%s", version)))
+	for _, line := range lines {
+		Faint(line)
+	}
 	fmt.Println()
 }
 

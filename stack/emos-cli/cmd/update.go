@@ -43,7 +43,7 @@ var updateCmd = &cobra.Command{
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {
-	ui.Banner(config.Version)
+	banner()
 
 	// Self-update the CLI binary first
 	updated, err := selfUpdateCLI()

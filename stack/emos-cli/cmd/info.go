@@ -21,7 +21,7 @@ including whether a plugin or a ROS topic provides each one.
 Accepts either a recipe name (looked up in ~/emos/recipes/) or a direct path to a .py file.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ui.Banner(config.Version)
+		banner()
 		return runInfo(args[0])
 	},
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/automatika-robotics/emos-cli/internal/api"
 	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/ui"
+	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 )
 
@@ -55,6 +56,7 @@ func runLicenseShow(cmd *cobra.Command, args []string) error {
 	if lic == nil {
 		ui.Info("There is no license on this machine.")
 		ui.Faint("Activate one with 'emos license activate <key>'.")
+		licenseNudge()
 		return nil
 	}
 	printLicense(lic)
@@ -195,4 +197,44 @@ func printLicense(lic *config.License) {
 	fmt.Fprintf(w, "  Verified:\t%s\n", lic.VerifiedAt.Local().Format("2006-01-02"))
 	fmt.Fprintf(w, "  Support:\t%s\n", config.SupportURL)
 	w.Flush()
+}
+
+// banner prints the CLI banner and, for a licensed install, whose it is.
+func banner() {
+	if lic := config.LoadLicense(); lic != nil {
+		ui.Banner(config.Version, licensedLine(lic))
+		return
+	}
+	ui.Banner(config.Version)
+}
+
+// licensedLine says in one line who a licence belongs to and which robot it is for.
+func licensedLine(lic *config.License) string {
+	if lic.ClientName == "" {
+		return "Licensed for " + licensedRobot(lic)
+	}
+	return "Licensed to " + lic.ClientName + " for " + licensedRobot(lic)
+}
+
+// statusLicense is the licence part of 'emos status'.
+func statusLicense() {
+	fmt.Println()
+	lic := config.LoadLicense()
+	if lic == nil {
+		ui.Info("License: none")
+		licenseNudge()
+		return
+	}
+	ui.Info("License:")
+	printLicense(lic)
+}
+
+// licenseNudge tells someone without a licence what one brings. Only on a
+// terminal, so it never lands in piped output or in a service's log.
+func licenseNudge() {
+	if config.LoadLicense() != nil || !term.IsTerminal(os.Stdout.Fd()) {
+		return
+	}
+	ui.Faint("An EMOS license brings professional support and recipes customised for your robots:")
+	ui.Faint(config.SalesEmail)
 }

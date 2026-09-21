@@ -18,7 +18,7 @@ var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Display EMOS installation status",
 	Run: func(cmd *cobra.Command, args []string) {
-		ui.Banner(config.Version)
+		banner()
 		ui.StatusCard(config.Version)
 		printUpdateAvailable()
 
@@ -27,6 +27,7 @@ var statusCmd = &cobra.Command{
 			fmt.Println()
 			ui.Error("No EMOS installation found.")
 			ui.Faint("Run 'emos install' to get started.")
+			statusLicense()
 			return
 		}
 
@@ -55,6 +56,7 @@ var statusCmd = &cobra.Command{
 		case config.ModePixi:
 			pixiStatus(cfg)
 		}
+		statusLicense()
 	},
 }
 

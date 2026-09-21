@@ -83,7 +83,7 @@ func bindIsLoopback(addr string) bool {
 }
 
 func runServe(cmd *cobra.Command, args []string) {
-	ui.Banner(config.Version)
+	banner()
 
 	addr := resolveBindAddr()
 

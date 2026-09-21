@@ -16,7 +16,7 @@ var rootCmd = &cobra.Command{
 		config.Init()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		ui.Banner(config.Version)
+		banner()
 		cmd.Help()
 	},
 }
@@ -25,7 +25,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Show the current CLI version",
 	Run: func(cmd *cobra.Command, args []string) {
-		ui.Banner(config.Version)
+		banner()
 		ui.StatusCard(config.Version)
 		printUpdateAvailable()
 	},

@@ -39,7 +39,7 @@ func init() {
 }
 
 func runInstall(cmd *cobra.Command, args []string) error {
-	ui.Banner(config.Version)
+	banner()
 
 	install, err := chooseInstall()
 	if err != nil {
@@ -55,6 +55,8 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	}
 	if lic != nil {
 		installLicensedRobot(cmd, lic)
+	} else {
+		licenseNudge()
 	}
 	offerDashboardAutoStart()
 	return nil

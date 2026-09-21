@@ -31,12 +31,10 @@ func runPull(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	os.MkdirAll(destDir, 0755)
-
 	ui.Info("Installing recipe: " + name)
 
 	err := ui.Spinner("Downloading recipe...", func() error {
-		return api.DownloadRecipe(cmd.Context(), name, destDir)
+		return api.DownloadRecipe(cmd.Context(), name, api.GenericVariant, "", config.RecipesDir)
 	})
 	if err != nil {
 		return err

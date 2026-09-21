@@ -242,3 +242,51 @@ func TestParseVerifyResponse_NoAnswerIsNotARefusal(t *testing.T) {
 		}
 	}
 }
+
+func TestParseRecipesResponse_CarriesVariants(t *testing.T) {
+	body := `[{"filename": "vision_follower", "name": "Vision-Based Person Following", "description": "d", "tags": ["vision"],
+	  "variants": [{"id": "generic", "robot": null, "sensors": []},
+	               {"id": "emos-plugin-lite3+emos-plugin-hikvision", "robot": "emos-plugin-lite3", "sensors": ["emos-plugin-hikvision"]}]}]`
+	recipes, err := parseRecipesResponse(mkResp(200, "application/json", body))
+	if err != nil || len(recipes) != 1 || len(recipes[0].Variants) != 2 {
+		t.Fatalf("recipes = %+v, %v", recipes, err)
+	}
+	g, robot := recipes[0].Variants[0], recipes[0].Variants[1]
+	if g.ID != GenericVariant || g.Robot != "" || len(g.Sensors) != 0 {
+		t.Errorf("generic variant = %+v", g)
+	}
+	if robot.Robot != "emos-plugin-lite3" || len(robot.Sensors) != 1 || robot.Sensors[0] != "emos-plugin-hikvision" {
+		t.Errorf("robot variant = %+v", robot)
+	}
+}
+
+func TestRecipeURLKeepsThePlusOfAVariantID(t *testing.T) {
+	got := recipeURL("vision_follower", "emos-plugin-lite3+emos-plugin-hikvision")
+	if !strings.HasSuffix(got, "/recipes/vision_follower/emos-plugin-lite3+emos-plugin-hikvision") {
+		t.Errorf("recipeURL = %q", got)
+	}
+}
+
+func TestCheckRecipeResponseTellsTheRefusalsApart(t *testing.T) {
+	if err := checkRecipeResponse(mkResp(200, "application/zip", "PK")); err != nil {
+		t.Errorf("200 = %v", err)
+	}
+	if err := checkRecipeResponse(mkResp(401, "application/json", `{"detail":"Invalid or inactive license key"}`)); !errors.Is(err, ErrInvalidLicense) {
+		t.Errorf("401 = %v, want ErrInvalidLicense", err)
+	}
+	if err := checkRecipeResponse(mkResp(404, "application/json", `{"detail":"Recipe not found"}`)); !errors.Is(err, ErrNoSuchRecipe) {
+		t.Errorf("404 = %v, want ErrNoSuchRecipe", err)
+	}
+	// The portal's own words reach the operator
+	err := checkRecipeResponse(mkResp(403, "application/json", `{"detail":"This license is for the DeepRobotics M20, not the DeepRobotics Lite3"}`))
+	var refused *RecipeRefusedError
+	if !errors.As(err, &refused) || !strings.Contains(refused.Reason, "DeepRobotics M20") {
+		t.Errorf("403 = %v, want the portal's reason", err)
+	}
+	if err := checkRecipeResponse(mkResp(403, "text/html", "<html>")); !errors.As(err, &refused) {
+		t.Errorf("403 without a body = %v, want a RecipeRefusedError", err)
+	}
+	if err := checkRecipeResponse(mkResp(500, "text/html", "")); err == nil {
+		t.Error("500 must be an error")
+	}
+}

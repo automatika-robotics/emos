@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,9 +19,32 @@ import (
 )
 
 type Recipe struct {
-	Filename string `json:"filename"`
-	Name     string `json:"name"`
+	Filename    string          `json:"filename"` // the name a recipe is pulled and run by
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Tags        []string        `json:"tags"`
+	Variants    []RecipeVariant `json:"variants"`
 }
+
+// RecipeVariant is one version of a recipe: the generic one, which runs on any
+// robot, or one written for a robot plugin and the sensor plugins it names.
+type RecipeVariant struct {
+	ID      string   `json:"id"`      // opaque, only for the download URL
+	Robot   string   `json:"robot"`   // robot plugin slug, empty for the generic variant
+	Sensors []string `json:"sensors"` // sensor plugin slugs the variant needs
+}
+
+// GenericVariant is the id of the variant that needs no license.
+const GenericVariant = "generic"
+
+// ErrNoSuchRecipe is the portal's answer for a recipe or a variant it does not have.
+var ErrNoSuchRecipe = errors.New("the portal has no such recipe")
+
+// RecipeRefusedError is why the portal will not give a robot variant to the
+// license it was asked with, in the portal's words.
+type RecipeRefusedError struct{ Reason string }
+
+func (e *RecipeRefusedError) Error() string { return e.Reason }
 
 // ErrInvalidLicense is the portal's answer to a key it does not know or has
 // deactivated. It does not say which of the two.
@@ -166,25 +190,28 @@ func parsePluginsResponse(resp *http.Response) ([]Plugin, error) {
 	return plugins, nil
 }
 
-// WARN: DownloadRecipe fetches the recipe archive from the catalog and extracts it
-// into <destDir>/<name>/. The upstream archive layout is inconsistent:
-// Normalise both shapes to <destDir>/<name>/{manifest.json, recipe.py, ...}
-// because that is the layout `emos run` expects.
+// DownloadRecipe fetches one variant of a recipe and unpacks it to
+// <recipesDir>/<name>, replacing what is there. A robot variant needs the
+// license key; the generic one takes none.
+//
+// WARN: The upstream archive layout is inconsistent. Both shapes are normalised
+// to <recipesDir>/<name>/{manifest.json, recipe.py, ...}, the layout `emos run` expects.
 // TODO: Make upstream layout consistent
-func DownloadRecipe(ctx context.Context, name, destDir string) error {
-	url := config.RecipesEndpoint + "/" + name
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+func DownloadRecipe(ctx context.Context, name, variant, licenseKey, recipesDir string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, recipeURL(name, variant), nil)
 	if err != nil {
 		return fmt.Errorf("build recipe request: %w", err)
+	}
+	if licenseKey != "" {
+		req.Header.Set("X-EMOS-License", licenseKey)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("could not download recipe: %w", err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download failed with status %d", resp.StatusCode)
+	if err := checkRecipeResponse(resp); err != nil {
+		return err
 	}
 
 	// Use a per-call randomised tempfile so concurrent pulls of the same
@@ -194,27 +221,49 @@ func DownloadRecipe(ctx context.Context, name, destDir string) error {
 		return err
 	}
 	zipPath := f.Name()
+	defer os.Remove(zipPath)
 	written, err := io.Copy(f, resp.Body)
+	f.Close()
 	if err != nil {
-		f.Close()
-		os.Remove(zipPath)
 		return fmt.Errorf("could not save recipe archive: %w", err)
 	}
-	f.Close()
 	if written < 4 {
-		os.Remove(zipPath)
 		return fmt.Errorf("recipe archive is empty (%d bytes)", written)
 	}
 
-	target := filepath.Join(destDir, name)
+	target := filepath.Join(recipesDir, name)
 	_ = os.RemoveAll(target)
 	if err := unzipRecipeArchive(zipPath, target); err != nil {
-		os.Remove(zipPath)
 		return fmt.Errorf("failed to extract recipe: %w", err)
 	}
-
-	os.Remove(zipPath)
 	return nil
+}
+
+func recipeURL(name, variant string) string {
+	return config.RecipesEndpoint + "/" + url.PathEscape(name) + "/" + url.PathEscape(variant)
+}
+
+// checkRecipeResponse turns the portal's refusals into errors a caller can tell apart.
+func checkRecipeResponse(resp *http.Response) error {
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return nil
+	case http.StatusUnauthorized:
+		return ErrInvalidLicense
+	case http.StatusNotFound:
+		return ErrNoSuchRecipe
+	case http.StatusForbidden:
+		var body struct {
+			Detail string `json:"detail"`
+		}
+		if json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&body) == nil && body.Detail != "" {
+			return &RecipeRefusedError{Reason: body.Detail}
+		}
+		return &RecipeRefusedError{Reason: "the portal refused this license for the recipe"}
+	case http.StatusTooManyRequests:
+		return errors.New("too many recipe downloads from this network, try again in a minute")
+	}
+	return fmt.Errorf("download failed with status %d", resp.StatusCode)
 }
 
 // unzipRecipeArchive extracts a recipe zip into destDir//

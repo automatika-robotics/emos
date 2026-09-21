@@ -178,7 +178,7 @@ func (s *Server) handleRecipePull(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		job.Update(JobStatusRunning, 0.20, "downloading recipe archive")
-		if err := api.DownloadRecipe(ctx, name, config.RecipesDir); err != nil {
+		if err := api.DownloadRecipe(ctx, name, api.GenericVariant, "", config.RecipesDir); err != nil {
 			if ctx.Err() != nil {
 				job.Update(JobStatusFailed, 0, "cancelled")
 				return

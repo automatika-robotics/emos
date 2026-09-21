@@ -56,6 +56,7 @@ func (s *Server) buildRouter() http.Handler {
 			r.Post("/auth/sse-ticket", s.handleAuthSSETicket)
 
 			r.Get("/robot", s.handleRobot)
+			r.Get("/license", s.handleLicense)
 
 			r.Get("/recipes/local", s.handleRecipesLocal)
 			r.Get("/recipes/remote", s.handleRecipesRemote)

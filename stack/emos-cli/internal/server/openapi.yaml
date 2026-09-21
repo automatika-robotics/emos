@@ -109,6 +109,19 @@ paths:
           description: identity
         "404":
           description: not_found
+  /license:
+    get:
+      summary: The license kept on this machine, without its key. Always offline-OK.
+      description: |
+        Read from the machine, never from the support portal. `licensed` is false
+        for an install without a license, which then carries `sales_email`.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/License"
   /recipes/local:
     get:
       summary: Recipes installed under ~/emos/recipes/. Always offline-OK.
@@ -361,6 +374,20 @@ components:
           additionalProperties: true
           description: The plugin's cached describe() tree (metadata, feedbacks, commands, actions, events, role).
         installed_at: { type: string, format: date-time }
+    License:
+      type: object
+      required: [licensed]
+      properties:
+        licensed: { type: boolean }
+        holder: { type: string, description: Who the license was issued to. }
+        robot: { type: string, description: The robot the license is for. }
+        plugin_slug: { type: string, description: That robot's plugin in the catalog. }
+        tier: { type: string, enum: [expert, pro, enterprise] }
+        serial_number: { type: string }
+        activated_at: { type: string, format: date-time, description: When it was activated on the support portal. }
+        verified_at: { type: string, format: date-time, description: When this machine last verified it. }
+        support_url: { type: string, description: Where a license holder gets help. }
+        sales_email: { type: string, description: Where a license is asked for. Only without one. }
     APIError:
       type: object
       required: [code, message]

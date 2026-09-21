@@ -7,6 +7,7 @@
   import { confirm as confirmDialog } from '$lib/dialog';
   import { onMount } from 'svelte';
   import HardwareCard from '$components/HardwareCard.svelte';
+  import LicenseCard from '$components/LicenseCard.svelte';
 
   const info = useInfo();
   const caps = useCapabilities();
@@ -93,7 +94,7 @@
   {:else}
     <div class="surface p-5 text-sm text-emos-text-3">
       No robot identity is exposed by this device. Generic dashboard.
-      Install a robot plugin, or a licensed deployment will populate this automatically.
+      Install a robot plugin to populate this.
     </div>
   {/if}
 
@@ -185,6 +186,8 @@
       </p>
     </div>
   </div>
+
+  <LicenseCard />
 
   <div class="surface p-5 space-y-3">
     <div class="text-xs uppercase tracking-wider text-emos-text-3">This browser</div>

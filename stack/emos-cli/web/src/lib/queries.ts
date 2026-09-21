@@ -12,6 +12,7 @@ export const keys = {
   connectivity: ['connectivity'] as const,
   authMe: ['authMe'] as const,
   robot: ['robot'] as const,
+  license: ['license'] as const,
   recipesLocal: ['recipes', 'local'] as const,
   recipesRemote: ['recipes', 'remote'] as const,
   recipeDetail: (name: string) => ['recipes', 'detail', name] as const,
@@ -53,6 +54,10 @@ export const useRobot = () =>
     },
     staleTime: 60_000,
   });
+
+// Refetched now and then, so a license activated from the CLI shows up.
+export const useLicense = () =>
+  createQuery({ queryKey: keys.license, queryFn: api.license, refetchInterval: 60_000, staleTime: 30_000 });
 
 export const useRecipesLocal = () =>
   createQuery({ queryKey: keys.recipesLocal, queryFn: api.recipesLocal, staleTime: 5000 });

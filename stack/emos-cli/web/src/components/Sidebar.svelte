@@ -1,10 +1,11 @@
 <script lang="ts">
   import { link, path as route } from '$lib/router';
-  import { LayoutDashboard, BookMarked, Plug, Activity, Cpu, BookOpen, ExternalLink } from 'lucide-svelte';
+  import { LayoutDashboard, BookMarked, Plug, Activity, Cpu, BookOpen, ExternalLink, LifeBuoy, BadgeCheck } from 'lucide-svelte';
   import Logo from './Logo.svelte';
-  import { useInfo } from '$lib/queries';
+  import { useInfo, useLicense } from '$lib/queries';
 
   const info = useInfo();
+  const license = useLicense();
 
   const items = [
     { href: '/', label: 'Console', icon: LayoutDashboard },
@@ -44,8 +45,20 @@
     {/each}
   </nav>
 
-  <!-- Footer: docs + community -->
+  <!-- Footer: support or a way to a license, docs, community -->
   <div class="mt-auto pt-3 border-t border-emos-line/40 flex flex-col gap-1">
+    {#if $license.data?.licensed}
+      <a href={$license.data.support_url} target="_blank" rel="noreferrer" title="Get support" class="footer-link">
+        <LifeBuoy size={14} class="opacity-80" />
+        <span class="hidden md:inline">Support</span>
+        <ExternalLink size={10} class="hidden md:inline ml-auto opacity-50" />
+      </a>
+    {:else if $license.data}
+      <a use:link href="/system" title="Get a license" class="footer-link">
+        <BadgeCheck size={14} class="opacity-80" />
+        <span class="hidden md:inline">Get a license</span>
+      </a>
+    {/if}
     <a
       href="https://emos.automatikarobotics.com"
       target="_blank"

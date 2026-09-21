@@ -48,6 +48,20 @@ export interface Info {
   update_available?: boolean;
 }
 
+// The license stored on the robot. The key is never sent.
+export interface License {
+  licensed: boolean;
+  holder?: string;
+  robot?: string;
+  plugin_slug?: string;
+  tier?: string;
+  serial_number?: string;
+  activated_at?: string;
+  verified_at?: string;
+  support_url?: string;   // licensed installs
+  sales_email?: string;   // unlicensed installs
+}
+
 export interface Capabilities {
   can_run_recipes: boolean;
   can_pull_recipes: boolean;
@@ -216,6 +230,7 @@ export const api = {
   health: () => request<{ status: string; version: string; uptime: string }>('/health'),
   info: () => request<Info>('/info'),
   capabilities: () => request<Capabilities>('/capabilities'),
+  license: () => request<License>('/license'),
   connectivity: (refresh = false) =>
     request<Connectivity>(refresh ? '/connectivity?refresh=1' : '/connectivity'),
 

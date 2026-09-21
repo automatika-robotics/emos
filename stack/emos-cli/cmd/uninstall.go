@@ -119,7 +119,7 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		ui.Faint("Preserved ~/emos/recipes and ~/emos/logs (--keep-data).")
 	}
 	if !uninstallKeepConfig {
-		removePathQuiet("config", config.ConfigDir)
+		removeConfig()
 	} else {
 		ui.Faint("Preserved ~/.config/emos (--keep-config).")
 	}
@@ -189,7 +189,11 @@ func printRemovalPlan(cfg *config.EMOSConfig) {
 		ui.Faint("  - " + config.LogsDir)
 	}
 	if !uninstallKeepConfig {
-		ui.Faint("  - " + config.ConfigDir)
+		if config.LoadLicense() != nil {
+			ui.Faint("  - " + config.ConfigDir + ", except the license")
+		} else {
+			ui.Faint("  - " + config.ConfigDir)
+		}
 	}
 	fmt.Println()
 }
@@ -310,6 +314,16 @@ func existsUnitFile(name string) bool {
 // removePathQuiet rm -rf's a path with a one-line user-facing log. Errors are
 // surfaced as warnings; missing paths are silent (uninstall is idempotent).
 // Paths flagged by safeToDelete are skipped with a warning.
+// removeConfig deletes the config directory. The licence outlives the install
+// it came with, so it is put back.
+func removeConfig() {
+	lic := config.LoadLicense()
+	removePathQuiet("config", config.ConfigDir)
+	if lic != nil && config.SaveLicense(lic) == nil {
+		ui.Faint("Kept the license in " + config.LicenseFile + " ('emos license remove' deletes it).")
+	}
+}
+
 func removePathQuiet(label, path string) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return

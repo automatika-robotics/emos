@@ -47,5 +47,6 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(mapCmd)
 	rootCmd.AddCommand(pluginCmd)
+	rootCmd.AddCommand(licenseCmd)
 	// serveCmd registers in init() within serve.go
 }

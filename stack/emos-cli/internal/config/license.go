@@ -42,3 +42,11 @@ func SaveLicense(lic *License) error {
 	}
 	return writeAtomic(LicenseFile, data)
 }
+
+// RemoveLicense deletes the saved licence. There being none is not an error.
+func RemoveLicense() error {
+	if err := os.Remove(LicenseFile); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}

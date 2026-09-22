@@ -41,7 +41,7 @@ func resolveDeps(cfg *config.EMOSConfig, manifest *Manifest, srcRoot string, out
 	case config.ModePixi:
 		return resolveDepsPixi(cfg, deps, out)
 	case config.ModeNative:
-		return resolveDepsNative(cfg, srcRoot, deps, out)
+		return resolveDepsNative(cfg, srcRoot, out)
 	case config.ModeOSSContainer:
 		if depsEmpty(deps) {
 			return nil
@@ -81,15 +81,12 @@ func resolveDepsPixi(cfg *config.EMOSConfig, deps Deps, out io.Writer) error {
 
 // resolveDepsNative lets rosdep resolve everything under the workspace to apt.
 // Reads package.xml directly.
-func resolveDepsNative(cfg *config.EMOSConfig, srcRoot string, deps Deps, out io.Writer) error {
-	shell := fmt.Sprintf(
-		"source %s && rosdep install --from-paths %s --ignore-src -y --rosdistro %s --skip-keys %s",
-		quote(rosSetup(cfg.ROSDistro)), quote(srcRoot), quote(cfg.ROSDistro),
-		quote(strings.Join(stackPackages, " ")))
+func resolveDepsNative(cfg *config.EMOSConfig, srcRoot string, out io.Writer) error {
+	rosdep := fmt.Sprintf("rosdep install --from-paths %s --ignore-src -r -y --rosdistro %s --skip-keys %s",
+		quote(srcRoot), quote(cfg.ROSDistro), quote(strings.Join(stackPackages, " ")))
+	shell := "source " + quote(rosSetup(cfg.ROSDistro)) + " && " + rosdep
 	if err := runStreaming("bash", []string{"-c", shell}, "", out); err != nil {
-		fmt.Fprintln(out, "rosdep could not resolve every dependency (something may not be "+
-			"apt-packaged). Install these manually:")
-		printDriverInstructions(cfg, deps, out)
+		fmt.Fprintln(out, "rosdep could not install every dependency (see above). Once the cause is fixed, run:\n  "+rosdep)
 	}
 	return nil
 }

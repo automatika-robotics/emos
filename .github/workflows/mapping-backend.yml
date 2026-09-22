@@ -1,0 +1,63 @@
+name: Mapping Backend Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pixi.toml"
+      - "stack/emos-cli/scripts/install_mapping_backend_pixi.sh"
+      - "stack/emos_mapping/**"
+  pull_request:
+    paths:
+      - "pixi.toml"
+      - "stack/emos-cli/scripts/install_mapping_backend_pixi.sh"
+      - "stack/emos_mapping/**"
+  schedule:
+    - cron: "0 5 * * 1" # Weekly, Monday 5 AM UTC
+  workflow_dispatch:
+    inputs: {}
+
+permissions:
+  contents: read
+
+jobs:
+  mapping-backend:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+
+    runs-on: ${{ matrix.os }}
+    name: Mapping Backend / ${{ matrix.os }}
+
+    env:
+      SKBUILD_STRICT_CONFIG: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+
+      - name: Install dependencies
+        run: pixi install
+
+      # 'emos map setup' adds the ROS packages the backend needs first
+      - name: Add the backend's ROS packages
+        run: pixi add --platform ${{ matrix.os == 'ubuntu-24.04-arm' && 'linux-aarch64' || 'linux-64' }} ros-jazzy-image-transport
+
+      - name: Build EMOS packages
+        run: pixi run build
+
+      - name: Build the mapping backend
+        run: pixi run install-mapping-backend
+
+      - name: Verify the backend
+        run: |
+          pixi run bash -c "source install/setup.sh && ros2 pkg prefix glim_ros && python3 -c '
+          from emos_mapping import backend
+          print(\"backend version:\", backend.backend_version(), \"| cuda:\", backend.backend_has_cuda())
+          assert backend.backend_version(), \"GLIM not found in the environment\"
+          '"

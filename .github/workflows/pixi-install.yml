@@ -26,6 +26,8 @@ on:
       - "stack/kompass"
       - "stack/kompass/**"
       - "stack/emos_mapping/**"
+  schedule:
+    - cron: "0 4 * * *" # Daily at 4 AM UTC, after the Docker nightly
   workflow_dispatch:
     inputs: {}
 
@@ -37,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, ubuntu-24.04]
+        os: [ubuntu-22.04, ubuntu-24.04, ubuntu-24.04-arm]
 
     runs-on: ${{ matrix.os }}
     name: Pixi Install / ${{ matrix.os }}
@@ -57,22 +59,29 @@ jobs:
       - name: Install dependencies
         run: pixi install
 
+      - name: Install kompass-core
+        run: pixi run install-kompass-core
+
       - name: Build EMOS packages
         run: pixi run build
-
-      - name: Install kompass-core (CPU only, for import verification)
-        run: pixi run pip install kompass-core
 
       - name: Verify Python imports
         run: |
           pixi run bash -c "source install/setup.sh && python3 -c '
-          import ros_sugar; import agents; import kompass
+          import ros_sugar; import agents; import kompass; import kompass_core; import kompass_cpp
+          import emos_mapping
+          print(\"kompass-core accelerators:\", kompass_cpp.get_available_accelerators().split())
           print(\"All EMOS imports: OK\")
           '"
 
       - name: Verify ROS packages
         run: |
-          pixi run bash -c "source install/setup.sh && ros2 pkg list" | grep -E "automatika_ros_sugar|automatika_embodied_agents|kompass"
+          pixi run bash -c "source install/setup.sh && ros2 pkg list" | grep -E "automatika_ros_sugar|automatika_embodied_agents|kompass|emos_mapping"
 
       - name: Verify ROS 2 tools
         run: pixi run ros2 --help
+
+      # NOTE: Remove launch testing (ROS pytest9 and launch_testing plugin pytest7 mismatch)
+      - name: Test emos_mapping
+        working-directory: stack/emos_mapping
+        run: pixi run --manifest-path ../../pixi.toml bash -c "source ../../install/setup.sh && python3 -m pytest test -q -p no:launch_testing -p no:launch_ros"

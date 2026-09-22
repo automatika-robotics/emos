@@ -228,9 +228,9 @@ func uninstallNativeMode(cfg *config.EMOSConfig) {
 	ui.Warn("EMOS package files in " + rosPath + " cannot be cleanly uninstalled --")
 	ui.Warn("colcon merge-install co-mingles them with ROS itself.")
 	ui.Faint("To remove them manually (review carefully before running):")
-	ui.Faint("  sudo rm -rf " + rosPath + "/share/{automatika_ros_sugar,automatika_embodied_agents,kompass,kompass_interfaces}")
-	ui.Faint("  sudo rm -rf " + rosPath + "/lib/python*/site-packages/{agents,kompass,ros_sugar,kompass_interfaces}")
-	ui.Faint("  sudo rm -rf " + rosPath + "/lib/{kompass,kompass_interfaces}")
+	ui.Faint("  sudo rm -rf " + rosPath + "/share/{automatika_ros_sugar,automatika_embodied_agents,kompass,kompass_interfaces,emos_mapping}")
+	ui.Faint("  sudo rm -rf " + rosPath + "/lib/python*/site-packages/{agents,kompass,ros_sugar,kompass_interfaces,emos_mapping}")
+	ui.Faint("  sudo rm -rf " + rosPath + "/lib/{kompass,kompass_interfaces,emos_mapping}")
 	ui.Faint("  sudo rm -rf " + rosPath + "/include/{kompass,kompass_interfaces}")
 }
 

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/automatika-robotics/emos-cli/internal/config"
 	"time"
 )
 
@@ -114,5 +116,26 @@ func TestWaitForRecipeKillsOnTheSecondSignal(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the recipe ignoring the interrupt was not killed")
+	}
+}
+
+func TestWrongRobotNamesTheRobotARecipeWasMadeFor(t *testing.T) {
+	lite3 := &config.EMOSConfig{Plugin: &config.PluginInfo{Slug: "emos-plugin-lite3"}}
+	generic, forLite3, forM20 := &recipeManifest{}, &recipeManifest{}, &recipeManifest{}
+	forLite3.Variant.Robot = "emos-plugin-lite3"
+	forM20.Variant.Robot = "emos-plugin-m20"
+
+	if got := generic.WrongRobot(lite3); got != "" {
+		t.Errorf("a generic recipe is for every robot, got %q", got)
+	}
+	if got := forLite3.WrongRobot(lite3); got != "" {
+		t.Errorf("the recipe's robot is the installed one, got %q", got)
+	}
+	if got := forM20.WrongRobot(lite3); got != "emos-plugin-m20" {
+		t.Errorf("a recipe for another robot = %q, want its plugin", got)
+	}
+	// No robot plugin installed at all
+	if got := forM20.WrongRobot(&config.EMOSConfig{}); got != "emos-plugin-m20" {
+		t.Errorf("no robot installed = %q, want the recipe's plugin", got)
 	}
 }

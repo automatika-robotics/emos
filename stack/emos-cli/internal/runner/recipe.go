@@ -22,6 +22,22 @@ const (
 
 type recipeManifest struct {
 	ZenohRouterConfig string `json:"zenoh_router_config_file"`
+	// The version of the recipe that was installed, from the portal
+	Variant struct {
+		ID      string   `json:"id"`
+		Robot   string   `json:"robot"`
+		Sensors []string `json:"sensors"`
+	} `json:"variant"`
+}
+
+// WrongRobot is the robot plugin a recipe was made for, when it is not the one
+// installed. Empty for a generic recipe or a matching one.
+func (m *recipeManifest) WrongRobot(cfg *config.EMOSConfig) string {
+	robot := m.Variant.Robot
+	if robot == "" || (cfg != nil && cfg.Plugin != nil && cfg.Plugin.Slug == robot) {
+		return ""
+	}
+	return robot
 }
 
 // LoadManifest reads a recipe manifest file. Always returns a non-nil pointer
@@ -88,6 +104,10 @@ func RunRecipe(recipeName, rmwImpl string) error {
 	cfg := config.LoadConfig()
 	if !cfg.IsInstalled() {
 		return errNotInstalled
+	}
+	if robot := manifest.WrongRobot(cfg); robot != "" {
+		ui.Warn("This recipe was installed for the " + cfg.PluginLabel(robot) + ", which is not the robot installed now.")
+		ui.Faint("'emos pull " + recipeName + "' installs the version for this robot.")
 	}
 
 	logFile := LogFilePath(recipeName)

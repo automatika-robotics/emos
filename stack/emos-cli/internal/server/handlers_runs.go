@@ -134,6 +134,9 @@ func (s *Server) runRecipeAsync(run *Run, recipeDir string, body startRunBody) {
 
 	step("preparing run: recipe=%s, rmw=%s", run.Recipe, runner.RMWLabel(body.RMW))
 	manifest := runner.LoadManifest(filepath.Join(recipeDir, "manifest.json"))
+	if robot := manifest.WrongRobot(s.cfg); robot != "" {
+		step("warning: this recipe was installed for the %s, not the robot installed now; pull it again for this robot", s.cfg.PluginLabel(robot))
+	}
 	session, err := runner.Prepare(s.cfg, body.RMW, manifest, checkpoint)
 	if err != nil {
 		fail(err)

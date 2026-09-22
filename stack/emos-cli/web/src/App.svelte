@@ -18,11 +18,13 @@
   import RunDetail from '$routes/RunDetail.svelte';
   import System from '$routes/System.svelte';
   import Pair from '$routes/Pair.svelte';
+  import CatalogRecipe from '$routes/CatalogRecipe.svelte';
 
   const routes: Record<string, Component<any>> = {
     '/': Dashboard,
     '/recipes': Recipes,
     '/recipes/:name': RecipeDetail,
+    '/catalog/:name': CatalogRecipe,
     '/plugins': Plugins,
     '/runs': Runs,
     '/runs/:id': RunDetail,

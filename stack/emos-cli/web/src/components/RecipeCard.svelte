@@ -106,6 +106,7 @@
       <button class="btn btn-primary" onclick={onPull} disabled={busy}>
         <Download size={14} /> Get
       </button>
+      <a class="btn btn-ghost" use:link href={'/catalog/' + encodeURIComponent(recipe.name)}>Details</a>
     {:else if state === 'pulling'}
       <button class="btn btn-ghost" disabled><Loader2 size={14} class="animate-spin" /> downloading</button>
     {/if}

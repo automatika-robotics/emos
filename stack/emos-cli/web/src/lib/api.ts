@@ -142,6 +142,7 @@ export interface LocalRecipe {
   name: string;
   display_name?: string;
   description?: string;
+  version?: string;      // the installed version: generic, Lite3, Lite3 + HIKMICRO
   path: string;
   has_recipe_py: boolean;
   manifest?: Record<string, unknown>;
@@ -150,6 +151,10 @@ export interface LocalRecipe {
 export interface RemoteRecipe {
   name: string;          // slug — used for /pull and /run
   display_name?: string; // human-readable label
+  description?: string;
+  tags?: string[];
+  version: string;       // the version this robot gets: generic, Lite3, Lite3 + HIKMICRO
+  unlicensed?: string;   // the robot a version is made for, offered with a license
 }
 
 export interface ExtractedTopic {

@@ -24,6 +24,7 @@ type LocalRecipe struct {
 	Name         string                  `json:"name"`
 	DisplayName  string                  `json:"display_name,omitempty"`
 	Description  string                  `json:"description,omitempty"`
+	Version      string                  `json:"version,omitempty"` // the installed variant
 	Path         string                  `json:"path"`
 	HasRecipePy  bool                    `json:"has_recipe_py"`
 	Manifest     map[string]any          `json:"manifest,omitempty"`
@@ -76,14 +77,44 @@ func readLocalRecipe(name string) LocalRecipe {
 				rec.Description = v
 			}
 		}
+		var variant struct {
+			Variant api.RecipeVariant `json:"variant"`
+		}
+		if json.Unmarshal(data, &variant) == nil && variant.Variant.ID != "" {
+			rec.Version = api.VariantLabel(variant.Variant, config.LoadConfig())
+		}
 	}
 	return rec
 }
 
 // CatalogRecipe is the wire shape for /recipes/remote
 type CatalogRecipe struct {
-	Name        string `json:"name"`
-	DisplayName string `json:"display_name"`
+	Name        string   `json:"name"`
+	DisplayName string   `json:"display_name"`
+	Description string   `json:"description,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	Version     string   `json:"version"` // variant
+	// The robot a version of this recipe is made for, when the generic one
+	// is what the machine gets without a license
+	Unlicensed string `json:"unlicensed,omitempty"`
+}
+
+// catalogFor lists the recipes cfg's robot can use, as /recipes/remote shows them.
+func catalogFor(recipes []api.Recipe, cfg *config.EMOSConfig, lic *config.License) []CatalogRecipe {
+	out := make([]CatalogRecipe, 0, len(recipes))
+	for _, r := range recipes {
+		choice, err := api.ChooseVariantFor(r, cfg, lic)
+		if err != nil {
+			continue
+		}
+		entry := CatalogRecipe{Name: r.Filename, DisplayName: r.Name, Description: r.Description, Tags: r.Tags,
+			Version: api.VariantLabel(choice.Variant, cfg)}
+		if choice.Unlicensed != "" && lic == nil {
+			entry.Unlicensed = cfg.PluginLabel(choice.Unlicensed)
+		}
+		out = append(out, entry)
+	}
+	return out
 }
 
 // handleRecipesRemote proxies the Automatika catalog. Returns 503 with
@@ -104,11 +135,7 @@ func (s *Server) handleRecipesRemote(w http.ResponseWriter, r *http.Request) {
 			map[string]any{"error": err.Error()})
 		return
 	}
-	out := make([]CatalogRecipe, 0, len(upstream))
-	for _, r := range upstream {
-		out = append(out, CatalogRecipe{Name: r.Filename, DisplayName: r.Name})
-	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, http.StatusOK, catalogFor(upstream, config.LoadConfig(), config.LoadLicense()))
 }
 
 // handleRecipeDetail returns recipe metadata + extracted topics.
@@ -177,8 +204,14 @@ func (s *Server) handleRecipePull(w http.ResponseWriter, r *http.Request) {
 			s.conn.Invalidate()
 			return
 		}
-		job.Update(JobStatusRunning, 0.20, "downloading recipe archive")
-		if err := api.DownloadRecipe(ctx, name, api.GenericVariant, "", config.RecipesDir); err != nil {
+		job.Update(JobStatusRunning, 0.10, "looking up the recipe in the catalog")
+		pull, err := pullVariant(name)
+		if err != nil {
+			job.Update(JobStatusFailed, 0, err.Error())
+			return
+		}
+		job.Update(JobStatusRunning, 0.20, "downloading the "+pull.version+" version")
+		if err := api.DownloadRecipe(ctx, name, pull.variant, pull.key, config.RecipesDir); err != nil {
 			if ctx.Err() != nil {
 				job.Update(JobStatusFailed, 0, "cancelled")
 				return
@@ -187,9 +220,41 @@ func (s *Server) handleRecipePull(w http.ResponseWriter, r *http.Request) {
 			s.conn.Invalidate()
 			return
 		}
-		job.Update(JobStatusFinished, 1.0, "installed")
+		job.Update(JobStatusFinished, 1.0, "installed the "+pull.version+" version")
 	}()
 	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": id})
+}
+
+// recipePull is what a pull of a recipe downloads.
+type recipePull struct {
+	variant, version, key string
+}
+
+// pullVariant settles what the recipe name comes as on this machine.
+func pullVariant(name string) (recipePull, error) {
+	recipes, err := api.ListRecipes()
+	if err != nil {
+		return recipePull{}, err
+	}
+	for _, r := range recipes {
+		if r.Filename != name {
+			continue
+		}
+		return choosePull(r, config.LoadConfig(), config.LoadLicense())
+	}
+	return recipePull{}, api.ErrNoSuchRecipe
+}
+
+func choosePull(r api.Recipe, cfg *config.EMOSConfig, lic *config.License) (recipePull, error) {
+	choice, err := api.ChooseVariantFor(r, cfg, lic)
+	if err != nil {
+		return recipePull{}, err
+	}
+	pull := recipePull{variant: choice.Variant.ID, version: api.VariantLabel(choice.Variant, cfg)}
+	if choice.Variant.ID != api.GenericVariant {
+		pull.key = lic.Key
+	}
+	return pull, nil
 }
 
 // safeRecipeDir resolves <RecipesDir>/<name> and ensures the result lies

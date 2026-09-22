@@ -125,15 +125,31 @@ paths:
   /recipes/local:
     get:
       summary: Recipes installed under ~/emos/recipes/. Always offline-OK.
+      description: |
+        Each entry carries `version`, the installed variant as the operator
+        sees it, when the recipe's manifest records one.
       responses:
         "200":
           description: ok
   /recipes/remote:
     get:
-      summary: Catalog of recipes from the Automatika API. Requires internet.
+      summary: Catalog of recipes this robot can use, from the Automatika API. Requires internet.
+      description: |
+        A recipe comes in a generic version and in versions made for a robot
+        plugin. Each entry carries the `version` this machine would get, chosen
+        from the installed robot plugin, its sensor plugins and the license on
+        the machine. Recipes with no version this robot can use are left out.
+        `unlicensed` names the robot a version is made for when the generic one
+        is offered for want of a license.
       responses:
         "200":
           description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CatalogRecipe"
         "503":
           description: offline or upstream failure
           content:
@@ -374,6 +390,16 @@ components:
           additionalProperties: true
           description: The plugin's cached describe() tree (metadata, feedbacks, commands, actions, events, role).
         installed_at: { type: string, format: date-time }
+    CatalogRecipe:
+      type: object
+      required: [name, display_name, version]
+      properties:
+        name: { type: string, description: The name the recipe is pulled and run by. }
+        display_name: { type: string }
+        description: { type: string }
+        tags: { type: array, items: { type: string } }
+        version: { type: string, description: "The version this machine gets: generic, or the robot (and sensors) it is made for." }
+        unlicensed: { type: string, description: The robot a version is made for, when the generic one is offered for want of a license. }
     License:
       type: object
       required: [licensed]

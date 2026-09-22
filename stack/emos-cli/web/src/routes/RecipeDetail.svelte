@@ -66,7 +66,14 @@
           <h2 class="text-2xl font-semibold tracking-tight truncate">
             {r.display_name || r.name}
           </h2>
-          <div class="text-xs text-emos-text-3 font-mono mt-1">{r.name}</div>
+          <div class="text-xs text-emos-text-3 font-mono mt-1">
+            {r.name}{#if r.version}<span class="ml-2 font-sans">· {r.version}</span>{/if}
+          </div>
+          {#if Array.isArray((r.manifest as any)?.tags) && (r.manifest as any).tags.length}
+            <div class="flex flex-wrap gap-1.5 mt-2">
+              {#each (r.manifest as any).tags as t}<span class="pill text-[0.7rem]">{t}</span>{/each}
+            </div>
+          {/if}
           {#if r.description}
             <div class="md-content mt-4 max-w-3xl">
               {@html renderMarkdown(r.description)}

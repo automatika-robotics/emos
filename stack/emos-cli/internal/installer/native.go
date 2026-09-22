@@ -281,6 +281,7 @@ func VerifyNativeInstall(rosSetup string) error {
 		"automatika_embodied_agents",
 		"kompass",
 		"kompass_interfaces",
+		"emos_mapping",
 	}
 
 	listCmd := fmt.Sprintf("source %s && ros2 pkg list", rosSetup)

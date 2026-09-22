@@ -167,6 +167,7 @@ func checkPackages(tryImport func(module string) error, listROSPkgs func() (stri
 		"automatika_embodied_agents",
 		"kompass",
 		"kompass_interfaces",
+		"emos_mapping",
 	}
 
 	for _, name := range rosPkgs {

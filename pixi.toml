@@ -53,18 +53,12 @@ ros-jazzy-builtin-interfaces = "*"
 ros-jazzy-action-msgs = "*"
 ros-jazzy-rpyutils = "*"
 
-# ROS 2 Jazzy — localization (pre-built, replaces colcon Stage 1)
-ros-jazzy-robot-localization = "*"
-ros-jazzy-geographic-msgs = "*"
-ros-jazzy-angles = "*"
-
 # ROS 2 Jazzy — kinematics (for kompass)
 ros-jazzy-python-orocos-kdl-vendor = "*"
 
 # System libraries
 portaudio = "*"
 jq = "*"
-geographiclib = "*"
 
 # kompass-core build dependencies
 ompl = "*"

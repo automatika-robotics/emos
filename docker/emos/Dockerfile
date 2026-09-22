@@ -25,8 +25,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     portaudio19-dev \
     jq \
     ros-${ROS_DISTRO}-rmw-zenoh-cpp \
-    && (apt-get install -y --no-install-recommends libgeographiclib-dev \
-        || apt-get install -y --no-install-recommends libgeographic-dev) \
     && rm -rf /var/lib/apt/lists/*
 
 # Python dependencies (excluding kompass-core, installed via GPU script below)
@@ -66,27 +64,6 @@ RUN pip install --no-cache-dir --only-binary=llama-cpp-python \
 ADD https://raw.githubusercontent.com/automatika-robotics/kompass-core/main/build_dependencies/install_gpu.sh /tmp/install_gpu.sh
 RUN chmod +x /tmp/install_gpu.sh && /tmp/install_gpu.sh && rm /tmp/install_gpu.sh
 
-# --- Build localization packages from source ---
-WORKDIR ${ROS_WS}/src
-# geographic_info: has 'jazzy' branch, all others use 'ros2'
-# robot_localization: has per-distro '{distro}-devel' branches
-# angles: 'ros2' branch works for all distros
-RUN GEO_BRANCH=$(if [ "${ROS_DISTRO}" = "jazzy" ]; then echo jazzy; else echo ros2; fi) \
-    && git clone --depth 1 -b ${GEO_BRANCH} https://github.com/ros-geographic-info/geographic_info.git \
-    && git clone --depth 1 -b ${ROS_DISTRO}-devel https://github.com/cra-ros-pkg/robot_localization.git \
-    && git clone --depth 1 -b ros2 https://github.com/ros/angles.git \
-    && rm -rf geographic_info/geographic_info geographic_info/geodesy
-
-WORKDIR ${ROS_WS}
-# Install rosdep dependencies for localization packages
-RUN apt-get update \
-    && rosdep install -y --from-paths src --ignore-src --rosdistro ${ROS_DISTRO} \
-    && rm -rf /var/lib/apt/lists/*
-RUN /bin/bash -c "source ${ROS_ROOT}/setup.bash && \
-    colcon build --merge-install --install-base ${ROS_ROOT} \
-    --cmake-args -DCMAKE_BUILD_TYPE=Release" \
-    && rm -rf ${ROS_WS}/src ${ROS_WS}/build ${ROS_WS}/log
-
 # --- Build EMOS packages ---
 WORKDIR ${ROS_WS}/src
 COPY stack/sugarcoat sugarcoat
@@ -116,8 +93,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     ros-${ROS_DISTRO}-rmw-zenoh-cpp \
     libomp-dev \
-    && (apt-get install -y --no-install-recommends libgeographiclib-dev \
-        || apt-get install -y --no-install-recommends libgeographic-dev) \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy built ROS install space from builder

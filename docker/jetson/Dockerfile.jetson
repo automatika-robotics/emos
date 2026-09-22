@@ -132,28 +132,6 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /root/.cargo /root/.rustup \
     && sed -i '/cargo\/env/d' /root/.bashrc
 
-# --- Install Localization Packages ---
-WORKDIR ${ROS_WS}/src
-# geographic_info: has 'jazzy' branch, all others use 'ros2'
-RUN apt-get update \
-    && (apt-get install -y libgeographiclib-dev \
-        || apt-get install -y libgeographic-dev) \
-    && rm -rf /var/lib/apt/lists/* \
-    && GEO_BRANCH=$(if [ "${ROS_DISTRO}" = "jazzy" ]; then echo jazzy; else echo ros2; fi) \
-    && git clone --depth 1 -b ${GEO_BRANCH} https://github.com/ros-geographic-info/geographic_info.git \
-    && git clone --depth 1 -b ${ROS_DISTRO}-devel https://github.com/cra-ros-pkg/robot_localization.git \
-    && git clone --depth 1 -b ros2 https://github.com/ros/angles.git \
-    && rm -rf geographic_info/geographic_info geographic_info/geodesy
-
-WORKDIR ${ROS_WS}
-RUN apt-get update \
-    && rosdep install -y --from-paths src --ignore-src --rosdistro ${ROS_DISTRO} \
-    && rm -rf /var/lib/apt/lists/*
-RUN /bin/bash -c "source ${ROS_ROOT}/setup.bash && \
-    colcon build --merge-install --install-base ${ROS_ROOT} \
-    --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_DEFAULT_CMP0148=OLD" && \
-    rm -rf ${ROS_WS}/src ${ROS_WS}/build ${ROS_WS}/log
-
 # --- Install kompass-core with GPU acceleration ---
 WORKDIR /
 RUN ldconfig && \

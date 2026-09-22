@@ -61,6 +61,28 @@ type PluginInfo struct {
 	InstalledAt time.Time       `json:"installed_at,omitempty"`
 }
 
+// DisplayName is the name the plugin gives its hardware, or its slug.
+func (p PluginInfo) DisplayName() string {
+	var d struct {
+		Metadata struct {
+			Name string `json:"name"`
+		} `json:"metadata"`
+	}
+	if json.Unmarshal(p.Describe, &d) == nil && d.Metadata.Name != "" {
+		return d.Metadata.Name
+	}
+	return p.Slug
+}
+
+// PluginLabel names a plugin for the operator by its hardware when it is
+// installed and by its slug otherwise.
+func (c *EMOSConfig) PluginLabel(slug string) string {
+	if p := c.FindPlugin(slug); p != nil {
+		return p.DisplayName()
+	}
+	return slug
+}
+
 // Plugins returns every installed plugin: the robot (if any) then the sensors.
 func (c *EMOSConfig) Plugins() []PluginInfo {
 	var all []PluginInfo

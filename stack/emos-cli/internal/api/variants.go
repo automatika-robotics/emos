@@ -66,3 +66,32 @@ func containsAll(have, want []string) bool {
 	}
 	return true
 }
+
+// ChooseVariantFor picks the variant of r for the machine cfg and lic describe.
+// Either may be nil.
+func ChooseVariantFor(r Recipe, cfg *config.EMOSConfig, lic *config.License) (VariantChoice, error) {
+	var robot string
+	var sensors []string
+	if cfg != nil {
+		if cfg.Plugin != nil {
+			robot = cfg.Plugin.Slug
+		}
+		for _, s := range cfg.SensorPlugins {
+			sensors = append(sensors, s.Slug)
+		}
+	}
+	return ChooseVariant(r, robot, sensors, lic)
+}
+
+// VariantLabel names a variant for the operator. Plugins that are not
+// installed show as their slug.
+func VariantLabel(v RecipeVariant, cfg *config.EMOSConfig) string {
+	if v.Robot == "" {
+		return GenericVariant
+	}
+	label := cfg.PluginLabel(v.Robot)
+	for _, s := range v.Sensors {
+		label += " + " + cfg.PluginLabel(s)
+	}
+	return label
+}

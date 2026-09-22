@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -62,5 +63,43 @@ func TestChooseVariantWithNothingToFallBackOn(t *testing.T) {
 	sensorOnly := Recipe{Variants: []RecipeVariant{lite3Hik}}
 	if _, err := ChooseVariant(sensorOnly, lite3, nil, license(lite3)); !errors.Is(err, ErrNotForThisRobot) {
 		t.Errorf("variant needing a missing sensor = %v, want ErrNotForThisRobot", err)
+	}
+}
+
+func lite3Machine() *config.EMOSConfig {
+	return &config.EMOSConfig{
+		Plugin: &config.PluginInfo{Slug: lite3, Role: config.RoleRobot,
+			Describe: json.RawMessage(`{"metadata": {"name": "Lite3"}}`)},
+		SensorPlugins: []config.PluginInfo{{Slug: hik, Role: config.RoleSensor,
+			Describe: json.RawMessage(`{"metadata": {"name": "HIKMICRO"}}`)}},
+	}
+}
+
+func TestChooseVariantForReadsTheInstalledPlugins(t *testing.T) {
+	got, err := ChooseVariantFor(everyKind, lite3Machine(), license(lite3))
+	if err != nil || got.Variant.ID != lite3+"+"+hik {
+		t.Errorf("machine with the robot and the sensor = %q, %v", got.Variant.ID, err)
+	}
+	// No install at all still pulls generic recipes
+	got, err = ChooseVariantFor(everyKind, nil, nil)
+	if err != nil || got.Variant.ID != GenericVariant || got.Unlicensed != "" {
+		t.Errorf("no install = %+v, %v", got, err)
+	}
+}
+
+func TestVariantLabelNamesTheHardware(t *testing.T) {
+	cfg := lite3Machine()
+	for want, v := range map[string]RecipeVariant{
+		"generic":          generic,
+		"Lite3":            forLite3,
+		"Lite3 + HIKMICRO": lite3Hik,
+		m20:                forM20, // not installed here, so its slug
+	} {
+		if got := VariantLabel(v, cfg); got != want {
+			t.Errorf("VariantLabel(%s) = %q, want %q", v.ID, got, want)
+		}
+	}
+	if got := VariantLabel(forLite3, nil); got != lite3 {
+		t.Errorf("without a config = %q, want the slug", got)
 	}
 }

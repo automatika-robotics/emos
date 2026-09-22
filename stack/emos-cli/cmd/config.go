@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -264,14 +265,24 @@ var configRotatePairingCmd = &cobra.Command{
 // reload endpoint.
 func notifyDaemonReloadAuth() bool {
 	port := config.DashboardPort()
-	url := fmt.Sprintf("http://127.0.0.1:%d/api/v1/admin/reload-auth", port)
-	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Post(url, "application/json", nil)
-	if err != nil {
-		return false
+	client := &http.Client{
+		Timeout:   2 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
+		// A redirect would turn the POST into something else
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
-	defer resp.Body.Close()
-	return resp.StatusCode >= 200 && resp.StatusCode < 300
+	for _, scheme := range []string{"https", "http"} {
+		url := fmt.Sprintf("%s://127.0.0.1:%d/api/v1/admin/reload-auth", scheme, port)
+		resp, err := client.Post(url, "application/json", nil)
+		if err != nil {
+			continue
+		}
+		resp.Body.Close()
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return true
+		}
+	}
+	return false
 }
 
 // --- TLS ----------------------------------------------------------------

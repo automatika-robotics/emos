@@ -58,7 +58,7 @@ func InstallNative(wsPath, distro string) error {
 	os.MkdirAll(srcDir, 0755)
 
 	emosRepoURL := "https://github.com/" + config.GitHubOrg + "/" + config.GitHubRepo + ".git"
-	emosPackages := []string{"sugarcoat", "kompass", "embodied-agents"}
+	emosPackages := []string{"sugarcoat", "kompass", "embodied-agents", "emos_mapping"}
 	emosRepo := filepath.Join(srcDir, ".emos-repo")
 
 	if err := ui.Spinner("Fetching EMOS source...", func() error {
@@ -313,7 +313,7 @@ func UpdateNative(wsPath, distro string) error {
 
 	// Pull latest emos repo and re-copy stack packages
 	emosRepo := filepath.Join(srcDir, ".emos-repo")
-	emosPackages := []string{"sugarcoat", "kompass", "embodied-agents"}
+	emosPackages := []string{"sugarcoat", "kompass", "embodied-agents", "emos_mapping"}
 
 	if _, err := os.Stat(filepath.Join(emosRepo, ".git")); err == nil {
 		if err := ui.Spinner("Fetching EMOS source...", func() error {

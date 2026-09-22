@@ -68,3 +68,18 @@ jobs:
 
       - name: Verify with emos status
         run: emos status
+
+      - name: Verify Python imports
+        run: |
+          bash -c "source /opt/ros/${{ matrix.ros_distro }}/setup.bash && python3 -c '
+          import ros_sugar; import agents; import kompass; import kompass_core; import emos_mapping
+          print(\"All EMOS imports: OK\")
+          '"
+
+      - name: Verify ROS packages
+        run: |
+          bash -c "source /opt/ros/${{ matrix.ros_distro }}/setup.bash && ros2 pkg list" | grep -E "automatika_ros_sugar|automatika_embodied_agents|kompass|emos_mapping"
+
+      - name: Test emos_mapping
+        working-directory: stack/emos_mapping
+        run: bash -c "source /opt/ros/${{ matrix.ros_distro }}/setup.bash && python3 -m pytest test -q -p no:launch_testing -p no:launch_ros"

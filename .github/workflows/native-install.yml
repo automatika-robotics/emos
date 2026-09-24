@@ -81,6 +81,7 @@ jobs:
         run: |
           bash -c "source /opt/ros/${{ matrix.ros_distro }}/setup.bash && ros2 pkg list" | grep -E "automatika_ros_sugar|automatika_embodied_agents|kompass|emos_mapping"
 
+      # Skip anyio (a pip dependency of httpx) to avoid a pytest plugin it ships
       - name: Test emos_mapping
         working-directory: stack/emos_mapping
-        run: bash -c "source /opt/ros/${{ matrix.ros_distro }}/setup.bash && python3 -m pytest test -q -p no:launch_testing -p no:launch_ros"
+        run: bash -c "source /opt/ros/${{ matrix.ros_distro }}/setup.bash && python3 -m pytest test -q -p no:launch_testing -p no:launch_ros -p no:anyio"

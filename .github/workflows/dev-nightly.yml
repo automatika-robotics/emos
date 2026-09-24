@@ -61,7 +61,12 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          base="$(sed -n 's/^VERSION *?= *//p' stack/emos-cli/Makefile)-dev.$date"
+          # main carries the released version, so its nightlies are the next patch
+          next=$(sed -n 's/^VERSION *?= *//p' stack/emos-cli/Makefile)
+          if git rev-parse -q --verify "refs/tags/v$next" >/dev/null; then
+            next=$(echo "$next" | awk -F. '{print $1 "." $2 "." $3 + 1}')
+          fi
+          base="$next-dev.$date"
           version=$base
           n=1
           while git rev-parse -q --verify "refs/tags/v$version" >/dev/null; do

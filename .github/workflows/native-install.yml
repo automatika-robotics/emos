@@ -57,7 +57,8 @@ jobs:
           GOFLAGS: -buildvcs=false
         run: |
           git config --global --add safe.directory '*'
-          /usr/local/go/bin/go build -ldflags "-s -w" -o emos .
+          # Use SourceRef to clone the branch
+          /usr/local/go/bin/go build -ldflags "-s -w -X github.com/automatika-robotics/emos-cli/internal/config.SourceRef=${{ github.head_ref || github.ref_name }}" -o emos .
 
       - name: Install CLI
         working-directory: stack/emos-cli

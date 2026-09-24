@@ -8,7 +8,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
-	"time"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/ui"
@@ -177,19 +176,4 @@ func waitForRecipe(h *RunHandle, signals <-chan os.Signal) (stopped bool, err er
 			h.Interrupt()
 		}
 	}
-}
-
-// killROSProcesses pkills any ROS processes the current user owns.
-func killROSProcesses() {
-	ui.Info("Killing host ROS processes...")
-	for _, proc := range []string{"roslaunch", "roscore", "ros2"} {
-		runQuiet("pkill", "-f", proc)
-	}
-	time.Sleep(time.Second)
-	ui.Success("Terminated host ROS processes.")
-}
-
-// runQuiet runs a system command, ignoring errors (used for pkill etc.)
-func runQuiet(name string, args ...string) {
-	execCommand(name, args...).Run()
 }

@@ -24,8 +24,6 @@ func NewContainerStrategy(env []string) *ContainerStrategy {
 func (s *ContainerStrategy) PrepareEnvironment() error {
 	ui.Header("HOST & CONTAINER MANAGEMENT")
 
-	killROSProcesses()
-
 	if !container.Exists(config.ContainerName) {
 		return fmt.Errorf("container '%s' does not exist — run 'emos install' first", config.ContainerName)
 	}

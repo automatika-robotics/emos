@@ -2,14 +2,8 @@ package runner
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 )
-
-// execCommand wraps os/exec.Command for use in runner functions.
-func execCommand(name string, args ...string) *exec.Cmd {
-	return exec.Command(name, args...)
-}
 
 // OpenLog opens a recipe run's log for appending, creating it and its directory
 // as needed.

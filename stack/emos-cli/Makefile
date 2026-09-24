@@ -1,4 +1,4 @@
-VERSION ?= 0.7.6
+VERSION ?= 0.8.0
 SOURCE_REF ?=
 BINARY  := emos
 GO      ?= $(shell which go 2>/dev/null || echo /usr/local/go/bin/go)

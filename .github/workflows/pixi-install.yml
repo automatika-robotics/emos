@@ -30,6 +30,7 @@ on:
     - cron: "0 4 * * *" # Daily at 4 AM UTC, after the Docker nightly
   workflow_dispatch:
     inputs: {}
+  workflow_call:
 
 permissions:
   contents: read

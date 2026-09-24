@@ -159,48 +159,77 @@ var firstFetchTimeout = 2 * time.Second
 // than firstFetchTimeout because nobody is waiting on it.
 var backgroundFetchTimeout = 8 * time.Second
 
-// IsNewer reports whether `latest` is strictly newer than `current` under
-// a small X.Y.Z dotted-int comparison. Simple comparison.
+// IsNewer reports whether latest is a newer version than current. Versions
+// are X.Y.Z with an optional pre-release suffix, as in X.Y.Z-dev.*;
+// a release is newer than its own pre-releases.
 func IsNewer(current, latest string) bool {
 	if current == "" || current == "dev" || latest == "" {
 		return false
 	}
-	c, ok := parseXYZ(current)
+	c, cpre, ok := parseVersion(current)
 	if !ok {
 		return false
 	}
-	l, ok := parseXYZ(latest)
+	l, lpre, ok := parseVersion(latest)
 	if !ok {
 		return false
 	}
 	for i := 0; i < 3; i++ {
-		if l[i] > c[i] {
-			return true
-		}
-		if l[i] < c[i] {
-			return false
+		if l[i] != c[i] {
+			return l[i] > c[i]
 		}
 	}
-	return false
+	switch {
+	case lpre == cpre:
+		return false
+	case lpre == "":
+		return true
+	case cpre == "":
+		return false
+	}
+	return newerPreRelease(cpre, lpre)
 }
 
-// parseXYZ splits "1.2.3" (or "v1.2.3") into [1, 2, 3]. Returns ok=false
-// if any of the first three dot-separated parts isn't a non-negative int.
-func parseXYZ(s string) ([3]int, bool) {
+// parseVersion splits "X.Y.Z-dev.*" (or "vX.Y.Z") into [X, Y, Z] and
+// the pre-release part. Returns ok=false if any of the first three
+// dot-separated parts isn't a non-negative int.
+func parseVersion(s string) ([3]int, string, bool) {
 	s = strings.TrimPrefix(s, "v")
+	var pre string
+	if i := strings.IndexByte(s, '-'); i >= 0 {
+		s, pre = s[:i], s[i+1:]
+	}
 	parts := strings.SplitN(s, ".", 4)
 	if len(parts) < 3 {
-		return [3]int{}, false
+		return [3]int{}, "", false
 	}
 	var out [3]int
 	for i := 0; i < 3; i++ {
 		n, err := strconv.Atoi(parts[i])
 		if err != nil || n < 0 {
-			return [3]int{}, false
+			return [3]int{}, "", false
 		}
 		out[i] = n
 	}
-	return out, true
+	return out, pre, true
+}
+
+// newerPreRelease compares dot-separated pre-release parts the semver way.
+// Numbers numerically, anything else as strings, more parts win a tie.
+func newerPreRelease(current, latest string) bool {
+	c, l := strings.Split(current, "."), strings.Split(latest, ".")
+	for i := 0; i < len(c) && i < len(l); i++ {
+		if c[i] == l[i] {
+			continue
+		}
+		cn, cerr := strconv.Atoi(c[i])
+		ln, lerr := strconv.Atoi(l[i])
+		if cerr == nil && lerr == nil {
+			return ln > cn
+		}
+		return l[i] > c[i]
+	}
+	return len(l) > len(c)
 }
 
 // cachePath returns the absolute path of the cache file, or "" if

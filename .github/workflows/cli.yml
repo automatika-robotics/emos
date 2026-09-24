@@ -11,6 +11,7 @@ on:
     paths:
       - "stack/emos-cli/**"
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: write
@@ -47,7 +48,7 @@ jobs:
   release:
     name: Create Release
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

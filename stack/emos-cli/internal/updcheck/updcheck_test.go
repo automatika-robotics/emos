@@ -119,6 +119,15 @@ func TestIsNewer_Table(t *testing.T) {
 		{"0.6", "0.7.0", false}, // missing patch
 		// leading v on either side is tolerated
 		{"v0.6.1", "v0.7.0", true},
+		// pre-releases: a nightly is older than its release, newer nightlies win
+		{"0.8.0-dev.20260924", "0.8.0", true},
+		{"0.8.0", "0.8.0-dev.20260924", false},
+		{"0.8.0-dev.20260924", "0.8.0-dev.20260925", true},
+		{"0.8.0-dev.20260925", "0.8.0-dev.20260924", false},
+		{"0.8.0-dev.20260924", "0.8.0-dev.20260924", false},
+		{"0.8.0", "0.8.1-dev.20260930", true},
+		{"0.8.1-dev.20260930", "0.8.0", false},
+		{"0.7.6", "0.8.0-dev.20260924", true},
 	}
 	for _, tc := range cases {
 		got := IsNewer(tc.current, tc.latest)

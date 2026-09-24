@@ -53,6 +53,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		fmt.Println()
 	}
 	if updated {
+		restartDashboard()
 		fmt.Println()
 		ui.Info("Please run 'emos update' again to update your installation.")
 		return nil
@@ -117,6 +118,19 @@ func refreshLicense() {
 		}
 	case errors.Is(err, api.ErrInvalidLicense), errors.Is(err, api.ErrLicenseNotClaimed):
 		ui.Warn("The portal no longer accepts the license kept on this machine. Ask about it at " + config.SupportURL + ".")
+	}
+}
+
+// restartDashboard restarts the dashboard service, when it runs, so it serves
+// the binary the self-update just installed.
+func restartDashboard() {
+	if !installer.IsActive(config.DashboardServiceName) {
+		return
+	}
+	ui.Info("Restarting the dashboard on the new version (requires sudo)...")
+	if err := installer.RestartUnit(config.DashboardServiceName); err != nil {
+		ui.Warn("The dashboard still runs the previous version: " + err.Error())
+		ui.Faint("Restart it with 'sudo systemctl restart " + config.DashboardServiceName + "'.")
 	}
 }
 

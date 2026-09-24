@@ -128,6 +128,13 @@ func (u SystemdUnit) IsSupported() bool {
 	return err == nil
 }
 
+// RestartUnit restarts a system unit, through sudo.
+func RestartUnit(unitName string) error {
+	cmd := exec.Command("sudo", "systemctl", "restart", unitName)
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
 // IsActive returns true if `systemctl is-active <unit>` reports active.
 // Returns false on non-systemd hosts or for any other status (inactive,
 // failed, etc.). Free function so callers can check by unit name without

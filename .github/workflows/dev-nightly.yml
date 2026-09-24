@@ -1,0 +1,244 @@
+name: Dev Nightly
+
+# Builds the DEV_BRANCH repository. Tags the branch with v<version>-dev.<date>,
+# when everything passes and publishes a pre-release cli build and the images.
+
+on:
+  schedule:
+    - cron: "0 2 * * *" # Daily at 2 AM UTC
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Push the pins, tag, pre-release and images when green"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency: dev-nightly
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: automatika-robotics/emos
+  # scikit-build-core: ignore pixi's unknown config settings (for pixi > 0.66).
+  SKBUILD_STRICT_CONFIG: "false"
+
+jobs:
+  candidate:
+    name: Move the stack pins
+    if: vars.DEV_BRANCH != ''
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.candidate.outputs.changed }}
+      version: ${{ steps.candidate.outputs.version }}
+      sha: ${{ steps.candidate.outputs.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ vars.DEV_BRANCH }}
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Move each submodule to the tip of its tracked branch
+        run: git submodule update --remote
+
+      # The candidate lives on its own branch until it passes
+      - name: Commit the candidate
+        id: candidate
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          date=$(date -u +%Y%m%d)
+          if ! git diff --quiet; then
+            git commit -am "(chore) Moves the stack pins to the nightly of $date"
+          fi
+          last=$(git describe --tags --match 'v*-dev.*' --abbrev=0 2>/dev/null || true)
+          if [ -n "$last" ] && [ "$(git rev-parse "$last^{tree}")" = "$(git rev-parse HEAD^{tree})" ]; then
+            echo "Nothing moved since $last"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          base="$(sed -n 's/^VERSION *?= *//p' stack/emos-cli/Makefile)-dev.$date"
+          version=$base
+          n=1
+          while git rev-parse -q --verify "refs/tags/v$version" >/dev/null; do
+            n=$((n + 1))
+            version="$base.$n"
+          done
+          git push --force origin HEAD:refs/heads/nightly-candidate
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  stack:
+    name: Stack / ${{ matrix.os }}
+    needs: candidate
+    if: needs.candidate.outputs.changed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.candidate.outputs.sha }}
+          submodules: recursive
+
+      - uses: prefix-dev/setup-pixi@v0.8.1
+
+      - run: pixi install
+
+      - run: pixi run install-kompass-core
+
+      - run: pixi run build
+
+      - name: Verify Python imports
+        run: |
+          pixi run bash -c "source install/setup.sh && python3 -c '
+          import ros_sugar; import agents; import kompass; import kompass_core; import kompass_cpp
+          import emos_mapping
+          print(\"All EMOS imports: OK\")
+          '"
+
+      # ROS brings pytest 9 and a launch_testing plugin is written for pytest 7
+      - name: Test emos_mapping
+        working-directory: stack/emos_mapping
+        run: pixi run --manifest-path ../../pixi.toml bash -c "source ../../install/setup.sh && python3 -m pytest test -q -p no:launch_testing -p no:launch_ros"
+
+  cli:
+    name: CLI
+    needs: candidate
+    if: needs.candidate.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stack/emos-cli
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.candidate.outputs.sha }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: stack/emos-cli/go.sum
+
+      - run: go vet ./...
+
+      - run: go test -race ./...
+
+      # A dev binary knows the tag its workspace comes from
+      - run: make build-all VERSION=${{ needs.candidate.outputs.version }} SOURCE_REF=v${{ needs.candidate.outputs.version }}
+
+      - run: npm run check
+        working-directory: stack/emos-cli/web
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: emos-cli-dev
+          path: stack/emos-cli/dist/
+
+  publish:
+    name: Publish ${{ needs.candidate.outputs.version }}
+    needs: [candidate, stack, cli]
+    if: github.event_name == 'schedule' || inputs.publish
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.candidate.outputs.version }}
+      BRANCH: ${{ vars.DEV_BRANCH }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.candidate.outputs.sha }}
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: emos-cli-dev
+          path: dist/
+
+      # Fast-forward only: a branch that moved fails here and is retried tomorrow
+      - name: Push the pins and the tag
+        run: |
+          git push origin "HEAD:refs/heads/$BRANCH"
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+          git push origin --delete nightly-candidate
+
+      - name: Create the pre-release
+        run: |
+          stack=$(git ls-tree HEAD stack/ | awk '$2 == "commit" {print $4 "@" substr($3, 1, 7)}' | tr '\n' ' ')
+          gh release create "v$VERSION" dist/* --prerelease --title "EMOS $VERSION" \
+            --notes "Nightly build of $BRANCH at $(git rev-parse --short HEAD). Stack: $stack"
+
+  images:
+    name: Image ${{ matrix.ros_distro }} / ${{ matrix.arch }}
+    needs: [candidate, publish]
+    strategy:
+      fail-fast: false
+      matrix:
+        ros_distro: [humble, jazzy, kilted]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.candidate.outputs.version }}
+          submodules: recursive
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/emos/Dockerfile
+          build-args: ROS_DISTRO=${{ matrix.ros_distro }}
+          push: true
+          provenance: false
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.ros_distro }}-dev-${{ matrix.arch }}
+          cache-from: type=gha,scope=${{ matrix.ros_distro }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.ros_distro }}-${{ matrix.arch }}
+
+  manifests:
+    name: Manifest ${{ matrix.ros_distro }}
+    needs: [candidate, images]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ros_distro: [humble, jazzy, kilted]
+
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # <distro>-dev follows the newest nightly
+      - name: Create and push the multi-arch manifests
+        run: |
+          BASE="${REGISTRY}/${IMAGE_NAME}:${{ matrix.ros_distro }}"
+          for TAG in "${BASE}-dev" "${BASE}-${{ needs.candidate.outputs.version }}"; do
+            docker manifest create --amend "${TAG}" "${BASE}-dev-amd64" "${BASE}-dev-arm64"
+            docker manifest push "${TAG}"
+          done

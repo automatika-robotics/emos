@@ -33,11 +33,19 @@ install_binary() {
 
     info "Detected architecture: $arch"
 
-    # Get latest CLI release download URL
-    local releases_url="https://api.github.com/repos/$GITHUB_ORG/$REPO/releases"
+    # Stable installs take the latest release. EMOS_CHANNEL=dev takes the
+    # newest nightly, which is published as a pre-release.
+    local api="https://api.github.com/repos/$GITHUB_ORG/$REPO/releases"
+    local release_url="$api/latest"
+    if [ "${EMOS_CHANNEL:-}" = "dev" ]; then
+        local tag
+        tag=$(curl -sSL "$api" | grep -o '"tag_name": *"v[^"]*-dev\.[^"]*"' | head -1 | cut -d '"' -f 4)
+        [ -n "$tag" ] || error "No dev build has been published yet."
+        info "Installing the dev build $tag"
+        release_url="$api/tags/$tag"
+    fi
     local download_url
-
-    download_url=$(curl -sSL "$releases_url" | \
+    download_url=$(curl -sSL "$release_url" | \
         grep "browser_download_url.*emos-linux-${arch}" | \
         head -1 | cut -d '"' -f 4)
 

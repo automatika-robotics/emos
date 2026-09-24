@@ -60,10 +60,11 @@ ros-jazzy-python-orocos-kdl-vendor = "*"
 portaudio = "*"
 jq = "*"
 
-# kompass-core build dependencies
+# kompass-core and GTSAM build dependencies.
 ompl = "*"
 fcl = "*"
 eigen = ">=3.4,<4"
+libboost-devel = "*"
 
 # Python packages (conda-forge). Cross-platform.
 numpy = "*"

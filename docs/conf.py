@@ -77,11 +77,12 @@ autodoc2_docstrings = "all"
 autodoc2_class_docstring = "both"
 autodoc2_render_plugin = "myst"
 autodoc2_hidden_objects = ["private", "dunder", "undoc"]
+# Matched with re.fullmatch against the module's dotted name. Leaf modules
+# only: on a package it drops the submodule listing and orphans those pages.
 autodoc2_module_all_regexes = [
-    r"agents\.(components|config|models|ros|vectordbs)",
+    r"agents\.(config|models|ros|vectordbs)",
     r"agents\.clients\.[^\.]+",
-    r"ros_sugar\.(core|robot|io|config)",
-    r"kompass\.(components|config|control|robot)",
+    r"kompass\.(control|robot)",
 ]
 
 templates_path = ["_templates"]

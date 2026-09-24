@@ -95,6 +95,7 @@ func InstallNative(wsPath, distro string) error {
 		"portaudio19-dev", "jq", "python3-empy",
 		"python3-ament-package", "ros-" + distro + "-rpyutils",
 		"ros-" + distro + "-rmw-zenoh-cpp",
+		"ros-" + distro + "-moveit-msgs", "ros-" + distro + "-control-msgs",
 	}
 	cmd := exec.Command("sudo", append([]string{"apt-get", "install", "-y"}, aptPkgs...)...)
 	cmd.Stdout = os.Stdout

@@ -56,6 +56,10 @@ ros-jazzy-rpyutils = "*"
 # ROS 2 Jazzy — kinematics (for kompass)
 ros-jazzy-python-orocos-kdl-vendor = "*"
 
+# ROS 2 Jazzy — manipulation (for the MoveIt component of embodied-agents)
+ros-jazzy-moveit-msgs = "*"
+ros-jazzy-control-msgs = "*"
+
 # System libraries
 portaudio = "*"
 jq = "*"

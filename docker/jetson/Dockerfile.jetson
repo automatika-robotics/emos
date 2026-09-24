@@ -73,6 +73,8 @@ RUN rosinstall_generator --deps --rosdistro ${ROS_DISTRO} \
     launch_testing \
     launch_testing_ament_cmake \
     demo_nodes_cpp \
+    moveit_msgs \
+    control_msgs \
     > ros2.rosinstall && \
     mkdir src && \
     vcs import src < ros2.rosinstall && \

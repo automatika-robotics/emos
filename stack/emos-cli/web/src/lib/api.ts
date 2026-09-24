@@ -27,6 +27,7 @@ export class ApiException extends Error {
 
 export interface Info {
   version: string;
+  channel?: 'stable' | 'dev'; // dev = nightly builds, sticky until the stable installer is run again
   name: string;            // human-friendly device identity (e.g. "epic-otter")
   started_at: string;
   uptime: string;

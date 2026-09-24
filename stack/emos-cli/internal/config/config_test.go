@@ -247,3 +247,42 @@ func TestPairedDeviceCount(t *testing.T) {
 		t.Fatalf("PairedDeviceCount = %d, want 2", got)
 	}
 }
+
+func TestChannelFollowsTheVersion(t *testing.T) {
+	orig := Version
+	t.Cleanup(func() { Version = orig })
+	for version, want := range map[string]string{
+		"0.8.0": "stable", "dev": "stable", "0.8.0-dev.20260925": "dev", "0.8.1-dev.20261001.2": "dev",
+	} {
+		Version = version
+		if got := Channel(); got != want {
+			t.Errorf("Channel() with version %q = %q, want %q", version, got, want)
+		}
+	}
+}
+
+func TestPublicImageTagFollowsTheChannel(t *testing.T) {
+	orig := Version
+	t.Cleanup(func() { Version = orig })
+	Version = "0.8.0"
+	if got := PublicImageTag("jazzy"); got != PublicImage+":jazzy-latest" {
+		t.Errorf("stable image = %q", got)
+	}
+	Version = "0.8.0-dev.20260925"
+	if got := PublicImageTag("jazzy"); got != PublicImage+":jazzy-dev" {
+		t.Errorf("dev image = %q", got)
+	}
+}
+
+func TestWorkspaceRefIsTheSourceRefOrMain(t *testing.T) {
+	orig := SourceRef
+	t.Cleanup(func() { SourceRef = orig })
+	SourceRef = ""
+	if got := WorkspaceRef(); got != "main" {
+		t.Errorf("WorkspaceRef() without a source ref = %q", got)
+	}
+	SourceRef = "v0.8.0-dev.20260925"
+	if got := WorkspaceRef(); got != "v0.8.0-dev.20260925" {
+		t.Errorf("WorkspaceRef() with a source ref = %q", got)
+	}
+}

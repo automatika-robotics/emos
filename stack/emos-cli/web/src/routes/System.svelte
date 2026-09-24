@@ -140,6 +140,13 @@
             </a>
           {/if}
         </div>
+        {#if $info.data?.channel === 'dev'}
+          <div class="text-emos-text-3">channel</div>
+          <div class="flex items-center gap-2">
+            <span class="pill text-[0.7rem]">dev</span>
+            <span class="text-emos-text-3 text-xs">nightly builds; to move to stable, run the installer without EMOS_CHANNEL, then <code>emos update</code></span>
+          </div>
+        {/if}
         <div class="text-emos-text-3">uptime</div><div class="font-mono">{$info.data?.uptime ?? '—'}</div>
         <div class="text-emos-text-3">install</div><div>{$info.data?.mode ?? '—'}</div>
         <div class="text-emos-text-3">ros</div><div>{$info.data?.ros_distro ?? '—'}</div>

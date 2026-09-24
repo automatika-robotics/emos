@@ -42,15 +42,60 @@ var refreshMu sync.Mutex
 // cacheFile struct on disk.
 type cacheFile struct {
 	Latest    string    `json:"latest"`
+	Channel   string    `json:"channel,omitempty"` // the channel Latest was fetched on
 	CheckedAt time.Time `json:"checked_at"`
 }
 
-// Latest fetches the latest release tag from GitHub. Returns the tag with
-// the leading "v" stripped
+// Latest fetches the newest version this binary's channel offers, without
+// the leading "v".
 func Latest(ctx context.Context) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, config.ReleasesURL(), nil)
+	if config.Channel() == "dev" {
+		return latestDev(ctx)
+	}
+	var release struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := fetchJSON(ctx, config.LatestReleaseURL(), &release); err != nil {
+		return "", err
+	}
+	tag := strings.TrimPrefix(release.TagName, "v")
+	if tag == "" {
+		return "", errors.New("github releases API returned an empty tag_name")
+	}
+	return tag, nil
+}
+
+// latestDev picks the newest nightly, a pre-release tagged v<version>-dev.<date>,
+// from the release list.
+func latestDev(ctx context.Context) (string, error) {
+	var releases []struct {
+		TagName    string `json:"tag_name"`
+		Prerelease bool   `json:"prerelease"`
+	}
+	if err := fetchJSON(ctx, config.ReleaseListURL(), &releases); err != nil {
+		return "", err
+	}
+	var latest string
+	for _, r := range releases {
+		version := strings.TrimPrefix(r.TagName, "v")
+		if !r.Prerelease || !strings.Contains(version, "-dev.") {
+			continue
+		}
+		if latest == "" || IsNewer(latest, version) {
+			latest = version
+		}
+	}
+	if latest == "" {
+		return "", errors.New("no dev build has been published")
+	}
+	return latest, nil
+}
+
+// fetchJSON decodes the GitHub API document at url into v.
+func fetchJSON(ctx context.Context, url string, v any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return "", fmt.Errorf("build releases request: %w", err)
+		return fmt.Errorf("build releases request: %w", err)
 	}
 	// GitHub's API serves /releases/latest with HTML content negotiation
 	// off by default, being explicit
@@ -58,30 +103,22 @@ func Latest(ctx context.Context) (string, error) {
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("github releases API unreachable: %w", err)
+		return fmt.Errorf("github releases API unreachable: %w", err)
 	}
 	defer resp.Body.Close()
 
 	// Cap the body so a misconfigured upstream can't blow up memory
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return "", fmt.Errorf("read releases response: %w", err)
+		return fmt.Errorf("read releases response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("github releases API returned HTTP %d", resp.StatusCode)
+		return fmt.Errorf("github releases API returned HTTP %d", resp.StatusCode)
 	}
-
-	var release struct {
-		TagName string `json:"tag_name"`
+	if err := json.Unmarshal(body, v); err != nil {
+		return fmt.Errorf("parse releases response: %w", err)
 	}
-	if err := json.Unmarshal(body, &release); err != nil {
-		return "", fmt.Errorf("parse releases response: %w", err)
-	}
-	tag := strings.TrimPrefix(release.TagName, "v")
-	if tag == "" {
-		return "", errors.New("github releases API returned an empty tag_name")
-	}
-	return tag, nil
+	return nil
 }
 
 // CachedLatest returns the last successful Latest() value and its
@@ -99,7 +136,8 @@ func CachedLatest() (latest string, checkedAt time.Time, ok bool) {
 	if err := json.Unmarshal(data, &c); err != nil {
 		return "", time.Time{}, false
 	}
-	if c.Latest == "" {
+	// A cache the other channel's binary wrote names its newest, not ours
+	if c.Latest == "" || c.Channel != config.Channel() {
 		return "", time.Time{}, false
 	}
 	return c.Latest, c.CheckedAt, true
@@ -251,7 +289,7 @@ func writeCache(latest string, checkedAt time.Time) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	data, err := json.Marshal(cacheFile{Latest: latest, CheckedAt: checkedAt})
+	data, err := json.Marshal(cacheFile{Latest: latest, Channel: config.Channel(), CheckedAt: checkedAt})
 	if err != nil {
 		return err
 	}

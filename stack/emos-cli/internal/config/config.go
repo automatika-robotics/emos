@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -14,10 +15,27 @@ import (
 // The "dev" fallback only appears when built with plain `go build`
 var Version = "dev"
 
-// SourceRef is the branch or tag of the EMOS repository a pixi install clones.
-// A development build sets it to its own branch at link time, so it installs
-// the code it was built from. Empty clones the default branch.
+// SourceRef is the branch or tag of the EMOS repository an install clones. A
+// nightly build sets it to its own tag at link time, a development build to
+// its branch, so each installs the code it was built from. Empty means main.
 var SourceRef = ""
+
+// Channel is the release channel this binary follows: "dev" for a nightly
+// build else "stable".
+func Channel() string {
+	if strings.Contains(Version, "-dev.") {
+		return "dev"
+	}
+	return "stable"
+}
+
+// WorkspaceRef is the ref of the EMOS repository an install follows.
+func WorkspaceRef() string {
+	if SourceRef != "" {
+		return SourceRef
+	}
+	return "main"
+}
 
 type InstallMode string
 
@@ -264,8 +282,12 @@ func pixiDataDir() string {
 	return filepath.Join(HomeDir, ".local", "share", "emos")
 }
 
-// PublicImageTag returns the full public image reference for a given ROS distro.
+// PublicImageTag returns the full public image reference for a given ROS
+// distro.
 func PublicImageTag(distro string) string {
+	if Channel() == "dev" {
+		return PublicImage + ":" + distro + "-dev"
+	}
 	return PublicImage + ":" + distro + "-latest"
 }
 
@@ -391,6 +413,17 @@ func RepoURL() string {
 	return "https://github.com/" + GitHubOrg + "/" + GitHubRepo + ".git"
 }
 
-func ReleasesURL() string {
-	return "https://api.github.com/repos/" + GitHubOrg + "/" + GitHubRepo + "/releases/latest"
+// ReleasesURL is GitHub's latest release, which is never a pre-release.
+func LatestReleaseURL() string {
+	return ReleaseListURL() + "/latest"
+}
+
+// ReleaseListURL lists the newest releases, pre-releases included.
+func ReleaseListURL() string {
+	return "https://api.github.com/repos/" + GitHubOrg + "/" + GitHubRepo + "/releases"
+}
+
+// ReleaseTagURL is the release of one version, with its assets.
+func ReleaseTagURL(version string) string {
+	return ReleaseListURL() + "/tags/v" + version
 }

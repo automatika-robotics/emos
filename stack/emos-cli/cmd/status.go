@@ -20,6 +20,7 @@ var statusCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		banner()
 		ui.StatusCard(config.Version)
+		printChannel()
 		printUpdateAvailable()
 
 		cfg := config.LoadConfig()
@@ -177,4 +178,14 @@ func checkPackages(tryImport func(module string) error, listROSPkgs func() (stri
 			ui.Error(fmt.Sprintf("  %s: Not found", name))
 		}
 	}
+}
+
+// printChannel says when this binary follows the nightly builds, and how to
+// leave them.
+func printChannel() {
+	if config.Channel() != "dev" {
+		return
+	}
+	ui.Faint("Channel: dev (nightly builds of unreleased EMOS)")
+	ui.Faint("Back to stable: curl -fsSL " + config.InstallerURL() + " | sudo bash, then 'emos update'")
 }

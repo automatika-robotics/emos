@@ -26,7 +26,8 @@
     <!-- The EMOS wordmark IS the logo + text. No separate label needed. -->
     <Logo height={22} />
     <span class="text-xs text-emos-text-3 ml-auto pr-1">
-      {$info.data?.version ? `v${$info.data.version}` : ''}
+      {$info.data?.version ? `v${$info.data.version}` : ''}{#if $info.data?.channel === 'dev'}
+        <span class="pill text-[0.65rem] ml-1" title="Nightly builds of unreleased EMOS">dev</span>{/if}
     </span>
   </div>
 

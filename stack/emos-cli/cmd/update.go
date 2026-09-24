@@ -141,9 +141,8 @@ func selfUpdateCLI() (bool, error) {
 		return false, nil
 	}
 
-	// We still need the asset list to find the right per-arch binary, so
-	// hit /releases/latest a second time
-	resp, err := http.Get(config.ReleasesURL())
+	// The asset list names the per-arch binary
+	resp, err := http.Get(config.ReleaseTagURL(latestVersion))
 	if err != nil {
 		return false, fmt.Errorf("failed to fetch release assets: %w", err)
 	}
@@ -223,9 +222,13 @@ func selfUpdateCLI() (bool, error) {
 }
 
 func updateOSSContainer(cfg *config.EMOSConfig) error {
+	// The channel's image; plugin builds read it from the config
 	image := config.PublicImageTag(cfg.ROSDistro)
-	if cfg.ImageTag != "" {
-		image = cfg.ImageTag
+	if cfg.ImageTag != image {
+		cfg.ImageTag = image
+		if err := config.SaveConfig(cfg); err != nil {
+			ui.Warn("Failed to save config: " + err.Error())
+		}
 	}
 
 	fmt.Println("  Checking for EMOS container updates...")
@@ -294,11 +297,12 @@ func updatePixi(cfg *config.EMOSConfig) error {
 		ui.Info("Preserved local pixi dependencies for the update.")
 	}
 
-	// Pull latest source
-	if err := ui.Spinner("Pulling latest source...", func() error {
-		return runGit(projectDir, "pull")
+	// A nightly's tag or main, whichever this binary follows
+	ref := config.WorkspaceRef()
+	if err := ui.Spinner("Fetching "+ref+"...", func() error {
+		return installer.SyncWorkspace(projectDir, ref)
 	}); err != nil {
-		return fmt.Errorf("git pull failed: %w", err)
+		return fmt.Errorf("could not fetch %s: %w", ref, err)
 	}
 
 	// Update submodules

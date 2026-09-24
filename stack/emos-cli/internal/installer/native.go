@@ -60,13 +60,13 @@ func InstallNative(wsPath, distro string) error {
 
 	if err := ui.Spinner("Fetching EMOS source...", func() error {
 		if _, err := os.Stat(emosRepo); err == nil {
-			if err := runCmd(emosRepo, "git", "pull"); err != nil {
+			if err := SyncWorkspace(emosRepo, config.WorkspaceRef()); err != nil {
 				return err
 			}
 			// Update submodules (stack packages are submodules)
 			return runCmd(emosRepo, "git", "submodule", "update", "--init", "--depth", "1")
 		}
-		return runCmd(srcDir, "git", "clone", "--depth", "1", "--recurse-submodules", "--shallow-submodules", emosRepoURL, ".emos-repo")
+		return runCmd(srcDir, "git", "clone", "--depth", "1", "-b", config.WorkspaceRef(), "--recurse-submodules", "--shallow-submodules", emosRepoURL, ".emos-repo")
 	}); err != nil {
 		return fmt.Errorf("failed to fetch emos source: %w", err)
 	}
@@ -260,7 +260,7 @@ func UpdateNative(wsPath, distro string) error {
 
 	if _, err := os.Stat(filepath.Join(emosRepo, ".git")); err == nil {
 		if err := ui.Spinner("Fetching EMOS source...", func() error {
-			if err := runCmd(emosRepo, "git", "pull"); err != nil {
+			if err := SyncWorkspace(emosRepo, config.WorkspaceRef()); err != nil {
 				return err
 			}
 			return runCmd(emosRepo, "git", "submodule", "update", "--init", "--depth", "1")
@@ -387,6 +387,15 @@ func cleanEnv() []string {
 		env = append(env, e)
 	}
 	return env
+}
+
+// SyncWorkspace moves the git checkout at dir to ref on origin, a tag or a
+// branch.
+func SyncWorkspace(dir, ref string) error {
+	if err := runCmd(dir, "git", "fetch", "--depth", "1", "origin", ref); err != nil {
+		return err
+	}
+	return runCmd(dir, "git", "checkout", "--detach", "FETCH_HEAD")
 }
 
 func runCmd(dir string, name string, args ...string) error {

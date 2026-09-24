@@ -78,13 +78,10 @@ autodoc2_class_docstring = "both"
 autodoc2_render_plugin = "myst"
 autodoc2_hidden_objects = ["private", "dunder", "undoc"]
 autodoc2_module_all_regexes = [
-    r"agents.config",
-    r"agents.models",
-    r"agents.vectordbs",
-    r"agents.ros",
-    r"agents.clients\.[^\.]+",
-    r"components\*",
-    r"core\*",
+    r"agents\.(components|config|models|ros|vectordbs)",
+    r"agents\.clients\.[^\.]+",
+    r"ros_sugar\.(core|robot|io|config)",
+    r"kompass\.(components|config|control|robot)",
 ]
 
 templates_path = ["_templates"]

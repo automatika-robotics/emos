@@ -83,7 +83,20 @@ class MapBuilder(BaseComponent):
         self._map_msg = None
         self._cloud_topic = cloud_topic
         self._cloud_warned = False
+        # What finish() records in map.json besides the grid. Set by session.
+        self.metadata: Dict[str, Any] = {}
+        self._saved: Optional[Dict[str, str]] = None
+        self._finished = False
         self.started_at = time.time()
+
+    def destroy_node(self):
+        # Save the map before the node goes, whatever the launcher's shutdown
+        # does after this
+        try:
+            self.finish()
+        except Exception as e:  # noqa: BLE001 - teardown must go on
+            self.get_logger().error(f"Could not write the map: {e}")
+        super().destroy_node()
 
     def _execution_step(self) -> None:
         self._check_cloud()
@@ -99,11 +112,17 @@ class MapBuilder(BaseComponent):
         topic = self.config.cloud_topic_name or self._cloud_topic.name
         if self.callbacks[self._cloud_topic.name].msg is not None:
             if self._cloud_warned:
-                print(f"Mapping warning: point clouds are arriving on {topic} now.", flush=True)
+                print(
+                    f"Mapping warning: point clouds are arriving on {topic} now.",
+                    flush=True,
+                )
                 self._cloud_warned = False
                 self._cloud_topic = None
             return
-        if not self._cloud_warned and time.time() - self.started_at > self.NO_CLOUD_WARNING_AFTER:
+        if (
+            not self._cloud_warned
+            and time.time() - self.started_at > self.NO_CLOUD_WARNING_AFTER
+        ):
             print(
                 f"Mapping warning: no point cloud on {topic} after "
                 f"{self.NO_CLOUD_WARNING_AFTER:.0f} s; is the LiDAR driver running?",
@@ -168,9 +187,14 @@ class MapBuilder(BaseComponent):
         with open(os.path.join(self.config.output_dir, STATE_FILE), "w") as f:
             json.dump(state, f)
 
-    def finish(self, metadata: Dict[str, Any]) -> Optional[Dict[str, str]]:
+    def finish(
+        self, metadata: Optional[Dict[str, Any]] = None
+    ) -> Optional[Dict[str, str]]:
         """Write the map files and map.json, and return their paths by role.
         None when GLIM never published a map."""
+        if self._finished:
+            return self._saved
+        self._finished = True
         self._take_map()  # one may have arrived since the last step
         built = self._build()
         if built is None:
@@ -179,7 +203,7 @@ class MapBuilder(BaseComponent):
         paths = write_artifact(self.config.output_dir, self.points, grid)
         record = {
             "schema_version": 1,
-            **metadata,
+            **(metadata if metadata is not None else self.metadata),
             "duration_s": round(time.time() - self.started_at, 1),
             "grid": {
                 "resolution": grid.resolution,
@@ -194,4 +218,5 @@ class MapBuilder(BaseComponent):
         with open(paths["metadata"], "w") as f:
             json.dump(record, f, indent=2)
             f.write("\n")
+        self._saved = paths
         return paths

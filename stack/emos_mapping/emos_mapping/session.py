@@ -4,7 +4,9 @@ map built from its clouds."""
 from __future__ import annotations
 
 import argparse
+import faulthandler
 import os
+import signal
 import sys
 import time
 from datetime import datetime
@@ -148,13 +150,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         "inputs": {"cloud": points_topic, "imu": imu_topic, "lidar_imu": lidar_imu},
         "band": {"z_min": declaration.z_min, "z_max": declaration.z_max},
     }
+    builder.metadata = metadata
+    # A hung session dumps every thread's stack into the log on SIGUSR1
+    faulthandler.register(signal.SIGUSR1, all_threads=True)
+
     # Operator guidance is the CLI's; this only states the facts it needs.
     print(f"Map directory: {directory}", flush=True)
     started = time.time()
     try:
         launcher.bringup()
     finally:
-        saved = builder.finish(metadata)
+        # Cover a launch that ended without tearing it down
+        saved = builder.finish()
         if saved:
             print(f"Map saved: {directory} ({time.time() - started:.0f} s)", flush=True)
         else:

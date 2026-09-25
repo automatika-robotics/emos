@@ -127,3 +127,17 @@ def test_the_operator_is_warned_when_the_lidar_stays_silent(tmp_path, capsys):
     builder._execution_step()
     out = capsys.readouterr().out
     assert out.count("point clouds are arriving on /livox/lidar") == 1
+
+
+def test_the_map_is_written_when_the_node_is_destroyed_and_only_once(tmp_path):
+    builder = make_builder(tmp_path)
+    builder.metadata = {"name": "office", "provider": "native"}
+    publish_map(builder, room())
+    builder.destroy_node()
+    record = json.load(open(tmp_path / "map.json"))
+    assert record["name"] == "office" and record["grid"]["width"] > 0
+    written = os.stat(tmp_path / "map.json").st_mtime_ns
+
+    saved = builder.finish()  # the session's own call afterwards
+    assert saved is not None and saved["metadata"] == str(tmp_path / "map.json")
+    assert os.stat(tmp_path / "map.json").st_mtime_ns == written

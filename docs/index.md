@@ -22,11 +22,12 @@ why-emos
 getting-started/installation
 getting-started/quickstart
 getting-started/dashboard
-getting-started/cli
 getting-started/running-recipes
 getting-started/plugins
-getting-started/troubleshooting
+getting-started/mapping
 recipes/overview
+getting-started/cli
+getting-started/troubleshooting
 ```
 
 ```{toctree}

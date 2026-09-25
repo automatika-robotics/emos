@@ -2,233 +2,117 @@
 
 ## EMOS CLI
 
-The fastest way to get started with EMOS is through the CLI. Download the latest release:
+Everything starts with the `emos` command line tool. It installs EMOS on the robot, keeps it up to date, and runs recipes. Get the latest release with:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/automatika-robotics/emos/main/stack/emos-cli/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/automatika-robotics/emos/main/stack/emos-cli/scripts/install.sh | sudo bash
 ```
 
-Or build from source (requires Go 1.25+):
+This only places the `emos` binary in `/usr/local/bin`. The actual installation happens when you run `emos install`, which we get to next.
+
+If you would rather build the CLI yourself, you need Go 1.25 or newer, plus Node.js and npm, since the dashboard's web app is built and embedded into the binary:
 
 ```bash
 git clone https://github.com/automatika-robotics/emos.git
 cd emos/stack/emos-cli
 make build
-sudo make install
-```
-
-```{tip}
-The CLI is a single static binary with no runtime dependencies, copy `/usr/local/bin/emos` to another machine on the same architecture and it just works.
+make install
 ```
 
 ## Deployment Modes
 
-EMOS supports four deployment modes. Run `emos install` without arguments for an interactive menu, or use the `--mode` flag directly.
+There are three ways to install EMOS, and the right one depends mostly on what is already on the machine. If you are not sure, pick pixi. Running `emos install` without any flags gives you a menu with the same three choices.
+
+| Mode          | Pick it when                                                                | ROS 2 comes from                        |
+| :------------ | :-------------------------------------------------------------------------- | :-------------------------------------- |
+| **pixi**      | Most robots and development machines. No system ROS 2 and no Docker needed. | An isolated environment under your home |
+| **native**    | ROS 2 is already installed and you want EMOS inside it.                     | Your `/opt/ros/<distro>`                |
+| **container** | A quick evaluation on a machine with Docker.                                | The public EMOS image                   |
 
 ::::{tab-set}
 
-:::{tab-item} Container
+:::{tab-item} pixi
 
-No ROS2 installation required. Runs EMOS inside a Docker container using the public image.
+Pixi mode gives you a complete ROS 2 Jazzy environment under your home directory, with nothing installed system-wide. You need [pixi](https://pixi.sh) itself before you begin, and a new shell after installing it so that it is on your path:
 
 ```bash
-emos install --mode container
+curl -fsSL https://pixi.sh/install.sh | bash
+
+emos install --mode pixi
 ```
 
-You will be prompted to select a ROS2 distribution (Jazzy, Humble, or Kilted). The CLI pulls the image, creates the container, and sets up the `~/emos/` directory structure.
+The CLI clones the EMOS workspace into `~/.local/share/emos` (or `$XDG_DATA_HOME/emos` if you have that set) and pulls ROS 2 Jazzy and all of its dependencies as prebuilt packages from [RoboStack](https://robostack.github.io/) and conda-forge. It then builds kompass-core from source, so that navigation can use whatever GPU the machine has, and finally builds the EMOS packages with colcon. Expect the first install to take 10 to 20 minutes on a desktop, and noticeably longer on a robot's own board.
 
-**Requirements:** Docker installed and running.
+**Requirements:** Linux on amd64 or arm64, pixi, and sudo for the kompass-core toolchain.
 
 :::
 
-:::{tab-item} Native
+:::{tab-item} native
 
-Builds EMOS packages from source and installs them directly into your ROS2 installation at `/opt/ros/{distro}/`. No container needed.
+Native mode is for machines that already have ROS 2 installed and where you want EMOS to live alongside it, in `/opt/ros/<distro>`:
 
 ```bash
 emos install --mode native
 ```
 
-The CLI will:
+The CLI looks for ROS 2 installations (Humble, Jazzy or Kilted are supported) and asks you to confirm the one it found. It then clones the EMOS source into `~/emos/ros_ws/`, installs the system packages the stack needs with apt (PortAudio, jq, the Zenoh RMW and the MoveIt message packages), builds kompass-core from source with GPU support, installs the Python dependencies with pip, resolves whatever ROS dependencies are still missing with rosdep, and builds the four EMOS packages with colcon. As a last step it merges the build into `/opt/ros/<distro>/`, so from then on EMOS is simply part of your ROS 2 installation: source `/opt/ros/<distro>/setup.bash` and it is there.
 
-1. Detect your ROS2 installation
-2. Clone the EMOS source and dependencies into a build workspace (`~/emos/ros_ws/`)
-3. Install system packages (portaudio, GeographicLib, rmw-zenoh)
-4. Install Python dependencies
-5. Install kompass-core with GPU acceleration support
-6. Build all packages with colcon and install them into `/opt/ros/{distro}/`
-
-After installation, EMOS packages are available whenever you source `/opt/ros/<distro>/setup.bash`. See [Running Recipes](running-recipes.md) for how to launch a recipe -- directly with `python` or via the `emos run` flow.
-
-**Requirements:** A working ROS2 installation (Humble, Jazzy, or Kilted).
+**Requirements:** a working ROS 2 installation and sudo.
 
 :::
 
-:::{tab-item} pixi
+:::{tab-item} container
 
-```{note}
-Currently pinned to **ROS 2 Jazzy**.
-```
-
-Installs ROS2 and all EMOS dependencies into an isolated userspace environment using [pixi](https://pixi.sh). No root privileges, no Docker, no pre-installed ROS2 required. Works on any Linux distribution.
+Container mode needs nothing but Docker, which makes it the quickest way to try EMOS on a machine that has neither ROS 2 nor a GPU toolchain set up:
 
 ```bash
-# Install pixi first (emos install --mode pixi tells you if it's missing)
-curl -fsSL https://pixi.sh/install.sh | bash
-
-# Install EMOS in pixi mode
-emos install --mode pixi
+emos install --mode container
 ```
 
-The CLI clones the EMOS workspace into `~/.local/share/emos`, pulls ROS 2 Jazzy and all dependencies as pre-built packages from [RoboStack](https://robostack.github.io/) and conda-forge, installs kompass-core with GPU acceleration, then builds the EMOS packages with colcon — independent of any system ROS 2.
+After you pick a ROS 2 distribution (Jazzy, Humble or Kilted), the CLI pulls `ghcr.io/automatika-robotics/emos:<distro>-latest` and creates a container named `emos`. The container uses the host's network, has access to USB devices, sees your `~/emos` directory as `/emos`, and gets the NVIDIA runtime when Docker has one. Recipes run inside it.
 
-See [Running Recipes](running-recipes.md) for how to launch a recipe -- directly from a `pixi shell` or via the `emos run` flow.
+The convenience comes with a few limits that the other two modes do not have. The image does not contain the sensor drivers that a robot plugin may depend on, so when you install such a plugin the CLI tells you what the image would need rather than installing it. Building maps with EMOS itself is not available in a container. And anything you install inside the container by hand is gone the next time `emos update` recreates it.
 
-**Requirements:** Linux (amd64 or arm64). No root, Docker, or ROS2 needed.
+**Requirements:** Docker, installed and running.
 
 :::
 
 ::::
 
-See the [CLI Reference](cli.md) for the full list of commands.
+The [CLI Reference](cli.md) lists every command and flag.
 
-## Which Mode Should I Choose?
+## What every install asks
 
-| Scenario                                         | Recommended Mode |
-| :----------------------------------------------- | :--------------- |
-| No ROS2 on host, quick evaluation                | **Container**    |
-| ROS2 already installed, system-level integration | **Native**       |
-| No root, no Docker, any Linux distro             | **Pixi**         |
+Whichever mode you choose, the last thing `emos install` does is offer to set up a systemd service so that the [dashboard](dashboard.md) starts at every boot. If you say yes, it prints the URLs the dashboard is reachable at, a pairing code that is shown only this once, and a QR code you can scan with a phone. If you decline now, `emos serve install-service` sets the service up at any later time.
+
+```{tip}
+Some boards have a power supply that cannot keep up with a full-load compile. If yours resets or powers off during the install, cap the compile jobs with `EMOS_BUILD_JOBS=4 emos install --mode pixi`. See [Troubleshooting](troubleshooting.md#the-board-resets-or-powers-off-during-a-pixi-install).
+```
 
 ## Reach the Dashboard
 
-During installation you were asked whether to enable the EMOS dashboard as a systemd service. Pick the path you chose below.
+If you enabled the service, the dashboard is already running and comes back on its own after every reboot. The installer printed everything you need to get in: the URLs, the six-digit pairing code and the QR code. Open one of the URLs in a browser. The first visit shows a certificate warning, because the robot signs its own certificate. Enter the pairing code, and that browser stays paired for about 90 days.
 
-### If you enabled the systemd service (recommended)
-
-The dashboard is already running and will come up automatically at every boot. The installer printed the access details once -- a six-digit pairing code, the URLs the dashboard is reachable at, and a scannable QR code. Open any of the URLs in a browser, enter the code, and the browser is paired for ~90 days.
-
-If you missed the install output (or you've already paired and just need the URLs again), reprint the access summary at any time:
+If you did not catch that output, or need the URLs again later:
 
 ```bash
 emos serve
 ```
 
-When the dashboard is already running as a service, `emos serve` detects that and just shows the URLs and management commands -- it does not try to bind a second instance. Manage the service directly with:
-
-```bash
-systemctl status emos-dashboard.service
-systemctl restart emos-dashboard.service
-journalctl -u emos-dashboard.service -f
-```
-
-If you've lost the original pairing code, issue a fresh one with `emos config rotate-pairing`.
-
-### If you skipped the systemd service
-
-Start the dashboard manually whenever you want to use it:
-
-```bash
-emos serve
-```
-
-The first launch prints the pairing code, URLs, and QR code. The process runs in the foreground and stops when you `Ctrl-C` it. You can enable the service later with `emos serve install-service`.
-
 ```{seealso}
-[Dashboard](dashboard.md) — full walkthrough of pairing, recipes, and run console
+[Dashboard](dashboard.md) walks through pairing, the pages, and the security model.
 ```
 
-## Preparing Your Hardware
+## Connecting Your Robot
 
-Before running recipes, you need sensor drivers publishing data on ROS2 topics. EMOS recipes declare the topics they expect (e.g. `Image` from a camera, `LaserScan` from a lidar). Run `emos info <recipe>` to see what a recipe needs.
-
-### Installing Sensor Drivers
-
-::::{tab-set}
-
-:::{tab-item} Container
-
-The EMOS container runs with `--privileged` and has access to all USB devices on the host. You can install and run sensor drivers directly **inside the container** — no ROS2 installation on the host is needed.
+EMOS talks to a robot through a plugin. The plugin knows the robot's own interfaces, starts its sensor drivers when a recipe needs them, and exposes the robot's actions and events to recipes. For a robot in the catalog, installing the plugin is the only setup needed:
 
 ```bash
-# Install a sensor driver inside the container:
-docker exec -it emos bash -c "apt-get update && apt-get install -y ros-jazzy-usb-cam"
-
-# Launch the driver inside the container (in a separate terminal):
-docker exec -it emos bash -c "source /ros_entrypoint.sh && ros2 run usb_cam usb_cam_node_exe"
+emos plugin list                        # what is in the catalog
+emos plugin install <plugin>            # install the plugin for your robot
 ```
 
-The driver's topics are immediately visible to recipes running in the same container.
-
-```{tip}
-If you have sensor drivers already running on the host with ROS2, they can bridge into the container automatically via Zenoh (the default RMW). Start the host driver with `export RMW_IMPLEMENTATION=rmw_zenoh_cpp`.
-```
-
-:::
-
-:::{tab-item} Native
-
-Install the driver package and launch it directly:
-
-```bash
-sudo apt install ros-jazzy-usb-cam
-source /opt/ros/jazzy/setup.bash
-export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 run usb_cam usb_cam_node_exe
-```
-
-If you place a launch file at `~/emos/robot/launch/bringup_robot.py`, the CLI will start it automatically when you run `emos run`.
-
-:::
-
-:::{tab-item} pixi
-
-Pixi mode assumes you have **no system ROS2 installation**, so sensor drivers are installed into the pixi environment too. The EMOS workspace already has the [RoboStack](https://robostack.github.io/) `robostack-jazzy` channel configured, so adding a driver is a **single command** — install it straight into the EMOS environment:
-
-```bash
-cd ~/.local/share/emos
-pixi add ros-jazzy-usb-cam
-RMW_IMPLEMENTATION=rmw_zenoh_cpp pixi run ros2 run usb_cam usb_cam_node_exe
-```
-
-The driver lives in the same environment as your recipes, and because both use Zenoh as the default RMW, its topics are visible to running recipes automatically — no system ROS2, no separate project, no extra channel setup.
-
-```{note}
-`emos update` **preserves** drivers you add this way: it stashes your local `pixi.toml` / `pixi.lock` changes around the update and reapplies them. (In the rare case a release changes `pixi.toml` itself, you get a clear conflict to resolve rather than a silent overwrite.)
-```
-
-```{tip}
-If a driver package isn't on RoboStack, install it from source into the EMOS environment with `colcon`, or fall back to Native mode for that driver only.
-```
-
-:::
-
-::::
-
-```{important}
-Match the driver's RMW implementation to the one your recipe uses, or the driver's topics won't be visible to it. EMOS recipes default to **Zenoh** -- set `export RMW_IMPLEMENTATION=rmw_zenoh_cpp` in the shell where you launch the driver. If the recipe overrides this (e.g. `emos run <recipe> --rmw rmw_cyclonedds_cpp`), export the same value instead.
-```
-
-### Verifying Sensors
-
-Before running a recipe, confirm your sensors are publishing:
-
-```bash
-# 1. See what the recipe needs
-emos info vision_follower
-
-# 2. Check topics exist
-ros2 topic list
-
-# 3. Confirm data is flowing
-ros2 topic hz /image_raw
-```
-
-If `ros2 topic hz` shows a non-zero rate, the sensor is ready.
-
-```{seealso}
-If sensor verification fails during `emos run`, see [Troubleshooting](troubleshooting.md).
-```
+Extra sensors, whether mounted on the robot or placed somewhere in its environment, are added the same way as sensor plugins. The [Plugins](plugins.md) page covers installing and using them, what to do with a robot that is not in the catalog yet, and how to check what a recipe expects with `emos info`.
 
 ## Model Serving Platform
 
@@ -237,8 +121,8 @@ EMOS is agnostic to model serving platforms. You need at least one of the follow
 - {material-regular}`download;1.2em;sd-text-primary` **[Ollama](https://ollama.com)** Recommended for local inference.
 - {material-regular}`smart_toy;1.2em;sd-text-primary` **[RoboML](https://github.com/automatika-robotics/robo-ml)** Automatika's own open-source model serving package for quick prototyping.
 - {material-regular}`api;1.2em;sd-text-primary` **OpenAI API-compatible fast inference servers** e.g. [llama.cpp](https://github.com/ggml-org/llama.cpp), [vLLM](https://github.com/vllm-project/vllm), [SGLang](https://github.com/sgl-project/sglang).
-- {material-regular}`precision_manufacturing;1.2em;sd-text-primary` **[LeRobot](https://github.com/huggingface/lerobot)** For Vision-Language-Action (VLA) models.
-- {material-regular}`cloud;1.2em;sd-text-primary` **Cloud endpoints** e.g. OpenAI, Claude, HuggingFace Inference etc. using an API key.
+- {material-regular}`precision_manufacturing;1.2em;sd-text-primary` **[LeRobot](https://github.com/huggingface/lerobot)** For Vision-Language-Action (VLA) models, version 0.6.0 or newer.
+- {material-regular}`cloud;1.2em;sd-text-primary` **Cloud endpoints** e.g. OpenAI, Claude, HuggingFace Inference etc. The API key is read from an environment variable.
 
 ```{tip}
 For larger models, run the serving platform on a GPU-equipped machine on your local network, or use a cloud endpoint, rather than running models directly on the robot.
@@ -246,47 +130,45 @@ For larger models, run the serving platform on a GPU-equipped machine on your lo
 
 ## Updating
 
-Update your installation to the latest version:
-
 ```bash
 emos update
 ```
 
-The CLI detects your installation mode and updates accordingly:
+The update happens in two rounds. First the CLI updates itself: if there is a newer release, it downloads it, replaces its own binary, restarts the dashboard service if one is running, and then asks you to run `emos update` once more. That second run is the one that updates the installation, in the way that fits its mode.
 
-- **Container mode:** pulls the latest image and recreates the container.
-- **Native mode:** pulls the latest source, rebuilds, and re-installs packages into `/opt/ros/{distro}/`.
-- **Pixi mode:** runs `git pull` and `git submodule update` in the EMOS workspace at `~/.local/share/emos`, refreshes the pixi environment (`pixi install`), and rebuilds the EMOS packages (`pixi run setup`). Any installed robot plugin is pulled and rebuilt too.
+Whatever the mode, every installed plugin, the robot and any sensors, is pulled and rebuilt at the end.
+
+## Trying the dev channel
+
+If you want to run the latest EMOS before it is released, there is a nightly build. Every night the unreleased branch is built and published as a pre-release named `v<version>-dev.<date>`, together with matching `<distro>-dev` container images. The installer takes a flag for it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/automatika-robotics/emos/main/stack/emos-cli/scripts/install.sh | sudo bash -s -- --dev
+```
+
+On a machine that already has EMOS, follow that with `emos update`, and the workspace, or the container image, moves to the same nightly.
 
 ## Uninstalling
 
-To remove EMOS from a device:
-
 ```bash
-sudo emos uninstall
+emos uninstall
 ```
 
-After confirming, the CLI:
+Run this as your own user rather than with `sudo`; the command escalates on its own for the few steps that need root.
 
-- Runs mode-specific cleanup:
-  - **Container mode:** removes the Docker container. The image is preserved unless `--remove-image` is passed.
-  - **Native mode:** The CLI prints the manual `rm` commands so you can clean them ROS packages yourself if you want.
-  - **Pixi mode:** removes `.pixi/`, `build/`, `install/`, `log/` under your EMOS clone. The cloned repo itself is preserved.
-- Removes `~/emos/recipes`, `~/emos/logs`, and `~/.config/emos` (installed recipes, run logs, and dashboard auth state).
+It also removes the plugin workspace at `~/emos/workspace`, your recipes and logs under `~/emos` unless you pass `--keep-data`, and `~/.config/emos` unless you pass `--keep-config`.
 
-Pass `--keep-data` to preserve `~/emos/recipes` and `~/emos/logs`. Pass `--keep-config` to preserve `~/.config/emos` (so previously paired browsers remain valid). Pass `-y` / `--yes` to skip the confirmation prompt.
-
-The CLI binary at `/usr/local/bin/emos` is never removed automatically. The command prints the one-liner you can run after the process exits.
+A few things are deliberately left alone: the maps in `~/emos/maps`, exported maps in `~/emos/map-archives`, and the robot's certificate and API keys in `~/emos/.ui-security`. The CLI binary is never removed either, the command prints the one-liner for that.
 
 ```{tip}
-Use `emos uninstall` before switching install modes (e.g. native -> pixi). It clears auth tokens and mode-specific state that would otherwise carry over and confuse the new install.
+Uninstall before switching modes, for example from native to pixi. It clears the state that would otherwise carry over and confuse the new install.
 ```
 
 ## Installing from Source (Developer Setup)
 
-If you want to build the full EMOS stack from source for contributing or accessing the latest features, follow the steps below. This installs all three stack components: **Sugarcoat** (architecture), **EmbodiedAgents** (intelligence), and **Kompass** (navigation).
+If you are contributing to the stack, or want it in a workspace of your own, you can build all four packages by hand: **Sugarcoat** (architecture), **EmbodiedAgents** (intelligence), **Kompass** (navigation) and **emos_mapping** (map building). If all you want is the latest stack, the pixi mode above does exactly this for you in an isolated environment.
 
-### 1. Create a unified workspace
+### 1. Create a workspace
 
 ```shell
 mkdir -p emos_ws/src
@@ -296,27 +178,26 @@ cd emos_ws/src
 ### 2. Clone the stack
 
 ```shell
-git clone https://github.com/automatika-robotics/emos.git
+git clone --recurse-submodules https://github.com/automatika-robotics/emos.git
 cp -r emos/stack/sugarcoat .
 cp -r emos/stack/embodied-agents .
 cp -r emos/stack/kompass .
+cp -r emos/stack/emos_mapping .
 ```
 
 ### 3. Install Python dependencies
 
 ```shell
-PIP_BREAK_SYSTEM_PACKAGES=1 pip install numpy opencv-python-headless 'attrs>=23.2.0' jinja2 httpx setproctitle msgpack msgpack-numpy platformdirs tqdm pyyaml toml websockets
+PIP_BREAK_SYSTEM_PACKAGES=1 pip install numpy opencv-python-headless 'attrs>=23.2.0' jinja2 httpx setproctitle msgpack msgpack-numpy platformdirs tqdm pyyaml toml websockets ollama 'redis[hiredis]' pyaudio soundfile python-fasthtml monsterui
 ```
 
 ### 4. Install the Kompass core engine
-
-The `kompass-core` package provides optimized planning and control algorithms.
 
 ::::{tab-set}
 
 :::{tab-item} GPU Support (Recommended)
 
-For production robots or high-performance simulation, install with GPU acceleration:
+Builds kompass-core with GPU acceleration for NVIDIA, AMD, Intel and Arm Mali GPUs:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/automatika-robotics/kompass-core/refs/heads/main/build_dependencies/install_gpu.sh | bash
@@ -325,8 +206,6 @@ curl -sSL https://raw.githubusercontent.com/automatika-robotics/kompass-core/ref
 :::
 
 :::{tab-item} CPU Only
-
-For quick testing or lightweight environments:
 
 ```bash
 pip install kompass-core

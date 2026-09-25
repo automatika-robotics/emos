@@ -8,7 +8,7 @@ A Recipe is not a "script" in the traditional sense. It is a complete applicatio
 
 ### Write Once, Run Anywhere
 
-The core promise of EMOS Recipes is hardware independence. A "Security Patrol" recipe written for a wheeled AMR runs identically on a quadruped -- EMOS handles the kinematic translation and action commands beneath the surface. This decoupling of the robot's **Mind** from its **Body** means that:
+The core promise of EMOS Recipes is hardware independence. A "Security Patrol" recipe written for a wheeled AMR runs identically on a quadruped -- the robot's [plugin](../getting-started/plugins.md) handles the kinematic translation and action commands beneath the surface. This decoupling of the robot's **Mind** from its **Body** means that:
 
 - The same Recipe can be deployed across an entire heterogeneous fleet.
 - Recipes can be shared, versioned, and composed just like software packages.

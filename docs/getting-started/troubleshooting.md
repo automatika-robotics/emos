@@ -1,148 +1,92 @@
 # Troubleshooting
 
-Common issues when running EMOS recipes, organized by error message.
+The problems people run into most often, grouped by what you see on the screen.
+
+```{tip}
+Whatever the symptom, `emos status` is a good first stop. It checks that every EMOS package is present for your install mode and shows the state of the container or the pixi workspace, which rules out a broken install before you look further.
+```
 
 ---
 
-## "Sensor topic not found within 10s"
+## Recipes
 
-The most common error. `emos run` checks that every sensor topic declared in the recipe is actually publishing before launching.
+### The recipe waits for a topic that never arrives
 
-**Possible causes:**
+A component that subscribes to a sensor topic does nothing until the first message comes in, so a recipe with a missing sensor looks like it is running but stays silent. Start with `emos info <recipe>`, which lists every topic the recipe uses and where it should come from.
 
-| Cause                                                 | Fix                                                                                                                                            |
-| :---------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------- |
-| Driver not installed                                  | Run `emos info <recipe>` for suggested packages, then `sudo apt install <package>`                                                             |
-| Driver installed but not running                      | Start the driver node in a separate terminal before running the recipe                                                                         |
-| Topic name mismatch                                   | Compare `ros2 topic list` output with `Topic(name=...)` in your recipe and correct the name                                                    |
-| **Container mode**: driver not installed in container | Install the driver inside the container: `docker exec -it emos bash -c "apt-get update && apt-get install -y ros-jazzy-usb-cam"` and launch it |
+| What `emos info` says              | What to check                                                                                                          |
+| :--------------------------------- | :--------------------------------------------------------------------------------------------------------------------- |
+| The topic comes from the robot plugin | Is a robot plugin installed? `emos plugin list` marks the installed ones. The plugin starts the robot's drivers itself. |
+| The topic comes from a named plugin   | Is that sensor plugin installed, and does the recipe attach it under the same id?                                       |
+| A plain ROS topic                     | Is the driver running, and does it publish under exactly that name? Compare `ros2 topic list` with the recipe's `Topic(name=...)`. |
 
-**Diagnosis:**
+Then confirm that data is actually flowing:
 
 ```bash
-# Check what topics exist
 ros2 topic list
-
-# Check if a specific topic has data
 ros2 topic hz /image_raw
 ```
 
-If the topic exists but shows 0 Hz, the driver is running but not producing data (check hardware connections).
+A topic that exists but shows no rate means the driver is up and the hardware is not delivering: check cables, power, and device permissions such as `sudo chmod 666 /dev/video0`.
 
-To temporarily bypass this check while debugging, use `emos run <recipe> --skip-sensor-check`.
+If the driver runs in a different process than the recipe, both have to use the same RMW implementation. `emos run` does not set one unless you pass `--rmw`; if you do, export the same `RMW_IMPLEMENTATION` in the driver's shell. In container mode, run the driver on the host or in its own container, on the host network. The EMOS container is restarted for every run and stopped afterwards, so a driver started inside it does not survive.
 
----
+### "ImportError: No module named 'agents'"
 
-## "ImportError: No module named 'agents'"
+The EMOS packages are not on the Python path of the shell you are in. What to do depends on the install mode:
 
-EMOS Python packages are not on the Python path. The fix depends on your install mode:
+| Mode          | Fix                                                                                                                       |
+| :------------ | :------------------------------------------------------------------------------------------------------------------------ |
+| **pixi**      | `pixi shell --manifest-path ~/.local/share/emos/pixi.toml`, then `source ~/.local/share/emos/install/setup.sh`.            |
+| **native**    | `source /opt/ros/<distro>/setup.bash`.                                                                                     |
+| **container** | Run the recipe with `emos run`. The packages live inside the container, so `python3` on the host cannot find them.        |
 
-| Mode          | Fix                                                                                                                             |
-| :------------ | :------------------------------------------------------------------------------------------------------------------------------ |
-| **Container** | Run the recipe via `emos run`, not directly with `python3`. The CLI executes inside the container where packages are installed. |
-| **Native**    | Source the ROS2 environment first: `source /opt/ros/jazzy/setup.bash`                                                           |
-| **Pixi**      | Enter the pixi shell first: `pixi shell`, then `source install/setup.sh`                                                        |
+### "ModuleNotFoundError: No module named 'myrobot_plugin'"
 
----
-
-## "Robot plugin not found"
-
-A recipe imports a robot plugin and hands it to the launcher -- `from myrobot_plugin import MyRobotPlugin` / `Launcher(robot_plugin=MyRobotPlugin())` -- but the plugin isn't installed, so the recipe fails at startup with something like `ModuleNotFoundError: No module named 'myrobot_plugin'`.
-
-**Fix:** install the plugin with the CLI -- it clones, builds it for your install mode, and wires it so recipes can import it:
+The recipe imports a plugin that is not installed, or that your shell cannot see. Install it from the catalog:
 
 ```bash
-emos plugin list                       # find the plugin's name
-emos plugin install <plugin>           # install + activate it
-emos plugin inspect                    # confirm it's the active plugin
+emos plugin list                       # find its name
+emos plugin install <plugin>
+emos plugin inspect                    # confirm it is there
 ```
 
-A robot runs **one plugin at a time**, so installing a new one replaces the active one. If the import still fails right after installing, make sure you're launching through `emos run` (or, in development, that you've sourced the plugin overlay -- see [Running Recipes](running-recipes.md#install-mode-reference)).
+`emos run` sources installed plugins automatically. When you run a script by hand, source the plugin overlay as well, `~/emos/workspace/install/setup.bash` (or `setup.sh` inside the pixi shell). For a plugin you wrote yourself, see [Plugins](plugins.md).
 
-If the plugin is one **you wrote** (not in the catalog), build it into the EMOS workspace and follow the authoring guide.
+### "Plugins are being installed, updated or removed"
 
-```{seealso}
-- [Robot Plugins](plugins.md) -- installing and managing plugins with `emos plugin`.
-- [Robot Plugins (concept)](../concepts/robot-plugins.md) -- how plugins work and how to write one.
-```
+A plugin operation, started here or from the dashboard, is rebuilding the plugin overlay, and a recipe started now would load a half-built one. Wait for it to finish and try again. The same lock is behind "Another plugin install, update or removal is running" when you start a second plugin operation.
 
----
+### "the zenoh router did not start listening on 127.0.0.1:7447"
 
-## "Zenoh router failed to start"
-
-The Zenoh router (used by `rmw_zenoh_cpp`) typically fails when port 7447 is already in use from a previous run.
-
-**Fix:**
+Only relevant with `--rmw rmw_zenoh_cpp`. The CLI reuses a router that is already running on the machine, so this usually means a stale router holds the port without answering. Stop it and run again:
 
 ```bash
-# Kill any existing Zenoh routers
 pkill -f rmw_zenohd
-
-# Then retry
-emos run <recipe>
+emos run <recipe> --rmw rmw_zenoh_cpp
 ```
 
-To use a different RMW and skip Zenoh entirely:
+Or leave `--rmw` out altogether and use the environment's default RMW.
 
-```bash
-emos run <recipe> --rmw rmw_cyclonedds_cpp
-```
+### The recipe runs but nothing happens
+
+The two usual causes are a sensor topic with no data, covered above, and a model server that is reachable but not answering. EMOS checks that the model server can be reached when a component starts; if the recipe stalls after that, look at the server's own log. Common reasons are a model that is not pulled or loaded (for Ollama, `ollama pull <model>` first), a model too large for the available memory, and a slow or rate-limited cloud endpoint.
+
+### "container 'emos' does not exist — run 'emos install' first"
+
+The container was removed. `emos install --mode container` recreates it; your recipes are on the host under `~/emos/recipes` and are untouched. Note that a container that shows as *Exited* in `emos status` is normal: the CLI starts it for each run and stops it afterwards.
+
+### "no EMOS installation found — run 'emos install' first"
+
+There is no install recorded in `~/.config/emos/config.json`. Run `emos install`.
 
 ---
 
-## "Recipe hangs with no output"
+## Installing and updating
 
-The recipe started but nothing happens. Two common causes:
+### The board resets or powers off during a pixi install
 
-**1. Sensor topic exists but has no data (0 Hz)**
-
-The driver node is running but the hardware isn't producing data. Check:
-
-```bash
-ros2 topic hz /image_raw    # Should show non-zero rate
-```
-
-If 0 Hz: check physical connections (USB cable, power), device permissions (`sudo chmod 666 /dev/video0`), or driver configuration.
-
-**2. Model inference failing**
-
-EMOS verifies that the model server is reachable when the recipe starts. If the recipe hangs after that, the server is running but inference itself is failing — for example, the model isn't loaded, is out of memory, or the request format is wrong.
-
-Check your model server's logs for errors. Common causes:
-
-- **Model not pulled/loaded** — e.g. for Ollama, run `ollama pull qwen2.5vl:latest` before starting the recipe
-- **Out of memory** — the model is too large for available RAM/VRAM. Try a smaller checkpoint.
-- **Timeout on cloud endpoint** — network latency or rate limiting. Check the provider's status page.
-
----
-
-## "Container 'emos' not found"
-
-The Docker container was removed or never created.
-
-**Fix:**
-
-```bash
-emos install --mode container
-```
-
-This recreates the container. Your recipes in `~/emos/recipes/` are preserved (they're mounted from the host).
-
----
-
-## "No EMOS installation found"
-
-The config file at `~/.config/emos/config.json` is missing.
-
-**Fix:** Run `emos install` to set up EMOS — use `emos install --mode pixi` for the pixi mode.
-
----
-
-## The board resets or powers off during a pixi install
-
-A pixi install compiles kompass-core, and then the EMOS packages, on every core at once. On a board with a marginal power supply the sudden load can drop the voltage far enough to reset it, even when it is neither hot nor short of memory.
-
-**Fix:** Cap the number of compile jobs for the install, and for later updates:
+A pixi install compiles kompass-core, and then the EMOS packages, on every core at once. On a board with a marginal power supply the sudden load can drop the voltage far enough to reset it, even when it is neither hot nor short of memory. Cap the number of compile jobs, for the install and for later updates:
 
 ```bash
 EMOS_BUILD_JOBS=4 emos install --mode pixi
@@ -150,121 +94,109 @@ EMOS_BUILD_JOBS=4 emos install --mode pixi
 
 Lower the number further if the board still resets. The build takes longer, and nothing else changes.
 
+### "The CUDA versions did not build, so the CPU versions will be installed"
+
+The GPU build of sherpa-onnx and llama-cpp-python failed, most often because a download during the build timed out. EMOS keeps working on the CPU versions. Run `emos update` when the network is better and you will be offered the build again.
+
+### "Your local pixi dependencies could not be reapplied -- this release changed pixi.toml"
+
+You had added packages to the EMOS environment with `pixi add`, and the new release changed the same file. Your changes are saved in `git stash`. Resolve the conflict in `~/.local/share/emos/pixi.toml`, then run `emos update` again.
+
+### "Please run 'emos update' again to update your installation"
+
+Not an error. `emos update` replaced its own binary with the newer release and stopped there; the second run, on the new binary, updates the installation.
+
+### "Running under sudo"
+
+`emos install`, `emos uninstall`, `emos serve install-service` and `emos config` keep their state in your home directory and escalate on their own for the steps that need root. Under `sudo` they would write to root's home instead, and the dashboard running as your user would never see it. Run them as yourself.
+
+---
+
+## Mapping
+
+### "No robot plugin is installed, so there is no robot to map with"
+
+Mapping is driven by the robot plugin, which declares how the robot maps. Install the plugin for your robot first.
+
+### "This robot's plugin declares no mapping support"
+
+The plugin neither drives the robot's own mapping software nor tells EMOS which LiDAR to map with, so `emos map` has nothing to work with on this robot.
+
+### "The mapping backend (GLIM) is not installed in this EMOS environment"
+
+The robot maps with EMOS's own backend, which is built on demand. Run `emos map setup` once; it compiles GLIM and its dependencies into the EMOS workspace and can take a while.
+
+### "EMOS builds this robot's maps itself, which a container install cannot do in this version"
+
+Building maps with EMOS itself needs a pixi or native install on the robot.
+
+### "The mapping backend published no map"
+
+The first map arrives a few seconds after the robot starts moving. Drive for longer, and check that the LiDAR is publishing. A mapping session that ends without a map can leave an empty map directory behind; `emos map list` shows it and `emos map rm` removes it.
+
 ---
 
 ## Dashboard
 
-The dashboard daemon (`emos serve`) and its [web UI](dashboard.md) have a few common failure modes worth knowing about.
-
 ### "address already in use" when starting `emos serve`
 
-Another process is bound to the dashboard port (default `8765`). Most often this is a previous `emos serve` that's still running, either in another terminal or as a systemd service.
+Something else is bound to the dashboard's port, and it is usually a previous `emos serve`, either in another terminal or as the systemd service:
 
 ```bash
-# Is it already running as a service?
-systemctl status emos-dashboard.service
-
-# Stop the service (or the foreground process), then retry
-sudo systemctl stop emos-dashboard.service
-emos serve
-
-# Or pick a different port for one run
-emos serve --addr :9000
-
-# Or change the persisted port
-emos config set port 9000
+systemctl status emos-dashboard.service      # is it the service?
+sudo systemctl stop emos-dashboard.service   # stop it, then retry
+emos serve --addr :9000                      # or use another port for this run
+emos config set port 9000                    # or change the port for good
 ```
 
 ### I lost the pairing code
 
-The pairing code is **only printed on first boot** and never persisted in plaintext on disk. Rotate to issue a fresh one:
+The code is printed once and never stored in readable form. Issue a new one:
 
 ```bash
 emos config rotate-pairing
 # ✓ New pairing code (shown once): 829471
 ```
 
-Already-paired browsers keep working — rotation is a code rotation, not a token revocation. Use `emos config tokens` to see who is paired and `emos config revoke-token <id|label>` to remove a specific browser.
+Browsers that are already paired stay paired, and a running dashboard accepts the new code straight away. `emos config tokens` lists who is paired, and `emos config revoke-token <id|label>` removes one of them.
 
 ### `emos.local` does not resolve
 
-mDNS (`*.local`) works on most laptops out of the box but is unreliable on phones (especially Android). The dashboard is also published as `<device-name>.local` — and the boot banner always prints LAN IPs you can use directly.
-
-**Fixes, in order of preference:**
+mDNS names work on most laptops out of the box but are unreliable on phones, Android in particular. Try the robot's own name (`<name>.local`) first; failing that, use one of the IP addresses that `emos serve` prints, which work everywhere. On a laptop, make sure an mDNS resolver is running (avahi on Linux; macOS has one built in; Windows needs Bonjour). After renaming the robot, restart the dashboard so it announces the new name:
 
 ```bash
-# 1. Use the device-specific name printed in the banner
-ping epic-otter.local
-
-# 2. Use a LAN IP from the banner
-http://192.168.1.42:8765/
-
-# 3. Confirm avahi/Bonjour is running on the laptop
-#    (Linux: avahi-daemon, macOS: built-in, Windows: Bonjour from the iTunes installer)
-
-# 4. Force a fresh mDNS publication after a hostname change
 emos config set name new-name
 sudo systemctl restart emos-dashboard.service
 ```
 
-For headless or factory networks, just use the IP address; the dashboard works identically over IP and mDNS.
+### The browser warns about the certificate
 
-### Browser shows a persistent "Not Secure" warning under `--tls`
+Expected on first contact: the robot signs its own certificate. Compare the fingerprint in the browser's certificate details with `emos config tls-fingerprint`, then continue. To make the warning go away for good, import `~/emos/.ui-security/tls.crt` into the browser's trust store, as described under [Security](dashboard.md#security).
 
-`emos serve --tls` mints a self-signed cert. Browsers always flag self-signed certs as Not Secure even after you click through the warning — the encryption is real, but the trust chain is not. To get rid of the lozenge:
-
-- **Firefox:** *Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import* `~/.config/emos/tls.crt`, tick "Trust this CA to identify websites." Firefox keeps its own trust store separate from the OS.
-- **Chrome / system-wide:** install the cert into the OS trust store (`update-ca-certificates` on Linux, Keychain on macOS, certmgr on Windows).
-
-Verify the cert before trusting it:
-
-```bash
-emos config tls-fingerprint
-```
-
-Compare the SHA-256 fingerprint with the one the browser shows under "View Certificate".
-
-```{seealso}
-[CLI → HTTPS (Optional)](cli.md#https-optional) for the full rationale and trust-store steps.
-```
-
-### After moving to a new network, HTTPS shows a hostname-mismatch error
-
-The TLS cert's SubjectAltNames are baked in at mint time. If the device's IP or `.local` name changed, the cert no longer covers the address you're using. Regenerate:
+If a browser that used to be fine suddenly reports a name or address mismatch, the robot changed network or name since the certificate was made. Regenerate it and restart the dashboard and any running recipe:
 
 ```bash
 emos config tls-regenerate
 sudo systemctl restart emos-dashboard.service
 ```
 
-### "TLS handshake error from ..." floods the log
-
-Pre-v0.6.2 — these were stdlib `log` lines bypassing slog. The current daemon routes them to slog at DEBUG (invisible at the default INFO level). If you still see them: probably a probe from a Tailscale agent, nmap, or a browser hitting the port over plain HTTP while the daemon is in `--tls` mode. Run `emos serve -v` to see the chatter when debugging.
-
 ### "503 service_unavailable, code: offline" on the recipe catalog
 
-The dashboard tried to reach the Automatika recipe server and the device's reachability probe failed. This is by design — already-installed recipes still run while offline. If you expected the device to be online:
+The dashboard could not reach the Automatika catalog. Everything already installed keeps working; only browsing and pulling need the internet. To check again without waiting for the 30-second cache:
 
 ```bash
-# Force a fresh probe (bypasses the 30 s cache)
-curl http://emos.local:8765/api/v1/connectivity?refresh=1
-
-# DNS, default route, firewall — the usual suspects
-ping support.automatikarobotics.com
+curl -k https://emos.local:8765/api/v1/connectivity?refresh=1
 ```
 
-### Dashboard shows "Not installed" but the CLI works
+If the robot should be online, the usual suspects are DNS, the default route and a firewall.
 
-The dashboard daemon reads `~/.config/emos/config.json` **once at startup** and serves that snapshot for its whole lifetime. So if `emos serve` was started *before* EMOS finished installing, the daemon keeps reporting "not installed", even though the CLI (which re-reads the config on every command) already sees the install. A browser refresh won't help: `/info` reflects the daemon's cached config, not the current file on disk.
+### The dashboard says "Not installed" but the CLI works
 
-**Fix:** make sure the config exists, then **restart the daemon** so it re-reads it.
+The dashboard reads `~/.config/emos/config.json` once, when it starts. If it was started before `emos install` finished, it keeps reporting the old state until it is restarted:
 
 ```bash
-emos config show     # materialises / migrates ~/.config/emos/config.json if needed
-
-# then restart the dashboard so it picks up the config:
-sudo systemctl restart emos-dashboard.service   # if running as a service
-# or, if you started it manually, stop `emos serve` (Ctrl-C) and run it again
+sudo systemctl restart emos-dashboard.service   # as a service
+# or stop the foreground `emos serve` with Ctrl-C and start it again
 ```
 
-Refresh the browser afterwards.
+Then refresh the browser.

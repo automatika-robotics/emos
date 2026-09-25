@@ -7,7 +7,7 @@
     "enable_imu": true,
     "enable_optimization": false,
     // Keyframe update strategy
-    "max_num_keyframes": 15,
+    "max_num_keyframes": 10,
     "keyframe_update_strategy": "OVERLAP",
     "keyframe_update_min_points": 500,
     "keyframe_update_interval_rot": 3.14,

@@ -180,9 +180,57 @@ jobs:
 
       - name: Create the pre-release
         run: |
-          stack=$(git ls-tree HEAD stack/ | awk '$2 == "commit" {print $4 "@" substr($3, 1, 7)}' | tr '\n' ' ')
-          gh release create "v$VERSION" dist/* --prerelease --title "EMOS $VERSION" \
-            --notes "Nightly build of $BRANCH at $(git rev-parse --short HEAD). Stack: $stack"
+          prev=$(git tag -l 'v*-dev.*' --sort=-v:refname | grep -vx "v$VERSION" | head -1 || true)
+          {
+            echo "Nightly build of the \`$BRANCH\` branch at $(git rev-parse --short HEAD), for the dev channel. It is not a release: it can break, and the next nightly replaces it."
+            echo
+            echo "## Install"
+            echo
+            echo "A fresh install, or a switch to the dev channel:"
+            echo
+            echo '```bash'
+            echo "curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$BRANCH/stack/emos-cli/scripts/install.sh | sudo bash -s -- --dev"
+            echo '```'
+            echo
+            echo "An install already on the dev channel moves to this build with \`emos update\`."
+            echo
+            echo "## Stack"
+            echo
+            git ls-tree HEAD stack/ | awk '$2 == "commit" {print $4, $3}' | while read -r path sha; do
+              url=$(git config -f .gitmodules "submodule.$path.url" | sed 's/\.git$//')
+              old=""
+              if [ -n "$prev" ]; then
+                old=$(git ls-tree "$prev" "$path" | awk '{print $3}')
+              fi
+              if [ -n "$old" ] && [ "$old" != "$sha" ]; then
+                echo "- \`$path\` at ${sha:0:7} ([changes since $prev]($url/compare/${old:0:7}...${sha:0:7}))"
+              else
+                echo "- \`$path\` at ${sha:0:7}"
+              fi
+            done
+            echo
+            echo "## Changes in this repository"
+            echo
+            if [ -n "$prev" ]; then
+              git log --no-merges --format='- %s (%h)' "$prev..HEAD" | grep -v '^- (chore) Moves the stack pins' || echo "None since $prev."
+            else
+              echo "First nightly."
+            fi
+          } > notes.md
+          gh release create "v$VERSION" dist/* --prerelease --title "EMOS $VERSION" --notes-file notes.md
+
+      # Only the newest stay listed. A binary older than these can no longer fetch
+      # its own tag. `emos update` moves it on.
+      - name: Prune old nightlies
+        env:
+          KEEP: 5
+        run: |
+          gh release list --limit 100 --json tagName,isPrerelease,createdAt \
+            --jq '[.[] | select(.isPrerelease and (.tagName | test("-dev[.]")))] | sort_by(.createdAt) | reverse | .[].tagName' |
+            tail -n +$((KEEP + 1)) | while read -r tag; do
+              echo "Deleting $tag"
+              gh release delete "$tag" --yes --cleanup-tag
+            done
 
   images:
     name: Image ${{ matrix.ros_distro }} / ${{ matrix.arch }}

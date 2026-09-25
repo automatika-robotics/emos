@@ -46,9 +46,9 @@ var validEntryPoint = regexp.MustCompile(
 // carry the mapping backend.
 var ErrNeedsHostInstall = errors.New("EMOS cannot build maps itself in a container install")
 
-// ErrNoMapBuilt is returned when the session ran but the backend never
-// published a map.
-var ErrNoMapBuilt = errors.New("the mapping backend published no map")
+// ErrNoMapBuilt is returned when the session ran but the backend produced
+// no map.
+var ErrNoMapBuilt = errors.New("the mapping backend produced no map")
 
 // ErrSessionExited is returned when the session ended without a map for any
 // other reason. Its output says why.

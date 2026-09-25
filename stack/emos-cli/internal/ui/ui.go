@@ -150,10 +150,11 @@ func Prompt(prompt, defaultVal string) (string, error) {
 	return result, nil
 }
 
-// WaitForEnter prints title and waits for the Enter key, or for ctx to end.
-// It draws nothing, so other output can appear while it waits.
+// WaitForEnter prints title, styled like a form's button, and waits for the
+// Enter key, or for ctx to end. It draws nothing after that, so other output
+// can appear while it waits.
 func WaitForEnter(ctx context.Context, title string) error {
-	Info(title)
+	fmt.Printf("  %s\n", huhTheme().Focused.FocusedButton.Render(title))
 	pressed := make(chan struct{})
 	go func() {
 		bufio.NewReader(os.Stdin).ReadString('\n')

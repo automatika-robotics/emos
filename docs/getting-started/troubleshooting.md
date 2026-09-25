@@ -130,9 +130,9 @@ The robot maps with EMOS's own backend, which is built on demand. Run `emos map 
 
 Building maps with EMOS itself needs a pixi or native install on the robot.
 
-### "The mapping backend published no map"
+### "The mapping backend produced no map"
 
-The first map arrives a few seconds after the robot starts moving. Drive for longer, and check that the LiDAR is publishing. A mapping session that ends without a map can leave an empty map directory behind; `emos map list` shows it and `emos map rm` removes it.
+GLIM had nothing to build a map from: it received no LiDAR frames during the session, or it failed before the session ended. The CLI prints the session's last lines under the message, and the whole log is in `~/emos/logs`. Check that the LiDAR, and the IMU if the robot maps with one, are publishing. A session that ends without a map leaves an empty map directory behind; `emos map list` shows it and `emos map rm` removes it.
 
 ---
 

@@ -133,6 +133,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             mount_heights=mount_heights(plugin),
             base_height=plugin.base_height if plugin.base_height is not None else 0.0,
             cloud_topic_name=points_topic or "",
+            dump_dir=dump_dir,
         ),
     )
     # launch
@@ -167,7 +168,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"Map saved: {directory} ({time.time() - started:.0f} s)", flush=True)
         else:
             print(
-                "No map written: GLIM published no map",
+                "No map written: GLIM produced no map",
                 file=sys.stderr,
                 flush=True,
             )

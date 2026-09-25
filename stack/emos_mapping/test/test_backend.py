@@ -1,6 +1,7 @@
 import json
 import os
 
+import numpy as np
 import pytest
 from ament_index_python.packages import PackageNotFoundError
 
@@ -9,6 +10,7 @@ from emos_mapping.backend import (
     GLIM_NODE,
     MAP_TOPIC,
     glim_node,
+    read_dump,
     strip_json_comments,
     write_glim_config,
 )
@@ -18,6 +20,20 @@ def load(path):
     """GLIM's files carry comments; the ones the session rewrites do not"""
     with open(path) as f:
         return json.loads(strip_json_comments(f.read()))
+
+
+def write_dump(directory, submaps):
+    """A dump the way GLIM writes it: a numbered directory per submap with its
+    pose in data.txt and float32 xyz in points_compact.bin, next to the graph"""
+    os.makedirs(os.path.join(directory, "config"), exist_ok=True)
+    open(os.path.join(directory, "graph.bin"), "wb").close()
+    for i, (pose, points) in enumerate(submaps):
+        submap = os.path.join(directory, f"{i:06d}")
+        os.makedirs(submap)
+        rows = "\n".join("  ".join(f"{v:g}" for v in row) for row in pose)
+        with open(os.path.join(submap, "data.txt"), "w") as f:
+            f.write(f"id: {i}\nT_world_origin: \n{rows}\nT_origin_endpoint_L: \n{rows}\nnum_frames: 0\n")
+        np.asarray(points, dtype=np.float32).tofile(os.path.join(submap, "points_compact.bin"))
 
 
 def test_comments_are_stripped_but_strings_are_kept():
@@ -94,3 +110,17 @@ def test_cuda_modules_are_used_when_the_installed_glim_has_them(tmp_path, monkey
     assert not backend.backend_has_cuda()
     (tmp_path / "lib" / "libodometry_estimation_gpu.so").write_text("")
     assert backend.backend_has_cuda()
+
+
+def test_the_dump_is_read_at_the_submaps_optimised_poses(tmp_path):
+    turned = [[0.0, -1.0, 0.0, 10.0], [1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.5], [0.0, 0.0, 0.0, 1.0]]
+    write_dump(str(tmp_path), [(np.eye(4), [(1.0, 0.0, 0.0), (0.0, 2.0, 0.0)]), (turned, [(1.0, 0.0, 0.0)])])
+    points = read_dump(str(tmp_path))
+    assert points.dtype == np.float32
+    assert points.tolist() == [[1.0, 0.0, 0.0], [0.0, 2.0, 0.0], [10.0, 1.0, 0.5]]
+
+
+def test_there_is_no_map_without_a_dump_or_a_submap(tmp_path):
+    assert read_dump(str(tmp_path / "missing")) is None
+    write_dump(str(tmp_path), [])
+    assert read_dump(str(tmp_path)) is None

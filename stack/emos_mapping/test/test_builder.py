@@ -14,6 +14,7 @@ from std_msgs.msg import Header  # noqa: E402
 from emos_mapping.builder import PREVIEW_FILE, STATE_FILE, MapBuilder, MapBuilderConfig  # noqa: E402
 from emos_mapping.grid import FREE, OCCUPIED  # noqa: E402
 
+from test_backend import write_dump  # noqa: E402
 from test_grid import LIDAR_HEIGHT, room, surface  # noqa: E402
 
 
@@ -82,7 +83,7 @@ def test_finish_writes_the_map_files_and_their_record(tmp_path):
     assert record["points"] == len(room()) and "duration_s" in record
 
 
-def test_nothing_is_written_when_glim_published_no_map(tmp_path):
+def test_nothing_is_written_when_glim_produced_no_map(tmp_path):
     builder = make_builder(tmp_path)
     builder._execution_step()
     assert builder.finish({"name": "room"}) is None
@@ -141,3 +142,27 @@ def test_the_map_is_written_when_the_node_is_destroyed_and_only_once(tmp_path):
     saved = builder.finish()  # the session's own call afterwards
     assert saved is not None and saved["metadata"] == str(tmp_path / "map.json")
     assert os.stat(tmp_path / "map.json").st_mtime_ns == written
+
+
+def test_the_dump_makes_the_map_even_when_nothing_was_published(tmp_path):
+    dump = tmp_path / "glim" / "dump"
+    write_dump(str(dump), [(np.eye(4), room())])
+    builder = make_builder(tmp_path, dump_dir=str(dump))
+    builder._execution_step()
+    assert not os.path.exists(tmp_path / PREVIEW_FILE)  # nothing live to preview
+    paths = builder.finish({"name": "room"})
+    record = json.load(open(paths["metadata"]))
+    assert record["points"] == len(room()) and record["grid"]["width"] > 0
+
+
+def test_the_dump_replaces_the_last_published_map(tmp_path):
+    dump = tmp_path / "glim" / "dump"
+    grown = np.vstack([room(), surface(6, 7, 6, 7, -LIDAR_HEIGHT)])
+    write_dump(str(dump), [(np.eye(4), grown)])
+    builder = make_builder(tmp_path, dump_dir=str(dump))
+    publish_map(builder, room())
+    builder._execution_step()
+    paths = builder.finish({"name": "room"})
+    assert json.load(open(paths["metadata"]))["points"] == len(grown)
+    _, grid = builder._build()
+    assert grid.cell(6.5, 6.5) == FREE

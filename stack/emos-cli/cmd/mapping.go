@@ -511,9 +511,9 @@ func explainSession(err error, logFile string) error {
 		ui.Error("Interrupted before mapping started.")
 		return err
 	case errors.Is(err, mapping.ErrNoMapBuilt):
-		ui.Error("The mapping backend published no map.")
-		ui.Faint("The first one comes some seconds after the robot starts moving. " +
-			"Drive for longer, and check that the LiDAR is running.")
+		ui.Error("The mapping backend produced no map.")
+		ui.Faint("It received no LiDAR frames, or failed before the session ended. " +
+			"Check that the LiDAR and IMU are publishing.")
 	case errors.Is(err, mapping.ErrStopTimedOut):
 		ui.Error("The mapping session did not stop in time, so it was killed.")
 	case errors.As(err, &exited):

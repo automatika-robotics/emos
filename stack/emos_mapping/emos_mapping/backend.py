@@ -8,6 +8,7 @@ import shutil
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, Optional, Sequence, Tuple
 
+import numpy as np
 from ament_index_python.packages import (
     PackageNotFoundError,
     get_package_prefix,
@@ -117,6 +118,44 @@ def glim_node(config_dir: str, dump_dir: str) -> Dict[str, Any]:
         "parameters": [{"config_path": config_dir, "dump_path": dump_dir}],
         "output": "screen",
     }
+
+
+def read_dump(dump_dir: str) -> Optional[np.ndarray]:
+    """The map from the dump GLIM writes on shutdown, as (N, 3) float32 in
+    the map frame, or None without a submap. Each submap is a numbered
+    directory holding its optimised pose in data.txt and its merged points,
+    in its own frame, in points_compact.bin."""
+    if not os.path.isdir(dump_dir):
+        return None
+    clouds = []
+    for name in sorted(os.listdir(dump_dir)):
+        submap = os.path.join(dump_dir, name)
+        data_file = os.path.join(submap, "data.txt")
+        points_file = os.path.join(submap, "points_compact.bin")
+        if not (
+            name.isdigit() and os.path.isfile(data_file) and os.path.isfile(points_file)
+        ):
+            continue
+        pose = _submap_pose(data_file).astype(np.float32)
+        points = np.fromfile(points_file, dtype=np.float32)
+        points = points[: len(points) - len(points) % 3].reshape(-1, 3)
+        points = points[np.isfinite(points).all(axis=1)]
+        clouds.append(points @ pose[:3, :3].T + pose[:3, 3])
+    if not clouds:
+        return None
+    return np.vstack(clouds)
+
+
+def _submap_pose(data_file: str) -> np.ndarray:
+    """T_world_origin from a submap's data.txt: the 4 x 4 matrix under its label."""
+    with open(data_file) as f:
+        lines = f.read().splitlines()
+    for i, line in enumerate(lines):
+        if line.startswith("T_world_origin:"):
+            return np.array(
+                [[float(v) for v in row.split()] for row in lines[i + 1 : i + 5]]
+            )
+    raise ValueError(f"no T_world_origin in {data_file}")
 
 
 def strip_json_comments(text: str) -> str:

@@ -1,4 +1,4 @@
-"""The component that turns GLIM's map cloud into the map files."""
+"""The component that turns GLIM's map into the map files."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from ros_sugar.core import BaseComponent
 from ros_sugar.io import Topic
 from sensor_msgs_py import point_cloud2
 
-from .backend import MAP_TOPIC
+from .backend import MAP_TOPIC, read_dump
 from .grid import (
     Grid,
     GridSpec,
@@ -49,12 +49,14 @@ class MapBuilderConfig(BaseComponentConfig):
     base_height: float = field(default=0.0)
     # ROS topic the LiDAR cloud is read from
     cloud_topic_name: str = field(default="")
+    # Directory GLIM dumps its final map into when it shuts down
+    dump_dir: str = field(default="")
 
 
 class MapBuilder(BaseComponent):
-    """Builds the map files from the map cloud GLIM publishes during a session.
-
-    Each run should end in an area that is already mapped.
+    """Builds the map files from GLIM's map: the cloud it publishes during
+    the session, for the preview, and the dump it writes when the session
+    ends, for the map itself.
 
     cloud_topic is the plugin's LiDAR feedback. As an input it makes the
     plugin start the LiDAR driver, and its messages name the LiDAR frame.
@@ -191,11 +193,15 @@ class MapBuilder(BaseComponent):
         self, metadata: Optional[Dict[str, Any]] = None
     ) -> Optional[Dict[str, str]]:
         """Write the map files and map.json, and return their paths by role.
-        None when GLIM never published a map."""
+        None when GLIM produced no map. The dump holds every submap at its
+        final pose, including the last, which GLIM never publishes."""
         if self._finished:
             return self._saved
         self._finished = True
         self._take_map()  # one may have arrived since the last step
+        dumped = read_dump(self.config.dump_dir) if self.config.dump_dir else None
+        if dumped is not None:
+            self.points = dumped
         built = self._build()
         if built is None:
             return None

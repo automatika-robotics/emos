@@ -129,6 +129,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             z_max=declaration.z_max,
             mount_heights=mount_heights(plugin),
             base_height=plugin.base_height if plugin.base_height is not None else 0.0,
+            cloud_topic_name=points_topic or "",
         ),
     )
     # launch

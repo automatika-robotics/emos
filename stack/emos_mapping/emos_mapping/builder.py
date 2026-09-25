@@ -47,6 +47,8 @@ class MapBuilderConfig(BaseComponentConfig):
     mount_heights: Dict[str, float] = field(factory=dict)
     # Height of the base frame above the ground when the robot stands
     base_height: float = field(default=0.0)
+    # ROS topic the LiDAR cloud is read from
+    cloud_topic_name: str = field(default="")
 
 
 class MapBuilder(BaseComponent):
@@ -57,6 +59,9 @@ class MapBuilder(BaseComponent):
     cloud_topic is the plugin's LiDAR feedback. As an input it makes the
     plugin start the LiDAR driver, and its messages name the LiDAR frame.
     """
+
+    # Seconds without a point cloud after which the operator is warned
+    NO_CLOUD_WARNING_AFTER = 15.0
 
     def __init__(
         self,
@@ -76,12 +81,35 @@ class MapBuilder(BaseComponent):
         self.points: Optional[np.ndarray] = None
         self.expected_ground: Optional[float] = None
         self._map_msg = None
+        self._cloud_topic = cloud_topic
+        self._cloud_warned = False
         self.started_at = time.time()
 
     def _execution_step(self) -> None:
+        self._check_cloud()
         self._place_ground()
         if self._take_map():
             self.write_preview()
+
+    def _check_cloud(self) -> None:
+        """Warn the operator, on stdout for the CLI to show, when the LiDAR has
+        published nothing since the session started."""
+        if self._cloud_topic is None:
+            return
+        topic = self.config.cloud_topic_name or self._cloud_topic.name
+        if self.callbacks[self._cloud_topic.name].msg is not None:
+            if self._cloud_warned:
+                print(f"Mapping warning: point clouds are arriving on {topic} now.", flush=True)
+                self._cloud_warned = False
+                self._cloud_topic = None
+            return
+        if not self._cloud_warned and time.time() - self.started_at > self.NO_CLOUD_WARNING_AFTER:
+            print(
+                f"Mapping warning: no point cloud on {topic} after "
+                f"{self.NO_CLOUD_WARNING_AFTER:.0f} s; is the LiDAR driver running?",
+                flush=True,
+            )
+            self._cloud_warned = True
 
     def _take_map(self) -> bool:
         """Read GLIM's map if a new one has arrived."""

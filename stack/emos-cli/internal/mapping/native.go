@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
 )
@@ -25,7 +26,16 @@ const (
 
 // announcePrefix starts the line the session prints once the map's directory
 // exists.
-const announcePrefix = "Map directory: "
+const (
+	announcePrefix = "Map directory: "
+	// warningPrefix marks a line the session wants the operator to see while
+	// driving.
+	warningPrefix = "Mapping warning: "
+)
+
+// ErrStopTimedOut says the session did not exit after the stop request and
+// was killed.
+var ErrStopTimedOut = errors.New("the mapping session did not stop in time and was killed")
 
 // validEntryPoint is a plugin's '<package.module>:<ClassName>'. It goes into a
 // shell command unquoted.
@@ -96,8 +106,9 @@ type NativeSession struct {
 
 // StartNative begins a mapping session EMOS runs itself, for the plugin at
 // entryPoint. It returns once the session has announced the map's directory.
-// The session's output goes to out. Cancelling ctx before then kills it.
-func (d *Declaration) StartNative(ctx context.Context, entryPoint, name string, start Starter, out io.Writer) (*NativeSession, error) {
+// The session's output goes to out, and its warnings for the operator to
+// warn, when given. Cancelling ctx before then kills it.
+func (d *Declaration) StartNative(ctx context.Context, entryPoint, name string, start Starter, out io.Writer, warn func(string)) (*NativeSession, error) {
 	if d.Kind != KindNative {
 		return nil, fmt.Errorf("this robot maps with its own software")
 	}
@@ -108,7 +119,7 @@ func (d *Declaration) StartNative(ctx context.Context, entryPoint, name string, 
 		return nil, fmt.Errorf("plugin entry point %q is not '<package.module>:<ClassName>'", entryPoint)
 	}
 
-	announced := newAnnouncement(out)
+	announced := newAnnouncement(out, warn)
 	proc, err := start(sessionShell(entryPoint, name), announced)
 	if err != nil {
 		return nil, fmt.Errorf("start mapping: %w", err)
@@ -134,17 +145,27 @@ func sessionShell(entryPoint, name string) string {
 // Done closes when the session has ended, whether or not it was asked to.
 func (s *NativeSession) Done() <-chan struct{} { return s.proc.Done() }
 
-// Stop asks the session to stop and returns the map it saved. Cancelling ctx
-// kills it and gives up with ErrStopInterrupted.
+// Stop asks the session to stop and returns the map it saved. A session that
+// has not exited after stopTimeout, the same grace a vendor's tool gets, is
+// killed. Cancelling ctx kills it at once
 func (s *NativeSession) Stop(ctx context.Context) (*Map, error) {
 	s.proc.Interrupt()
+	timeout := time.NewTimer(stopTimeout)
+	defer timeout.Stop()
 	select {
 	case <-s.proc.Done():
+		return s.Result()
+	case <-timeout.C:
+		s.proc.Kill()
+		// The map may have been saved before the session hung on its way out
+		if built, err := s.decl.Find(filepath.Base(s.Dir)); err == nil && built.Grid != "" {
+			return built, nil
+		}
+		return nil, ErrStopTimedOut
 	case <-ctx.Done():
 		s.proc.Kill()
 		return nil, ErrStopInterrupted
 	}
-	return s.Result()
 }
 
 // Result returns the map of a session that has ended. The store settles whether
@@ -165,10 +186,11 @@ func (s *NativeSession) Result() (*Map, error) {
 	return nil, &ErrSessionExited{Code: code}
 }
 
-// announcement passes the session's output through to next, and reports the
-// map directory once the session prints it.
+// announcement passes the session's output through to next, reports the map
+// directory once the session prints it, and forwards the session's warnings.
 type announcement struct {
 	next io.Writer
+	warn func(string)
 	dir  chan string
 
 	mu      sync.Mutex
@@ -176,26 +198,26 @@ type announcement struct {
 	found   bool
 }
 
-func newAnnouncement(next io.Writer) *announcement {
-	return &announcement{next: next, dir: make(chan string, 1)}
+func newAnnouncement(next io.Writer, warn func(string)) *announcement {
+	return &announcement{next: next, warn: warn, dir: make(chan string, 1)}
 }
 
 func (a *announcement) Write(p []byte) (int, error) {
 	a.mu.Lock()
-	if !a.found {
-		a.pending = append(a.pending, p...)
-		for {
-			end := bytes.IndexByte(a.pending, '\n')
-			if end < 0 {
-				break
-			}
-			line := strings.TrimSpace(string(a.pending[:end]))
-			a.pending = a.pending[end+1:]
-			if strings.HasPrefix(line, announcePrefix) {
-				a.found, a.pending = true, nil
-				a.dir <- strings.TrimPrefix(line, announcePrefix)
-				break
-			}
+	a.pending = append(a.pending, p...)
+	for {
+		end := bytes.IndexByte(a.pending, '\n')
+		if end < 0 {
+			break
+		}
+		line := strings.TrimSpace(string(a.pending[:end]))
+		a.pending = a.pending[end+1:]
+		switch {
+		case !a.found && strings.HasPrefix(line, announcePrefix):
+			a.found = true
+			a.dir <- strings.TrimPrefix(line, announcePrefix)
+		case a.warn != nil && strings.HasPrefix(line, warningPrefix):
+			a.warn(strings.TrimPrefix(line, warningPrefix))
 		}
 	}
 	a.mu.Unlock()

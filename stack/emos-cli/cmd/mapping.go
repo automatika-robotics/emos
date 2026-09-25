@@ -286,7 +286,7 @@ func driveUntilStopped(sigs <-chan os.Signal, ended <-chan struct{}) (interrupte
 		case <-ctx.Done():
 		}
 	}()
-	return ui.Continue(ctx, "Press Enter when you have finished driving", "Stop mapping") != nil
+	return ui.WaitForEnter(ctx, "Press Enter when you have finished driving.") != nil
 }
 
 // reportSaved tells the operator about the map a session left.
@@ -465,7 +465,7 @@ func runNativeMapNew(cfg *config.EMOSConfig, decl *mapping.Declaration, name str
 	ui.Info("The session's output is saved to: " + logFile)
 
 	startCtx, cancelStart := cancelOnSignal(sigs)
-	session, err := decl.StartNative(startCtx, cfg.Plugin.EntryPoint, name, start, log)
+	session, err := decl.StartNative(startCtx, cfg.Plugin.EntryPoint, name, start, log, ui.Warn)
 	cancelStart()
 	if err != nil {
 		return explainSession(err, logFile)
@@ -482,9 +482,13 @@ func runNativeMapNew(cfg *config.EMOSConfig, decl *mapping.Declaration, name str
 		if interrupted {
 			ui.Warn("Interrupted -- stopping mapping and saving what it has.")
 		}
-		ui.Info("Stopping mapping and saving the map; Ctrl+C gives up on it.")
+		ui.Faint("Ctrl+C gives up on the map.")
 		stopCtx, cancelStop := cancelOnSignal(sigs)
-		built, err = session.Stop(stopCtx)
+		err = ui.Spinner("Stopping mapping and saving the map", func() error {
+			var e error
+			built, e = session.Stop(stopCtx)
+			return e
+		})
 		cancelStop()
 	}
 	if err != nil {
@@ -510,6 +514,8 @@ func explainSession(err error, logFile string) error {
 		ui.Error("The mapping backend published no map.")
 		ui.Faint("The first one comes some seconds after the robot starts moving. " +
 			"Drive for longer, and check that the LiDAR is running.")
+	case errors.Is(err, mapping.ErrStopTimedOut):
+		ui.Error("The mapping session did not stop in time, so it was killed.")
 	case errors.As(err, &exited):
 		ui.Error("Mapping failed: " + err.Error() + ".")
 	default:

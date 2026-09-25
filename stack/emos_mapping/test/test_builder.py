@@ -109,3 +109,21 @@ def test_points_are_read_from_a_cloud_with_mixed_field_types():
     points = MapBuilder._points(point_cloud2.create_cloud(Header(frame_id="map"), fields, rows))
     assert points.dtype == np.float32
     assert points.tolist() == [[1.0, 2.0, 3.0], [-1.5, 0.5, 0.25]]
+
+
+def test_the_operator_is_warned_when_the_lidar_stays_silent(tmp_path, capsys):
+    builder = make_builder(tmp_path, cloud_topic_name="/livox/lidar")
+    builder._execution_step()
+    assert "Mapping warning" not in capsys.readouterr().out  # too early to tell
+
+    builder.started_at -= MapBuilder.NO_CLOUD_WARNING_AFTER + 1
+    builder._execution_step()
+    builder._execution_step()
+    out = capsys.readouterr().out
+    assert out.count("Mapping warning: no point cloud on /livox/lidar") == 1
+
+    builder.callbacks["lidar"].callback(cloud_msg([(1.0, 0.0, 0.0)]))
+    builder._execution_step()
+    builder._execution_step()
+    out = capsys.readouterr().out
+    assert out.count("point clouds are arriving on /livox/lidar") == 1

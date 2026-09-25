@@ -1,8 +1,10 @@
 package ui
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -148,12 +150,21 @@ func Prompt(prompt, defaultVal string) (string, error) {
 	return result, nil
 }
 
-// Continue shows title and waits for Enter. It returns an error when the user
-// presses Ctrl+C instead or ctx is cancelled.
-func Continue(ctx context.Context, title, label string) error {
-	return huh.NewForm(huh.NewGroup(
-		huh.NewNote().Title(title).Next(true).NextLabel(label),
-	)).WithTheme(huhTheme()).RunWithContext(ctx)
+// WaitForEnter prints title and waits for the Enter key, or for ctx to end.
+// It draws nothing, so other output can appear while it waits.
+func WaitForEnter(ctx context.Context, title string) error {
+	Info(title)
+	pressed := make(chan struct{})
+	go func() {
+		bufio.NewReader(os.Stdin).ReadString('\n')
+		close(pressed)
+	}()
+	select {
+	case <-pressed:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func Spinner(title string, fn func() error) error {

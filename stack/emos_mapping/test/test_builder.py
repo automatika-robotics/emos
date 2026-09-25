@@ -130,18 +130,30 @@ def test_the_operator_is_warned_when_the_lidar_stays_silent(tmp_path, capsys):
     assert out.count("point clouds are arriving on /livox/lidar") == 1
 
 
-def test_the_map_is_written_when_the_node_is_destroyed_and_only_once(tmp_path):
+def test_the_live_map_survives_the_node_and_is_written_once(tmp_path):
     builder = make_builder(tmp_path)
     builder.metadata = {"name": "office", "provider": "native"}
     publish_map(builder, room())
     builder.destroy_node()
-    record = json.load(open(tmp_path / "map.json"))
+    assert not os.path.exists(tmp_path / "map.json")  # the session writes, later
+
+    saved = builder.finish()
+    record = json.load(open(saved["metadata"]))
     assert record["name"] == "office" and record["grid"]["width"] > 0
     written = os.stat(tmp_path / "map.json").st_mtime_ns
-
-    saved = builder.finish()  # the session's own call afterwards
-    assert saved is not None and saved["metadata"] == str(tmp_path / "map.json")
+    assert builder.finish() is saved
     assert os.stat(tmp_path / "map.json").st_mtime_ns == written
+
+
+def test_the_dump_written_after_the_node_went_is_still_the_map(tmp_path):
+    # The launcher destroys the node while GLIM is still saving its dump
+    dump = tmp_path / "glim" / "dump"
+    builder = make_builder(tmp_path, dump_dir=str(dump))
+    builder.destroy_node()
+    write_dump(str(dump), [(np.eye(4), room())])
+    paths = builder.finish({"name": "room"})
+    assert paths is not None and os.path.isfile(paths["grid"])
+    assert json.load(open(paths["metadata"]))["points"] == len(room())
 
 
 def test_the_dump_makes_the_map_even_when_nothing_was_published(tmp_path):

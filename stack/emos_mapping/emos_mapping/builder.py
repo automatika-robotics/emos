@@ -92,12 +92,9 @@ class MapBuilder(BaseComponent):
         self.started_at = time.time()
 
     def destroy_node(self):
-        # Save the map before the node goes, whatever the launcher's shutdown
-        # does after this
-        try:
-            self.finish()
-        except Exception as e:  # noqa: BLE001 - teardown must go on
-            self.get_logger().error(f"Could not write the map: {e}")
+        # Keep the last live map. The dump is only complete once GLIM has
+        # exited, so the session calls finish() after the launcher returns.
+        self._take_map()
         super().destroy_node()
 
     def _execution_step(self) -> None:
@@ -194,7 +191,8 @@ class MapBuilder(BaseComponent):
     ) -> Optional[Dict[str, str]]:
         """Write the map files and map.json, and return their paths by role.
         None when GLIM produced no map. The dump holds every submap at its
-        final pose, including the last, which GLIM never publishes."""
+        final pose, including the last, which GLIM never publishes. Called
+        once the session has ended, so the dump is complete."""
         if self._finished:
             return self._saved
         self._finished = True

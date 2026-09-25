@@ -162,7 +162,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         launcher.bringup()
     finally:
-        # Cover a launch that ended without tearing it down
+        # GLIM has exited by now, so its dump is complete
         saved = builder.finish()
         if saved:
             print(f"Map saved: {directory} ({time.time() - started:.0f} s)", flush=True)

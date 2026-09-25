@@ -114,6 +114,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         imu_topic,
         gpu=gpu,
         lidar_imu=lidar_imu,
+        base_frame=plugin.base_frame,
     )
     dump_dir = os.path.join(glim_dir, "dump")
 

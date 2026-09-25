@@ -32,6 +32,10 @@ def test_session_config_names_the_topics_and_uses_the_cpu_modules(tmp_path):
     assert ros["points_topic"] == "/livox/lidar" and ros["imu_topic"] == "/livox/imu"
     # Only the module publishing the map; GLIM's own viewer needs a display.
     assert ros["extension_modules"] == ["librviz_viewer.so"]
+    # No base frame given: GLIM falls back to the IMU frame; never the self transform
+    assert ros["base_frame_id"] == "" and ros["publish_imu2lidar"] is False
+    ros = load(os.path.join(write_glim_config(str(tmp_path / "b"), "/p", "/i", base_frame="body"), "config_ros.json"))["glim_ros"]
+    assert ros["base_frame_id"] == "body"
     cfg = load(os.path.join(directory, "config.json"))["global"]
     assert cfg["config_odometry"] == "config_odometry_cpu.json"
     assert cfg["config_sub_mapping"] == "config_sub_mapping_cpu.json"

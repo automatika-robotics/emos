@@ -57,9 +57,12 @@ def write_glim_config(
     imu_topic: Optional[str],
     gpu: bool = False,
     lidar_imu: Optional[Tuple[Sequence[float], Sequence[float]]] = None,
+    base_frame: Optional[str] = None,
 ) -> str:
     """Write GLIM's configuration for a session into directory and return it.
-    GLIM's window viewer needs a display.
+    GLIM's window viewer needs a display. base_frame is the robot's base frame,
+    which GLIM then publishes odom -> base_frame for, looking the IMU's mount
+    up in TF.
     """
     os.makedirs(directory, exist_ok=True)
     templates = templates_dir()
@@ -86,6 +89,9 @@ def write_glim_config(
         {
             "points_topic": points_topic,
             "imu_topic": imu_topic or "",
+            "base_frame_id": base_frame or "",
+            # The IMU is the LiDAR's own, so the two frames are one
+            "publish_imu2lidar": False,
             "extension_modules": ["librviz_viewer.so"],
         }
     )

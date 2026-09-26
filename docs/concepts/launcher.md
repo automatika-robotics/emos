@@ -69,7 +69,7 @@ Multi-threaded execution
 :::{tab-item} Multi-process
 :sync: process
 
-`multiprocessing=True`. Each component gets a process of its own, and the launcher talks to it through ROS services. A crash in one component leaves the others running, and `on_process_fail` can bring it back. Startup takes longer, and the call needs the package name and entry point. A component's `launch_prefix`, for instance `"taskset -c 4-7"` or `"nice -n 10"`, applies in this mode only.
+`multiprocessing=True`. Each component gets a process of its own, and the launcher talks to it through ROS services. A crash in one component leaves the others running, and `on_process_fail` can bring it back. Startup takes longer, and the call needs the package name and entry point, which Kompass and EmbodiedAgents provide and a package of your own gets by following [Extending EMOS](../advanced/extending.md). A component's `launch_prefix`, for instance `"taskset -c 4-7"` or `"nice -n 10"`, applies in this mode only.
 
 ```{figure} /_static/images/diagrams/multi_process_dark.png
 :class: dark-only

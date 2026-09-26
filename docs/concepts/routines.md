@@ -29,7 +29,7 @@ A routine is registered on an event exactly like an action, with `launcher.on` o
 
 ## Steps
 
-A step is an ordinary `Action`. The parameters that make an action monitored, described in [Events and Actions](events-and-actions.md), decide whether the step worked: `success`, a condition on a topic or, when omitted, the method's own return value; `timeout` and `on_timeout`; `max_retries` and `retry_delay`, one budget per step that a reported failure and a timeout spend alike; and `cancel_method`, which is how the step is told to stop when the routine is paused or aborted.
+A step is an ordinary `Action`. The parameters that make an action monitored, described in [Events and Actions](events-and-actions.md#monitored-actions), decide whether the step worked: `success`, a condition on a topic or, when omitted, the method's own return value; `timeout` and `on_timeout`; `max_retries` and `retry_delay`, one budget per step that a reported failure and a timeout spend alike; and `cancel_method`, which is how the step is told to stop when the routine is paused or aborted.
 
 When a step's budget is gone, `on_fail` decides what the sequence around it does:
 

@@ -10,7 +10,7 @@ The first step is to tell EMOS *what* it is driving. The `RobotConfig` object de
 # 1. Define the Robot
 my_robot = RobotConfig(
     model_type=RobotType.DIFFERENTIAL_DRIVE,  # Motion Model (e.g., Turtlebot3)
-    geometry_type=RobotGeometry.Type.CYLINDER,
+    geometry_type=RobotGeometryType.CYLINDER,
     geometry_params=np.array([0.1, 0.3]),     # Radius=0.1m, Height=0.3m
 
     # 2. Define Control Limits
@@ -20,10 +20,10 @@ my_robot = RobotConfig(
         max_decel=2.5   # Max deceleration (braking)
     ),
     ctrl_omega_limits=AngularCtrlLimits(
-        max_vel=0.4,
+        max_omega=0.4,
         max_acc=2.0,
         max_decel=2.0,
-        max_steer=np.pi / 3
+        max_ang=np.pi / 3
     ),
 )
 
@@ -49,7 +49,7 @@ planner = Planner(
     component_name="planner",
     config=PlannerConfig(loop_rate=1.0)
 )
-planner.run_type = "Timed"
+planner.run_type = "ActionServer"   # goals come in as action goals, from the web UI
 
 # Local Controller
 controller = Controller(component_name="controller")
@@ -124,14 +124,16 @@ Finally, the `Launcher` ties everything together. It manages the lifecycle of al
 
 We use `enable_ui` to pipe data directly to the browser:
 
+* **Inputs:** The planner's action server, so a goal can be sent from the browser.
 * **Outputs:** We stream the Global Map, the Planned Path, and the Robot's Odometry to the browser for visualization.
 
 ```python
 launcher = Launcher()
 
 # 1. Register Components
-launcher.kompass(
+launcher.add_pkg(
     components=[map_server, controller, planner, driver, local_mapper],
+    package_name="kompass",
     multiprocessing=True,
 )
 
@@ -141,10 +143,10 @@ launcher.inputs(location=odom_topic)
 
 # 3. Apply Robot Config & Frames
 launcher.robot = my_robot
-launcher.frames = RobotFrames(world="map", odom="map", scan="LDS-01")
 
 # 4. Enable the Web Interface
 launcher.enable_ui(
+    inputs=[planner.ui_main_action_input],
     outputs=[
         map_server.get_out_topic(TopicsKeys.GLOBAL_MAP),
         odom_topic,
@@ -168,7 +170,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 
 from kompass.robot import (
-    AngularCtrlLimits, LinearCtrlLimits, RobotGeometry, RobotType, RobotConfig, RobotFrames
+    AngularCtrlLimits, LinearCtrlLimits, RobotGeometryType, RobotType, RobotConfig
 )
 from kompass.components import (
     Controller, DriveManager, DriveManagerConfig, Planner, PlannerConfig,
@@ -183,15 +185,15 @@ def kompass_bringup():
     # 1. Robot Configuration
     my_robot = RobotConfig(
         model_type=RobotType.DIFFERENTIAL_DRIVE,
-        geometry_type=RobotGeometry.Type.CYLINDER,
+        geometry_type=RobotGeometryType.CYLINDER,
         geometry_params=np.array([0.1, 0.3]),
         ctrl_vx_limits=LinearCtrlLimits(max_vel=0.4, max_acc=1.5, max_decel=2.5),
-        ctrl_omega_limits=AngularCtrlLimits(max_vel=0.4, max_acc=2.0, max_decel=2.0, max_steer=np.pi / 3),
+        ctrl_omega_limits=AngularCtrlLimits(max_omega=0.4, max_acc=2.0, max_decel=2.0, max_ang=np.pi / 3),
     )
 
     # 2. Components
     planner = Planner(component_name="planner", config=PlannerConfig(loop_rate=1.0))
-    planner.run_type = "Timed"
+    planner.run_type = "ActionServer"
 
     controller = Controller(component_name="controller")
     controller.algorithm = ControllersID.PURE_PURSUIT
@@ -203,7 +205,7 @@ def kompass_bringup():
     )
 
     # 3. Dynamic Command Type
-    cmd_type = "TwistStamped" if os.environ.get("ROS_DISTRO") in ["rolling", "jazzy"] else "Twist"
+    cmd_type = "TwistStamped" if os.environ.get("ROS_DISTRO") in ["rolling", "jazzy", "kilted"] else "Twist"
     driver.outputs(robot_command=Topic(name="/cmd_vel", msg_type=cmd_type))
 
     # 4. Mapping
@@ -222,8 +224,9 @@ def kompass_bringup():
 
     # 5. Launch
     launcher = Launcher()
-    launcher.kompass(
+    launcher.add_pkg(
         components=[map_server, controller, planner, driver, local_mapper],
+        package_name="kompass",
         multiprocessing=True,
     )
 
@@ -231,7 +234,6 @@ def kompass_bringup():
     launcher.inputs(location=odom_topic)
 
     launcher.robot = my_robot
-    launcher.frames = RobotFrames(world="map", odom="map", scan="LDS-01")
 
     # 6. UI
     launcher.enable_ui(

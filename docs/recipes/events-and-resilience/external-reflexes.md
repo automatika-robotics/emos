@@ -104,7 +104,7 @@ from agents.config import VisionConfig
 from agents.ros import Topic
 from kompass.components import Controller, ControllerConfig, DriveManager, LocalMapper
 from kompass.robot import (
-    AngularCtrlLimits, LinearCtrlLimits, RobotGeometry, RobotType, RobotConfig,
+    AngularCtrlLimits, LinearCtrlLimits, RobotGeometryType, RobotType, RobotConfig,
 )
 from kompass.ros import Launcher, Event
 from kompass.actions import update_parameter, send_component_action_server_goal
@@ -126,11 +126,11 @@ vision = Vision(
 # --- Robot Configuration ---
 my_robot = RobotConfig(
     model_type=RobotType.ACKERMANN,
-    geometry_type=RobotGeometry.Type.CYLINDER,
+    geometry_type=RobotGeometryType.CYLINDER,
     geometry_params=np.array([0.1, 0.3]),
     ctrl_vx_limits=LinearCtrlLimits(max_vel=1.0, max_acc=3.0, max_decel=2.5),
     ctrl_omega_limits=AngularCtrlLimits(
-        max_vel=4.0, max_acc=6.0, max_decel=10.0, max_steer=np.pi / 3
+        max_omega=4.0, max_acc=6.0, max_decel=10.0, max_ang=np.pi / 3
     ),
 )
 
@@ -186,8 +186,9 @@ launcher.add_pkg(
     multiprocessing=True,
 )
 
-launcher.kompass(
+launcher.add_pkg(
     components=[controller, mapper, driver],
+    package_name="kompass",
     events_actions=events_action,
 )
 

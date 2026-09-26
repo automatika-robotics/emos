@@ -36,7 +36,7 @@ Each algorithm is fully parameterized. Developers can tune behaviors such as loo
 
 DWA is a classic local planning method developed in the 90s.[^dwa] It is a sampling-based controller that generates a set of constant-velocity trajectories within a "Dynamic Window" of reachable velocities.
 
-EMOS supercharges this algorithm using **SYCL-based hardware acceleration**, allowing it to sample and evaluate thousands of candidate trajectories in parallel on **Nvidia, AMD, or Intel** GPUs. This enables high-frequency control loops even in complex, dynamic environments with dense obstacle fields.
+EMOS supercharges this algorithm using **SYCL-based hardware acceleration**, allowing it to sample and evaluate thousands of candidate trajectories in parallel on **Nvidia, AMD, Intel or Arm Mali** GPUs. This enables high-frequency control loops even in complex, dynamic environments with dense obstacle fields.
 
 It is highly effective for differential drive and omnidirectional robots.
 
@@ -93,12 +93,22 @@ DWA requires spatial data to perform collision checking during the rollout phase
   - `20`
   - Maximum number of angular control samples. Must be between `1` and `1e3`.
 
-* - sensor_position_to_robot
+* - drop_samples
+  - `bool`
+  - `True`
+  - Drop candidate trajectories that collide rather than penalising them.
+
+* - allow_reverse
+  - `bool`
+  - `True`
+  - Include reverse velocity samples. Set `False` to forbid driving backwards.
+
+* - proximity_sensor_position_to_robot
   - `List[float]`
   - `[0.0, 0.0, 0.0]`
   - Position of the sensor relative to the robot in 3D space (x, y, z) coordinates.
 
-* - sensor_rotation_to_robot
+* - proximity_sensor_rotation_to_robot
   - `List[float]`
   - `[0.0, 0.0, 0.0, 1.0]`
   - Orientation of the sensor relative to the robot as a quaternion (x, y, z, w).
@@ -135,8 +145,7 @@ from kompass.components import Controller, ControllerConfig
 from kompass.robot import (
     AngularCtrlLimits,
     LinearCtrlLimits,
-    RobotCtrlLimits,
-    RobotGeometry,
+    RobotGeometryType,
     RobotType,
     RobotConfig
 )
@@ -145,11 +154,11 @@ from kompass.control import ControllersID
 # Setup your robot configuration
 my_robot = RobotConfig(
     model_type=RobotType.ACKERMANN,
-    geometry_type=RobotGeometry.Type.BOX,
+    geometry_type=RobotGeometryType.BOX,
     geometry_params=np.array([0.3, 0.3, 0.3]),
     ctrl_vx_limits=LinearCtrlLimits(max_vel=0.2, max_acc=1.5, max_decel=2.5),
     ctrl_omega_limits=AngularCtrlLimits(
-        max_vel=0.4, max_acc=2.0, max_decel=2.0, max_steer=np.pi / 3)
+        max_omega=0.4, max_acc=2.0, max_decel=2.0, max_ang=np.pi / 3)
 )
 
 # Set DWA algorithm using the config class
@@ -316,8 +325,7 @@ from kompass.components import Controller, ControllerConfig
 from kompass.robot import (
     AngularCtrlLimits,
     LinearCtrlLimits,
-    RobotCtrlLimits,
-    RobotGeometry,
+    RobotGeometryType,
     RobotType,
     RobotConfig
 )
@@ -326,11 +334,11 @@ from kompass.control import ControllersID, PurePursuitConfig
 # Setup your robot configuration
 my_robot = RobotConfig(
     model_type=RobotType.OMNI,
-    geometry_type=RobotGeometry.Type.BOX,
+    geometry_type=RobotGeometryType.BOX,
     geometry_params=np.array([0.3, 0.3, 0.3]),
     ctrl_vx_limits=LinearCtrlLimits(max_vel=0.2, max_acc=1.5, max_decel=2.5),
     ctrl_omega_limits=AngularCtrlLimits(
-        max_vel=0.4, max_acc=2.0, max_decel=2.0, max_steer=np.pi / 3)
+        max_omega=0.4, max_acc=2.0, max_decel=2.0, max_ang=np.pi / 3)
 )
 
 # Initialize the controller
@@ -469,11 +477,6 @@ $$
   - `0.05`
   - Minimum linear velocity for cross-track control (m/s). Must be between `1e-4` and `1e2`.
 
-* - min_angular_vel
-  - `float`
-  - `0.01`
-  - Minimum allowable angular velocity (rad/s). Must be between `0.0` and `1e9`.
-
 * - cross_track_gain
   - `float`
   - `1.5`
@@ -500,8 +503,7 @@ from kompass.components import Controller, ControllerConfig
 from kompass.robot import (
     AngularCtrlLimits,
     LinearCtrlLimits,
-    RobotCtrlLimits,
-    RobotGeometry,
+    RobotGeometryType,
     RobotType,
     RobotConfig
 )
@@ -510,11 +512,11 @@ from kompass.control import ControllersID
 # Setup your robot configuration
 my_robot = RobotConfig(
     model_type=RobotType.ACKERMANN,
-    geometry_type=RobotGeometry.Type.BOX,
+    geometry_type=RobotGeometryType.BOX,
     geometry_params=np.array([0.3, 0.3, 0.3]),
     ctrl_vx_limits=LinearCtrlLimits(max_vel=0.2, max_acc=1.5, max_decel=2.5),
     ctrl_omega_limits=AngularCtrlLimits(
-        max_vel=0.4, max_acc=2.0, max_decel=2.0, max_steer=np.pi / 3)
+        max_omega=0.4, max_acc=2.0, max_decel=2.0, max_ang=np.pi / 3)
 )
 
 # Set Stanley algorithm using the config class
@@ -645,8 +647,7 @@ from kompass.components import Controller, ControllerConfig
 from kompass.robot import (
     AngularCtrlLimits,
     LinearCtrlLimits,
-    RobotCtrlLimits,
-    RobotGeometry,
+    RobotGeometryType,
     RobotType,
     RobotConfig
 )
@@ -655,11 +656,11 @@ from kompass.control import LocalPlannersID
 # Setup your robot configuration
 my_robot = RobotConfig(
     model_type=RobotType.ACKERMANN,
-    geometry_type=RobotGeometry.Type.BOX,
+    geometry_type=RobotGeometryType.BOX,
     geometry_params=np.array([0.3, 0.3, 0.3]),
     ctrl_vx_limits=LinearCtrlLimits(max_vel=0.2, max_acc=1.5, max_decel=2.5),
     ctrl_omega_limits=AngularCtrlLimits(
-        max_vel=0.4, max_acc=2.0, max_decel=2.0, max_steer=np.pi / 3)
+        max_omega=0.4, max_acc=2.0, max_decel=2.0, max_ang=np.pi / 3)
 )
 
 # Set DVZ algorithm using the config class
@@ -756,11 +757,6 @@ The Controller does not subscribe directly to raw images. It expects the detecti
   - `bool`
   - `True`
   - Whether to rotate the robot to find a target if it exits the FOV.
-* - **min_vel**
-  - `float`
-  - `0.1`
-  - Minimum linear velocity allowed during following.
-
 ```
 
 ### Usage Example
@@ -796,8 +792,9 @@ The VisionFollowerRGBD is a sophisticated 3D visual servoing controller. It comb
 
 This controller requires synchronized vision and spatial data.
 
-- Detections -- 2D bounding boxes (Detections2D, Trackings2D).
-- Depth Image Information -- Aligned depth image info for 3D coordinate estimation.
+- Detections -- 2D bounding boxes (Detections2D, Trackings2D), with depth embedded when they come from an RGBD image.
+- Depth camera information -- the camera intrinsics for 3D coordinate estimation.
+- A separate depth source, optionally -- an aligned depth image or a point cloud on the `vision_depth` input, paired with the detections by time stamp.
 
 ### Configuration Parameters
 
@@ -868,7 +865,7 @@ Where $w_i$ is the configured weight and $C_i$ is the normalized cost value.
 
 ### Hardware Acceleration
 
-To handle high-frequency control loops with large sample sets, EMOS leverages **SYCL** for massive parallelism. Each cost function is implemented as a specialized **SYCL kernel**, allowing the controller to evaluate thousands of trajectory points in parallel on **Nvidia, AMD, or Intel** GPUs, significantly reducing latency compared to CPU-only implementations.
+To handle high-frequency control loops with large sample sets, EMOS leverages **SYCL** for massive parallelism. Each cost function is implemented as a specialized **SYCL kernel**, allowing the controller to evaluate thousands of trajectory points in parallel on **Nvidia, AMD, Intel or Arm Mali** GPUs, significantly reducing latency compared to CPU-only implementations.
 
 See the performance gains in the [Benchmarks](./benchmarks.md) page.
 

@@ -145,15 +145,16 @@ Use the EMOS Launcher to bring up your package:
 :linenos:
 
 from my_awesome_pkg.awesome_component import AwesomeComponent, AwesomeConfig
-from ros_sugar.actions import LogInfo
-from ros_sugar.events import OnLess
 from ros_sugar import Launcher
+from ros_sugar.actions import log, restart
+from ros_sugar.core import Event
 from ros_sugar.io import Topic
 
 # Define a set of topics
 map_topic = Topic(name="map", msg_type="OccupancyGrid")
 audio_topic = Topic(name="voice", msg_type="Audio")
 image_topic = Topic(name="camera/rgb", msg_type="Image")
+battery_topic = Topic(name="battery_level", msg_type="Float32")
 
 # Init your components
 my_component = AwesomeComponent(
@@ -162,13 +163,11 @@ my_component = AwesomeComponent(
     outputs=[audio_topic]
 )
 
-# Create your events
-low_battery = Event(battery_level_topic.msg.data < 15.0)
+# If the component fails, restart it, with unlimited retries
+my_component.on_component_fail(action=restart(component=my_component))
 
-# Events/Actions
-my_events_actions: Dict[event.Event, Action] = {
-    low_battery: LogInfo(msg="Battery is Low!")
-}
+# Create your events
+low_battery = Event(battery_topic.msg.data < 15.0)
 
 # Create your launcher
 launcher = Launcher()
@@ -178,13 +177,9 @@ launcher.add_pkg(
     components=[my_component],
     package_name='my_awesome_pkg',
     executable_entry_point='executable',
-    events_actions=my_events_actions,
-    activate_all_components_on_start=True,
+    events_actions={low_battery: log(msg="Battery is Low!")},
     multiprocessing=True,
 )
-
-# If any component fails -> restart it with unlimited retries
-launcher.on_component_fail(action_name="restart")
 
 # Bring up the system
 launcher.bringup()
@@ -194,7 +189,7 @@ launcher.bringup()
 
 ## Deploying as systemd Services
 
-EMOS recipes can be easily deployed as `systemd` services for production environments or embedded systems where automatic startup and restart behavior is critical.
+There are two things worth running as a service on a deployed robot, and EMOS has a command for each. The dashboard is installed as a service with `emos serve install-service`, described in [Dashboard](../getting-started/dashboard.md), and from it an operator starts and stops recipes without a terminal. A recipe that has to come up with the robot, with no operator at all, is installed as a service of its own with the command below.
 
 Once you have a Python script for your EMOS-based package (e.g., `my_awesome_system.py`), install it as a systemd service:
 
@@ -329,6 +324,10 @@ The `ExecuteMethod` service enables runtime invocation of any class method in th
 - **Service Name:** `/{component_name}/execute_method`
 - **Service Type:** `automatika_ros_sugar/srv/ExecuteMethod`
 
+## Securing a Recipe's Web Interface
+
+A recipe that calls `enable_ui` serves its interface over HTTPS and requires an API key from any client that is not the browser. On a robot managed with `emos`, keys are created with `emos config api-keys` and the recipe uses the robot's certificate. On a plain ROS install the same is done with Sugarcoat's own tool, `ros2 run automatika_ros_sugar ui_security keys create --name <who>`, which also prints the certificate fingerprint with `ui_security fingerprint`. [Web UI & API](../concepts/web-ui.md) covers the interface and its API.
+
 ```{seealso}
-To make your recipes portable across different robot hardware, see [Robot Plugins](../concepts/robot-plugins.md).
+To make your recipes portable across robots, and to add sensors that are not part of the robot, see [Robot Plugins](../concepts/robot-plugins.md), which covers both robot and sensor plugins and points to the authoring guide.
 ```

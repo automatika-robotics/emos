@@ -18,7 +18,7 @@ All component health status topics are accessible via `component.status_topic`.
 
 ```python
 from kompass.ros import Event, Action, Topic
-from sugar.msg import ComponentStatus
+from automatika_ros_sugar.msg import ComponentStatus
 
 # Event: Controller reports algorithm failure
 # keep_event_delay prevents re-triggering while recovery is in progress
@@ -67,53 +67,32 @@ In a production system, goals often arrive from external interfaces like RViz ra
 ### Define the Goal Event
 
 ```python
-from kompass import event
-from kompass.actions import ComponentActions
+clicked_point = Topic(name="/clicked_point", msg_type="PointStamped")
 
-# Fire whenever a new PointStamped arrives on /clicked_point
-event_clicked_point = event.OnGreater(
-    "rviz_goal",
-    Topic(name="/clicked_point", msg_type="PointStamped"),
-    0,
-    ["header", "stamp", "sec"],
-)
+# Fire on every PointStamped that arrives on /clicked_point
+event_clicked_point = Event(clicked_point)
 ```
 
-### Define the Goal Action with a Parser
+### Define the Goal Action
 
-The clicked point message needs to be converted into a `PlanPath.Goal`. We write a parser function and attach it to the action:
+The planner's `trigger_main_action_server` is a component action that sends a goal to its own action server. Its arguments are read from the clicked point at the moment the event fires, so no parser is needed:
 
 ```python
-from kompass_interfaces.action import PlanPath
-from kompass_interfaces.msg import PathTrackingError
-from geometry_msgs.msg import Pose, PointStamped
-from kompass.actions import LogInfo
+from kompass.actions import log
 
-# Create the action server goal action
-send_goal = ComponentActions.send_action_goal(
-    action_name="/planner/plan_path",
-    action_type=PlanPath,
-    action_request_msg=PlanPath.Goal(),
+send_goal = Action(
+    method=planner.trigger_main_action_server,
+    args=(
+        clicked_point.msg.point.x,
+        clicked_point.msg.point.y,
+        0.05,  # goal distance tolerance
+        0.2,   # goal angle tolerance, in radians
+    ),
 )
-
-# Parse PointStamped into PlanPath.Goal
-def goal_point_parser(*, msg: PointStamped, **_):
-    action_request = PlanPath.Goal()
-    goal = Pose()
-    goal.position.x = msg.point.x
-    goal.position.y = msg.point.y
-    action_request.goal = goal
-    end_tolerance = PathTrackingError()
-    end_tolerance.orientation_error = 0.2
-    end_tolerance.lateral_distance_error = 0.05
-    action_request.end_tolerance = end_tolerance
-    return action_request
-
-send_goal.event_parser(goal_point_parser, output_mapping="action_request_msg")
 ```
 
 ```{tip}
-`ComponentActions.send_srv_request` and `ComponentActions.send_action_goal` let you call **any** ROS 2 service or action server from an event -- not just EMOS services.
+`send_action_goal` and `send_srv_request` from `kompass.actions` reach **any** ROS 2 action server or service from an event, with a goal or request you build yourself. A component's own server is easier to reach through an action like the one above.
 ```
 
 ---
@@ -125,7 +104,7 @@ With all events and actions defined, we assemble the event-action dictionary. Ea
 ```python
 events_actions = {
     # RViz click -> log + send goal to planner
-    event_clicked_point: [LogInfo(msg="Got new goal point"), send_goal],
+    event_clicked_point: [log(msg="Got new goal point"), send_goal],
     # Controller stuck -> unblock maneuver
     event_controller_fail: unblock_action,
     # Mapper down -> switch controller to direct sensor mode
@@ -144,30 +123,25 @@ events_actions = {
 import numpy as np
 import os
 
-from sugar.msg import ComponentStatus
-from kompass_interfaces.action import PlanPath
-from kompass_interfaces.msg import PathTrackingError
-from geometry_msgs.msg import Pose, PointStamped
-
-from kompass import event
-from kompass.actions import Action, ComponentActions, LogInfo, update_parameter
+from automatika_ros_sugar.msg import ComponentStatus
+from kompass.actions import Action, log, update_parameter
 from kompass.components import (
     Controller, DriveManager, Planner, PlannerConfig, LocalMapper,
 )
 from kompass.config import RobotConfig
 from kompass.robot import (
-    AngularCtrlLimits, LinearCtrlLimits, RobotGeometry, RobotType,
+    AngularCtrlLimits, LinearCtrlLimits, RobotGeometryType, RobotType,
 )
 from kompass.ros import Topic, Launcher, Event
 
 # --- Robot Configuration ---
 my_robot = RobotConfig(
     model_type=RobotType.DIFFERENTIAL_DRIVE,
-    geometry_type=RobotGeometry.Type.CYLINDER,
+    geometry_type=RobotGeometryType.CYLINDER,
     geometry_params=np.array([0.1, 0.3]),
     ctrl_vx_limits=LinearCtrlLimits(max_vel=0.2, max_acc=1.5, max_decel=2.5),
     ctrl_omega_limits=AngularCtrlLimits(
-        max_vel=0.4, max_acc=2.0, max_decel=2.0, max_steer=np.pi / 3
+        max_omega=0.4, max_acc=2.0, max_decel=2.0, max_ang=np.pi / 3
     ),
 )
 
@@ -207,35 +181,17 @@ activate_direct_sensor_mode = update_parameter(
 )
 
 # 3. RViz click -> Planner goal
-event_clicked_point = event.OnGreater(
-    "rviz_goal",
-    Topic(name="/clicked_point", msg_type="PointStamped"),
-    0, ["header", "stamp", "sec"],
+clicked_point = Topic(name="/clicked_point", msg_type="PointStamped")
+event_clicked_point = Event(clicked_point)
+
+send_goal = Action(
+    method=planner.trigger_main_action_server,
+    args=(clicked_point.msg.point.x, clicked_point.msg.point.y, 0.05, 0.2),
 )
-
-send_goal = ComponentActions.send_action_goal(
-    action_name="/planner/plan_path",
-    action_type=PlanPath,
-    action_request_msg=PlanPath.Goal(),
-)
-
-def goal_point_parser(*, msg: PointStamped, **_):
-    action_request = PlanPath.Goal()
-    goal = Pose()
-    goal.position.x = msg.point.x
-    goal.position.y = msg.point.y
-    action_request.goal = goal
-    end_tolerance = PathTrackingError()
-    end_tolerance.orientation_error = 0.2
-    end_tolerance.lateral_distance_error = 0.05
-    action_request.end_tolerance = end_tolerance
-    return action_request
-
-send_goal.event_parser(goal_point_parser, output_mapping="action_request_msg")
 
 # --- Wire Events -> Actions ---
 events_actions = {
-    event_clicked_point: [LogInfo(msg="Got new goal point"), send_goal],
+    event_clicked_point: [log(msg="Got new goal point"), send_goal],
     event_controller_fail: unblock_action,
     event_mapper_fault: activate_direct_sensor_mode,
 }
@@ -244,11 +200,12 @@ events_actions = {
 odom_topic = Topic(name="/odometry/filtered", msg_type="Odometry")
 
 launcher = Launcher()
-launcher.kompass(
+launcher.add_pkg(
     components=[planner, controller, mapper, driver],
+    package_name="kompass",
     events_actions=events_actions,
     activate_all_components_on_start=True,
-    multi_processing=True,
+    multiprocessing=True,
 )
 launcher.inputs(location=odom_topic)
 launcher.robot = my_robot

@@ -16,7 +16,7 @@ To get your RealSense camera running:
 sudo apt install ros-<ros2-distro>-realsense2-camera
 
 # Launch the camera node to start streaming both color and depth images
-ros2 launch realsense2_camera rs_camera.launch.py
+ros2 launch realsense2_camera rs_launch.py
 ```
 
 ### Start vision detection using an ML model
@@ -61,7 +61,7 @@ You can set up your robot in the same way we did in the [RGB tutorial](vision-tr
 from kompass.robot import (
     AngularCtrlLimits,
     LinearCtrlLimits,
-    RobotGeometry,
+    RobotGeometryType,
     RobotType,
     RobotConfig,
 )
@@ -70,11 +70,11 @@ import numpy as np
 # Setup your robot configuration
 my_robot = RobotConfig(
     model_type=RobotType.ACKERMANN,
-    geometry_type=RobotGeometry.Type.CYLINDER,
+    geometry_type=RobotGeometryType.CYLINDER,
     geometry_params=np.array([0.1, 0.3]),
     ctrl_vx_limits=LinearCtrlLimits(max_vel=1.0, max_acc=3.0, max_decel=2.5),
     ctrl_omega_limits=AngularCtrlLimits(
-        max_vel=4.0, max_acc=6.0, max_decel=10.0, max_steer=np.pi / 3
+        max_omega=4.0, max_acc=6.0, max_decel=10.0, max_ang=np.pi / 3
     ),
 )
 ```
@@ -89,6 +89,8 @@ Compared to the [RGB version](vision-tracking-rgb.md), the RGBD path needs two a
 
 - The **detections topic** from the vision component
 - The **depth camera info topic** for depth-to-3D projection
+
+The depth itself rides inside the detections when they come from an RGBD input, as here. A camera that publishes depth separately, or a 3D LiDAR, is given as a third input instead, `vision_depth`, an aligned depth image or a point cloud that the controller pairs with each detection by time stamp, within `ControllerConfig.vision_depth_max_age`.
 
 ```python
 from kompass.components import Controller, ControllerConfig
@@ -134,7 +136,7 @@ from kompass.control import ControllersID
 from kompass.robot import (
     AngularCtrlLimits,
     LinearCtrlLimits,
-    RobotGeometry,
+    RobotGeometryType,
     RobotType,
     RobotConfig,
 )
@@ -157,11 +159,11 @@ vision = Vision(
 # Setup your robot configuration
 my_robot = RobotConfig(
     model_type=RobotType.ACKERMANN,
-    geometry_type=RobotGeometry.Type.CYLINDER,
+    geometry_type=RobotGeometryType.CYLINDER,
     geometry_params=np.array([0.1, 0.3]),
     ctrl_vx_limits=LinearCtrlLimits(max_vel=1.0, max_acc=3.0, max_decel=2.5),
     ctrl_omega_limits=AngularCtrlLimits(
-        max_vel=4.0, max_acc=6.0, max_decel=10.0, max_steer=np.pi / 3
+        max_omega=4.0, max_acc=6.0, max_decel=10.0, max_ang=np.pi / 3
     ),
 )
 
@@ -182,12 +184,14 @@ mapper = LocalMapper(component_name="local_mapper")
 launcher = Launcher()
 launcher.add_pkg(
     components=[vision],
+    package_name="kompass",
     package_name="automatika_embodied_agents",
     multiprocessing=True,
     ros_log_level="warn",
 )
 launcher.add_pkg(
     components=[controller, mapper, driver],
+    package_name="kompass",
     package_name="kompass",
     multiprocessing=True,
 )

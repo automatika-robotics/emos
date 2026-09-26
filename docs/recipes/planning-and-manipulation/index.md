@@ -49,4 +49,11 @@ End-to-end neural manipulation. Use one of the latest VLA foundation models -- S
 Closed-loop manipulation from an open-loop policy. A VLM watches the camera during execution and stops the VLA the moment it sees the task complete -- or sees it going wrong.
 :::
 
+:::{grid-item-card} {material-regular}`back_hand;1.2em;sd-text-primary` MoveIt Manipulation
+:link: moveit-manipulation
+:link-type: doc
+
+Classical, collision-aware manipulation through MoveIt 2 as one component: pose, joint, named and Cartesian goals, pick and place, a gripper, and a planning scene filled with the objects the camera sees in 3D. Every bit of it a tool for Cortex.
+:::
+
 ::::

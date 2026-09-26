@@ -29,6 +29,21 @@ To make things easy, we created **kompass_sim**, a package with ready-to-launch 
     ros2 launch kompass_sim webots_turtlebot3.launch.py
     ```
 
+````{tip}
+**No ROS install for the simulator?** The same simulation ships as a container, with Webots, the robot driver, localization and RViz inside. It shares the host's network, so the recipe running on the host finds it as if it were local:
+
+```bash
+docker pull automatika/kompass-sim:jazzy
+xhost +local:root
+docker run -it --rm --network host --ipc host \
+  --env DISPLAY="$DISPLAY" --env QT_X11_NO_MITSHM=1 \
+  --volume /tmp/.X11-unix:/tmp/.X11-unix:rw --device /dev/dri:/dev/dri \
+  automatika/kompass-sim:jazzy
+```
+
+On an NVIDIA GPU add `--gpus all --env NVIDIA_DRIVER_CAPABILITIES=all` and drop the `--device` flag. Both sides have to share the same `ROS_DOMAIN_ID` and RMW implementation.
+````
+
 ### 2. The Navigation Recipe
 
 The power of EMOS lies in its Python API. Instead of complex XML/YAML launch files, you define your navigation logic in a clean script.
@@ -46,10 +61,9 @@ from ament_index_python.packages import (
 from kompass.robot import (
     AngularCtrlLimits,
     LinearCtrlLimits,
-    RobotGeometry,
+    RobotGeometryType,
     RobotType,
     RobotConfig,
-    RobotFrames,
 )
 
 # IMPORT EMOS NAVIGATION COMPONENTS
@@ -78,11 +92,11 @@ kompass_sim_dir = get_package_share_directory(package_name="kompass_sim")
 # Setup your robot configuration
 my_robot = RobotConfig(
     model_type=RobotType.DIFFERENTIAL_DRIVE,
-    geometry_type=RobotGeometry.Type.CYLINDER,
+    geometry_type=RobotGeometryType.CYLINDER,
     geometry_params=np.array([0.1, 0.3]),
     ctrl_vx_limits=LinearCtrlLimits(max_vel=0.4, max_acc=1.5, max_decel=2.5),
     ctrl_omega_limits=AngularCtrlLimits(
-        max_vel=0.4, max_acc=2.0, max_decel=2.0, max_steer=np.pi / 3
+        max_omega=0.4, max_acc=2.0, max_decel=2.0, max_ang=np.pi / 3
     ),
 )
 
@@ -90,6 +104,9 @@ my_robot = RobotConfig(
 planner_config = PlannerConfig(loop_rate=1.0)
 planner = Planner(component_name="planner", config=planner_config)
 planner.run_type = "Timed"
+# Goals arrive on /clicked_point, from RViz's Publish Point tool or the web UI
+goal = Topic(name="/clicked_point", msg_type="PointStamped")
+planner.inputs(goal_point=goal)
 
 # Configure the motion controller
 controller = Controller(component_name="controller")
@@ -135,8 +152,9 @@ map_server = MapServer(component_name="global_map_server", config=map_server_con
 launcher = Launcher()
 
 # Add navigation components
-launcher.kompass(
+launcher.add_pkg(
     components=[map_server, controller, planner, driver, local_mapper],
+    package_name="kompass",
     multiprocessing=True,
 )
 
@@ -146,11 +164,11 @@ launcher.inputs(location=odom_topic)
 
 # Set the robot config for all components
 launcher.robot = my_robot
-launcher.frames = RobotFrames(world="map", odom="map", scan="LDS-01")
 
 # Enable the UI
 # Outputs: Static Map, Global Plan, Robot Odometry
 launcher.enable_ui(
+    inputs=[goal],
     outputs=[
         map_server.get_out_topic(TopicsKeys.GLOBAL_MAP),
         odom_topic,
@@ -178,9 +196,9 @@ You will see the components starting up in the terminal. Once ready, you have tw
 
 The recipe includes `launcher.enable_ui(...)`, which automatically spins up a lightweight web interface for monitoring and control.
 
-1. **Check Terminal:** Look for a log message indicating the UI URL: `http://0.0.0.0:5001`.
+1. **Check Terminal:** Look for the log line `Access the recipe UI at: https://<IP_ADDRESS_OF_THE_ROBOT>:5001` and open that address, accepting the self-signed certificate once.
 2. **Open Browser:** Navigate to that URL.
-3. **Send Goal:** You will see the map and the robot's live position. Simply click the publish point button and **click anywhere on the map** to trigger the Planner and send the robot to that location.
+3. **Send Goal:** You will see the map, the plan and the robot's live position. Send a goal from the `/clicked_point` input and the robot heads there.
 
 #### Option B: RViz
 
@@ -257,10 +275,9 @@ from ament_index_python.packages import get_package_share_directory
 from kompass.robot import (
     AngularCtrlLimits,
     LinearCtrlLimits,
-    RobotGeometry,
+    RobotGeometryType,
     RobotType,
     RobotConfig,
-    RobotFrames,
 )
 
 # IMPORT EMOS NAVIGATION COMPONENTS
@@ -289,11 +306,11 @@ kompass_sim_dir = get_package_share_directory(package_name="kompass_sim")
 # Setup your robot configuration (Turtlebot3 Waffle Pi)
 my_robot = RobotConfig(
     model_type=RobotType.DIFFERENTIAL_DRIVE,
-    geometry_type=RobotGeometry.Type.BOX, # Waffle Pi is rectangular
+    geometry_type=RobotGeometryType.BOX, # Waffle Pi is rectangular
     geometry_params=np.array([0.3, 0.3, 0.2]), # Length, Width, Height
     ctrl_vx_limits=LinearCtrlLimits(max_vel=0.26, max_acc=1.0, max_decel=1.0),
     ctrl_omega_limits=AngularCtrlLimits(
-        max_vel=1.8, max_acc=2.0, max_decel=2.0, max_steer=np.pi / 3
+        max_omega=1.8, max_acc=2.0, max_decel=2.0, max_ang=np.pi / 3
     ),
 )
 
@@ -301,6 +318,9 @@ my_robot = RobotConfig(
 planner_config = PlannerConfig(loop_rate=1.0)
 planner = Planner(component_name="planner", config=planner_config)
 planner.run_type = "Timed"
+# Goals arrive on /clicked_point, from RViz's Publish Point tool or the web UI
+goal = Topic(name="/clicked_point", msg_type="PointStamped")
+planner.inputs(goal_point=goal)
 
 # Configure the motion controller
 controller = Controller(component_name="controller")
@@ -348,8 +368,9 @@ map_server = MapServer(component_name="global_map_server", config=map_server_con
 launcher = Launcher()
 
 # Add navigation components
-launcher.kompass(
+launcher.add_pkg(
     components=[map_server, controller, planner, driver, local_mapper],
+    package_name="kompass",
     multiprocessing=True,
 )
 
@@ -359,12 +380,11 @@ launcher.inputs(location=odom_topic)
 
 # Set the robot config and frames
 launcher.robot = my_robot
-# Standard Gazebo TB3 frames: world=map, odom=odom, scan=base_scan
-launcher.frames = RobotFrames(world="map", odom="odom", scan="base_scan")
 
 # Enable the UI
 # Outputs: Static Map, Global Plan, Robot Odometry
 launcher.enable_ui(
+    inputs=[goal],
     outputs=[
         map_server.get_out_topic(TopicsKeys.GLOBAL_MAP),
         odom_topic,
@@ -392,9 +412,9 @@ You will see the components starting up in the terminal. Once ready, you have tw
 
 The recipe includes `launcher.enable_ui(...)`, which automatically spins up a lightweight web interface for monitoring and control.
 
-1. **Check Terminal:** Look for a log message indicating the UI URL: `http://0.0.0.0:5001`.
+1. **Check Terminal:** Look for the log line `Access the recipe UI at: https://<IP_ADDRESS_OF_THE_ROBOT>:5001` and open that address, accepting the self-signed certificate once.
 2. **Open Browser:** Navigate to that URL.
-3. **Send Goal:** You will see the map and the robot's live position. Simply click the publish point button and **click anywhere on the map** to trigger the Planner and send the robot to that location.
+3. **Send Goal:** You will see the map, the plan and the robot's live position. Send a goal from the `/clicked_point` input and the robot heads there.
 
 #### Option B: RViz
 
@@ -407,7 +427,7 @@ If you prefer the standard ROS tools:
 
 ### What just happened?
 
-* **Customization**: We adapted the robot configuration (`RobotConfig`) to match the Waffle Pi's rectangular geometry and adjusted the `RobotFrames` to match Gazebo's standard output (`base_scan`).
+* **Customization**: We adapted the robot configuration (`RobotConfig`) to match the Waffle Pi's rectangular geometry. Sensor frames need no configuration: every component reads them from the messages and TF.
 * **Launcher**: Managed the lifecycle of the entire stack.
 * **Perception**: The Local Mapper is processing the Gazebo laser scan to provide obstacle avoidance data to the Controller.
 

@@ -95,6 +95,7 @@ concepts/architecture
 concepts/components
 concepts/topics
 concepts/events-and-actions
+concepts/routines
 concepts/status-and-fallbacks
 concepts/launcher
 concepts/robot-plugins

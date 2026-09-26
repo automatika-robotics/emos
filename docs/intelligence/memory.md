@@ -130,7 +130,7 @@ from agents.ros import MemLayer, Topic
 
 ### Layers
 
-A `MemLayer` is the smallest unit of input. Each layer subscribes to one topic; the topic's UI string representation is what gets stored.
+A `MemLayer` is the smallest unit of input. Each layer subscribes to one topic, and what that topic's callback renders as text is what gets stored, at the robot's position at the time. A layer on a `Detections3D` topic is the exception: it stores one observation per detected object, at the object's own position, so the boxes have to be published in the same world frame as the position topic.
 
 ```python
 detections = Topic(name="detections", msg_type="Detections")
@@ -148,7 +148,22 @@ battery_layer    = MemLayer(subscribes_to=battery, is_internal_state=True)
 | Field | Meaning |
 |---|---|
 | `subscribes_to` | The topic to ingest from. |
+| `prior_memories` | Observations the layer starts with, before anything arrives on the topic. Each is a `PriorMemory` with a text, an optional position in world-frame metres, and an optional timestamp; without them the origin and the time of seeding are used. |
 | `is_internal_state` | If `True`, observations are routed through `add_body_state` -- they're invisible to perception retrieval tools and surface only through the dedicated `body_status` tool. Used for interoception. |
+
+Prior memories are how a layer is seeded with what the robot should already know, the places of the charging dock and the exits for instance:
+
+```python
+from agents.ros import MemLayer, PriorMemory
+
+scene_layer = MemLayer(
+    subscribes_to=scene,
+    prior_memories=[
+        PriorMemory(text="charging dock", position=(0.5, -2.0, 0.0)),
+        PriorMemory(text="main entrance", position=(12.0, 3.5, 0.0)),
+    ],
+)
+```
 
 `MapLayer` is preserved as a backwards-compatible alias of `MemLayer`.
 
@@ -250,6 +265,8 @@ This is what makes eMEM-on-Cortex behave as a cognitive system rather than a ses
 | `db_client=ChromaClient(...)` | `model_client=...`, `embedding_client=...` |
 | `map_topic=OccupancyGrid` (required) | None -- Memory uses real-world coords from Odometry directly |
 | `MapConfig(map_name=…)` | `MemoryConfig(db_path=…)` |
+| `MapLayer(pre_defined=[(position, text), ...])` | `MemLayer(prior_memories=[PriorMemory(text=..., position=...), ...])` |
+| `temporal_change`, `resolution_multiple` on a layer | Gone. Layers are treated as static in time, and consolidation handles what changes. |
 | Free-form text retrieval via tool calling | Ten typed retrieval tools auto-registered with Cortex |
 | No interoception | `is_internal_state=True` on a layer surfaces it via `body_status` |
 | No episode structure | `start_episode` / `end_episode`, hierarchical nesting, automatic consolidation |

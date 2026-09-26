@@ -11,7 +11,7 @@ For the multiprocessing-and-fault-tolerant variant of this recipe, see [Multipro
 ```{admonition} Prerequisites
 :class: important
 
-This recipe uses the `Memory` component for spatio-temporal memory. Memory needs the [eMEM](https://github.com/automatika-robotics/emem) package, which `emos install` does not add — the install command depends on your mode (see [Memory installation](../../intelligence/memory.md)). Audio playback also needs `pip install soundfile sounddevice`.
+This recipe uses the `Memory` component for spatio-temporal memory. Memory needs the [eMEM](https://github.com/automatika-robotics/emem) package, which `emos install` does not add — the install command depends on your mode (see [Memory installation](../../intelligence/memory.md)). Audio playback also needs `pip install soundfile pyaudio`.
 ```
 
 ## The Graph
@@ -385,6 +385,6 @@ To run this same graph in **multi-process mode with fault tolerance**, see [Mult
 ---
 
 ```{tip}
-**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+**Promote this recipe to production.** While you are shaping it, run the script directly with `python recipe.py`. Once it is solid, drop it at `~/emos/recipes/<name>/recipe.py` and start it with `emos run <name>`, or from the dashboard. Either way every run is logged under `~/emos/logs`, and an operator gets a card to launch it from a browser. [Running Recipes](../../getting-started/running-recipes.md) covers the two ways of running a recipe and what differs per install mode.
 ```
 

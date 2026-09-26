@@ -42,7 +42,7 @@ Simply return the object description in the following command. {{ goto_in }}"""
 
 In this step, we will set up the VLM component, which will enable the agent to visually ground natural language object descriptions (from our command, given to the LLM component above) using live sensor data. We use **[RoboBrain 2.0](https://github.com/FlagOpen/RoboBrain2.0)** by BAAI, a state-of-the-art Vision-Language model (VLM) trained specifically for embodied agents reasoning.
 
-RoboBrain 2.0 supports a wide range of embodied perception and planning capabilities, including interactive reasoning and spatial perception.
+RoboBrain 2.0 supports a wide range of embodied perception and planning capabilities, including interactive reasoning and spatial perception. The same wrapper loads the RoboBrain 2.5 checkpoints.
 
 > **Citation**:
 > BAAI RoboBrain Team. "RoboBrain 2.0 Technical Report." arXiv preprint arXiv:2507.02029 (2025).
@@ -74,14 +74,14 @@ The `task` parameter specifies the type of multimodal operation the component sh
 Supported values are:
 * `"general"` -- free-form multimodal reasoning, produces output of type String
 * `"pointing"` -- provide a list of points on the object, produces output of type PointsOfInterest
-* `"affordance"` -- detect object affordances, produces output of type Detections
+* `"affordance"` -- detect object affordances, produces output of type Detections, or Detections3D when depth is available
 * `"trajectory"` -- predict motion path in pixel space, produces output of type PointsOfInterest
-* `"grounding"` -- localize an object in the scene from a description with a bounding box, produces output of type Detections
+* `"grounding"` -- localize an object in the scene from a description with a bounding box, produces output of type Detections, or Detections3D when depth is available
 
 This parameter ensures the model behaves in a task-specific way, especially when using models like RoboBrain 2.0 that have been trained on multiple multimodal instruction types.
 ```
 
-With this setup, the VLM component receives parsed object descriptions from the LLM and produces structured `Detections` messages identifying the object's location in space -- enabling the agent to navigate towards a visually grounded goal. Furthermore, we will use an _RGBD_ type message as the image input to the VLM component. This message is an aligned RGB and depth image message that is usually available in the ROS2 packages provided by stereo camera vendors (e.g. Realsense). The utility of this choice will become apparent later in this tutorial.
+With this setup, the VLM component receives parsed object descriptions from the LLM and produces structured `Detections` messages identifying the object's location in space -- enabling the agent to navigate towards a visually grounded goal. Given depth, from the RGBD input used here or a separate depth topic with its camera info, and a `detections_frame` in its config, the same component publishes `Detections3D`, metric boxes labelled with the query, which is what manipulation consumes. Its `run_task` action does the same on demand, for an event or for Cortex. Furthermore, we will use an _RGBD_ type message as the image input to the VLM component. This message is an aligned RGB and depth image message that is usually available in the ROS2 packages provided by stereo camera vendors (e.g. Realsense). The utility of this choice will become apparent later in this tutorial.
 
 ```python
 from agents.components import VLM
@@ -130,7 +130,7 @@ import numpy as np
 from kompass.robot import (
     AngularCtrlLimits,
     LinearCtrlLimits,
-    RobotGeometry,
+    RobotGeometryType,
     RobotType,
 )
 from kompass.config import RobotConfig
@@ -138,11 +138,11 @@ from kompass.config import RobotConfig
 # Setup your robot configuration
 my_robot = RobotConfig(
     model_type=RobotType.DIFFERENTIAL_DRIVE,
-    geometry_type=RobotGeometry.Type.CYLINDER,
+    geometry_type=RobotGeometryType.CYLINDER,
     geometry_params=np.array([0.1, 0.3]),
     ctrl_vx_limits=LinearCtrlLimits(max_vel=0.2, max_acc=1.5, max_decel=2.5),
     ctrl_omega_limits=AngularCtrlLimits(
-        max_vel=0.4, max_acc=2.0, max_decel=2.0, max_steer=np.pi / 3
+        max_omega=0.4, max_acc=2.0, max_decel=2.0, max_ang=np.pi / 3
     ),
 )
 ```
@@ -150,7 +150,7 @@ my_robot = RobotConfig(
 Now we can add our default components. Our component of interest is the _planning_ component, that plots a path to the goal point. We will give the output topic from our VLM component as the goal point topic to the planning component.
 
 ```{important}
-The Kompass Planner accepts `Detections`, `PointsOfInterest`, and `Trackings` messages from EmbodiedAgents directly as goal-point inputs. These contain pixel-space coordinates identified by ML models. When generated from RGBD inputs, the associated depth images enable Kompass to automatically convert pixel-space points to averaged world-space coordinates using camera intrinsics. See [Planning](../../navigation/planning.md) for the supported input types.
+The Kompass Planner accepts `Detections` and `PointsOfInterest` messages from EmbodiedAgents directly as goal-point inputs. These contain pixel-space coordinates identified by ML models. When generated from RGBD inputs, the associated depth images enable Kompass to automatically convert pixel-space points to averaged world-space coordinates using camera intrinsics. See [Planning](../../navigation/planning.md) for the supported input types.
 ```
 
 ```python
@@ -229,7 +229,7 @@ from agents.config import VLMConfig
 from kompass.robot import (
     AngularCtrlLimits,
     LinearCtrlLimits,
-    RobotGeometry,
+    RobotGeometryType,
     RobotType,
 )
 from kompass.config import RobotConfig
@@ -283,11 +283,11 @@ go_to_x = VLM(
 # Setup your robot configuration
 my_robot = RobotConfig(
     model_type=RobotType.DIFFERENTIAL_DRIVE,
-    geometry_type=RobotGeometry.Type.CYLINDER,
+    geometry_type=RobotGeometryType.CYLINDER,
     geometry_params=np.array([0.1, 0.3]),
     ctrl_vx_limits=LinearCtrlLimits(max_vel=0.2, max_acc=1.5, max_decel=2.5),
     ctrl_omega_limits=AngularCtrlLimits(
-        max_vel=0.4, max_acc=2.0, max_decel=2.0, max_steer=np.pi / 3
+        max_omega=0.4, max_acc=2.0, max_decel=2.0, max_ang=np.pi / 3
     ),
 )
 
@@ -333,6 +333,6 @@ launcher.bringup()
 ---
 
 ```{tip}
-**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+**Promote this recipe to production.** While you are shaping it, run the script directly with `python recipe.py`. Once it is solid, drop it at `~/emos/recipes/<name>/recipe.py` and start it with `emos run <name>`, or from the dashboard. Either way every run is logged under `~/emos/logs`, and an operator gets a card to launch it from a browser. [Running Recipes](../../getting-started/running-recipes.md) covers the two ways of running a recipe and what differs per install mode.
 ```
 

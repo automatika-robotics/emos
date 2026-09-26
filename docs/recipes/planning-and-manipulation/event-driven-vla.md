@@ -1,238 +1,224 @@
 # Event-Driven VLA
 
-In the previous [VLA Manipulation](vla-manipulation.md) recipe, we saw how VLAs can be used in EMOS to perform physical tasks. However, the real utility of VLAs is unlocked when they are part of a bigger cognitive system. With its event-driven agent graph development, EMOS allows us to do exactly that.
+In [VLA Manipulation](vla-manipulation.md) we made an arm pick oranges with a VLA policy. The real value of a VLA shows once it is part of a larger cognitive system, and EMOS's event-driven graphs are built for exactly that.
 
-Most VLA policies are "open-loop" regarding task completion -- they run for a fixed number of steps and then stop, regardless of whether they succeeded or failed.
+Most VLA policies are open-loop about task completion: they run for a fixed number of steps and then stop, whether the task succeeded or not. In this tutorial we close the loop around an open-loop policy. Even for a model that does signal its own completion, the design is a safety valve. Two components share the work:
 
-In this tutorial, we will build a **Closed-Loop Agent** while using an open-loop policy. Even if the model correctly outputs its termination condition (i.e. an absorbing state policy), our design can act as a safety valve. We will combine:
+- {material-regular}`smart_toy;1.2em;sd-text-primary` **The player, a VLA,** tries to pick the oranges.
+- {material-regular}`visibility;1.2em;sd-text-primary` **The referee, a VLM,** watches the camera and judges whether the task is done.
 
-- {material-regular}`smart_toy;1.2em;sd-text-primary` **The Player (VLA):** Attempts to pick up an object.
-- {material-regular}`visibility;1.2em;sd-text-primary` **The Referee (VLM):** Watches the camera stream and judges if the task is complete.
+An **event** on the referee's verdict stops the player the moment the task is complete. The recipe runs against the same simulation as the previous tutorial.
 
-We will use the **Event System** to trigger a stop command on the VLA the moment the VLM confirms success.
+## The player
 
-## The Player: Setting up the VLA
-
-First, we setup our VLA component exactly as we did in the previous recipe. We will use the same **SmolVLA** policy trained for picking oranges.
+The VLA is set up exactly as before, with the bridge's topics, the GR00T policy and the dataset-cadence timing:
 
 ```python
+from agents.clients import LeRobotClient
 from agents.components import VLA
 from agents.config import VLAConfig
-from agents.clients import LeRobotClient
 from agents.models import LeRobotPolicy
 from agents.ros import Topic
 
-# Define Topics
-state = Topic(name="/isaac_joint_states", msg_type="JointState")
-camera1 = Topic(name="/front_camera/image_raw", msg_type="Image")
-camera2 = Topic(name="/wrist_camera/image_raw", msg_type="Image")
-joints_action = Topic(name="/isaac_joint_command", msg_type="JointState")
+joint_states = Topic(name="/so101/joint_states", msg_type="JointState")
+front_camera = Topic(name="/so101/front/image_raw", msg_type="Image")
+wrist_camera = Topic(name="/so101/wrist/image_raw", msg_type="Image")
+joint_cmd = Topic(name="/so101/joint_cmd", msg_type="JointState")
 
-# Setup Policy
 policy = LeRobotPolicy(
-    name="my_policy",
-    policy_type="smolvla",
-    checkpoint="aleph-ra/smolvla_finetune_pick_orange_20000",
+    name="pick_orange_gr00t",
+    policy_type="groot",
+    checkpoint="aleph-ra/gr00t17_pick_orange_lora",
     dataset_info_file="https://huggingface.co/datasets/LightwheelAI/leisaac-pick-orange/resolve/main/meta/info.json",
+    actions_per_chunk=16,
 )
-client = LeRobotClient(model=policy)
+client = LeRobotClient(model=policy, host="127.0.0.1", port=8080)
 
-# Configure VLA (Mapping omitted for brevity, see previous tutorial)
-# ... (assume joints_map and camera_map are defined)
-config = VLAConfig(
-    observation_sending_rate=5,
-    action_sending_rate=5,
-    joint_names_map=joints_map,
-    camera_inputs_map=camera_map,
-    robot_urdf_file="./so101_new_calib.urdf"
-)
+# joint_names_map, camera_inputs_map, joint_limits and the timing as in the previous recipe
+config = VLAConfig(...)
 
 player = VLA(
-    inputs=[state, camera1, camera2],
-    outputs=[joints_action],
+    inputs=[joint_states, front_camera, wrist_camera],
+    outputs=[joint_cmd],
     model_client=client,
     config=config,
-    component_name="vla_player",
+    component_name="vla_sim",
 )
 ```
 
-## The Referee: Setting up the VLM
+## The referee
 
-Now we introduce the "Referee". We will use a Vision Language Model (like Qwen-VL) to monitor the scene.
+The referee is a vision-language model that looks at the front camera on a timer and answers one question: are all the oranges in the bowl? A `FixedInput` asks it the same question every time, worded strictly so that the answer is one word.
 
-We want this component to periodically look at the `camera1` feed and answer a specific question: _"Are all the oranges in the bowl?"_
-
-We use a `FixedInput` to ensure the VLM is asked the exact same question every time.
+We run the model locally through Ollama. The GPU is shared with Isaac Sim and the policy server, and Ollama only places a vision model on the GPU when it fits the remaining memory in one piece, so next to those two on a 24 GB card a small model such as `qwen2.5vl:3b` is the candidate, and it may still end up on the CPU. A referee on the CPU competes with the simulation loop and can disturb the action timing the policy depends on, which is why the configuration below keeps its threads low and its period long. On a GPU with room, the period can be a few seconds.
 
 ```python
-from agents.components import VLM
 from agents.clients import OllamaClient
+from agents.components import VLM
 from agents.models import OllamaModel
 from agents.ros import FixedInput
 
-# Define the topic where the VLM publishes its judgment
-referee_verdict = Topic(name="/referee/verdict", msg_type="String")
+judge_model = OllamaModel(
+    name="success_judge_vlm",
+    checkpoint="qwen2.5vl:3b",
+    options={"num_ctx": 4096, "num_predict": 5, "num_thread": 2},
+)
+judge_client = OllamaClient(model=judge_model, inference_timeout=240)
 
-# Setup the Model
-qwen_vl = OllamaModel(name="qwen_vl", checkpoint="qwen2.5vl:7b")
-qwen_client = OllamaClient(model=qwen_vl)
-
-# Define the constant question
-question = FixedInput(
-    name="prompt",
+judge_prompt = FixedInput(
+    name="judge_prompt",
     msg_type="String",
-    fixed="Look at the image. Are all the orange in the bowl? Answer only with YES or NO."
+    fixed=(
+        "Look at the white and blue bowl on the kitchen counter. Are ALL three of the "
+        "oranges inside that bowl, with none left on the counter? "
+        "Answer with exactly one word: YES or NO."
+    ),
 )
 
-# Initialize the VLM
-# Note: We trigger periodically (regulated by loop_rate)
+success_check = Topic(name="/vla_sim/success_check", msg_type="String")
+
 referee = VLM(
-    inputs=[question, camera1],
-    outputs=[referee_verdict],
-    model_client=qwen_client,
-    trigger=10.0,
-    component_name="vlm_referee"
+    inputs=[judge_prompt, front_camera],
+    outputs=[success_check],
+    model_client=judge_client,
+    trigger=120.0,
+    component_name="success_judge",
 )
 ```
 
 ```{note}
-To prevent the VLM from consuming too much compute, we have configured a `float` trigger, which means our `VLM` component will be triggered, not by a topic, but periodically with a `loop_rate` of once every 10 seconds.
+A number as the trigger makes the component timed rather than topic-driven, and the number is the period in seconds. The referee here looks every two minutes, which suits a CPU-placed model.
 ```
 
 ```{tip}
-In order to make sure that the VLM output is formatted as per our requirement (YES or NO), checkout how to use pre-processors in the [Semantic Map](../foundation/semantic-map.md) recipe. For now we will assume that if YES is part of the output string, the event should fire.
+To make sure the model's output is exactly the word you want, see how pre-processors are used in the [Spatio-Temporal Memory](../foundation/semantic-map.md) recipe. Here we settle for testing whether YES is part of the answer.
 ```
 
-## The Bridge: Semantic Event Trigger
+## The event
 
-Now comes the "Self-Referential" magic. We simply define an **Event** that fires when the `/referee/verdict` topic contains the word "YES".
+Now the piece that closes the loop. An event fires when the verdict contains YES, and the player takes it as its termination trigger, with the timestep budget kept as a backstop:
 
 ```python
 from agents.ros import Event
 
-# Define the Success Event
-event_task_success = Event(
-    referee_verdict.msg.data.contains("YES")  # the topic, attribute and value to check in it
-)
+success_event = Event(success_check.msg.data.contains("YES"), on_change=True)
+
+player.set_termination_trigger(mode="event", stop_event=success_event, max_timesteps=1800)
 ```
 
-Finally, we attach this event to the VLA using the `set_termination_trigger` method. We set the mode to `event`.
+`on_change=True` is right for the referee, which keeps publishing verdicts, NO after NO and then YES, and should trigger once when the answer turns. It is wrong for a topic that publishes a single message. The simulation's own success marker, `/so101/task_success`, publishes `YES` once when the scene's condition is met, and an edge-triggered event would need an earlier negative evaluation before it could fire. An event on that topic leaves `on_change` out:
 
 ```python
-# Tell the VLA to stop immediately when the event fires
-player.set_termination_trigger(
-    mode="event",
-    stop_event=event_task_success,
-    max_timesteps=500 # Fallback: stop if 500 steps pass without success
-)
+task_success = Topic(name="/so101/task_success", msg_type="String")
+success_event = Event(task_success.msg.data.contains("YES"))
 ```
+
+That variant needs no referee at all, but it also only exists in a simulator with an oracle. The VLM referee works anywhere there is a camera.
 
 ```{seealso}
-Events are a very powerful concept in EMOS. You can get infinitely creative with them. For example, imagine setting off the VLA component with a voice command. This can be done by combining the output of a SpeechToText component and an Event that generates an action command. To learn more about them check out the recipes for [Events & Actions](../events-and-resilience/event-driven-cognition.md).
+Events reach much further than this. A speech-to-text component's output and an event that turns it into a goal would start the VLA by voice. The [Events & Actions](../events-and-resilience/event-driven-cognition.md) recipes show more of what they can do.
 ```
 
-## Launching the System
+## Launching the system
 
-When we launch this graph:
-
-- The **VLA** starts moving the robot to pick the orange.
-- The **VLM** simultaneously watches the feed.
-- Once the oranges are in the bowl, the VLM outputs "YES".
-- The **Event** system catches this, interrupts the VLA, and signals that the task is complete.
+When the graph comes up, the VLA starts moving the arm, the referee watches, and the first YES ends the goal with success. Without it, the goal ends at the timestep cap. The web interface shows the goal control, the front camera and the referee's verdicts:
 
 ```python
 from agents.ros import Launcher
 
 launcher = Launcher()
+launcher.enable_ui(inputs=[player.ui_main_action_input], outputs=[success_check, front_camera])
 launcher.add_pkg(components=[player, referee])
 launcher.bringup()
 ```
 
-You can send the action command to the VLA as defined in the previous [VLA Manipulation](vla-manipulation.md) recipe.
+Open `https://localhost:5001`, accept the certificate once, and enter the same task as before, `Grab orange and place into plate`. The goal can also be sent from a terminal exactly as in the previous recipe.
 
-## Complete Code
+<!-- TODO screenshot: the recipe's web UI with the front camera and the referee's verdicts, one of them YES -->
+
+## Complete code
 
 ```{code-block} python
-:caption: Closed-Loop VLA with VLM Verifier
+:caption: Closed-loop VLA with a VLM referee
 :linenos:
 
+from agents.clients import LeRobotClient, OllamaClient
 from agents.components import VLA, VLM
 from agents.config import VLAConfig
-from agents.clients import LeRobotClient, OllamaClient
 from agents.models import LeRobotPolicy, OllamaModel
-from agents.ros import Topic, Launcher, FixedInput
-from agents.ros import Event
+from agents.ros import Event, FixedInput, Launcher, Topic
 
-# --- Define Topics ---
-state = Topic(name="/isaac_joint_states", msg_type="JointState")
-camera1 = Topic(name="/front_camera/image_raw", msg_type="Image")
-camera2 = Topic(name="/wrist_camera/image_raw", msg_type="Image")
-joints_action = Topic(name="/isaac_joint_command", msg_type="JointState")
-referee_verdict = Topic(name="/referee/verdict", msg_type="String")
+# --- Topics from the simulation bridge ---
+joint_states = Topic(name="/so101/joint_states", msg_type="JointState")
+front_camera = Topic(name="/so101/front/image_raw", msg_type="Image")
+wrist_camera = Topic(name="/so101/wrist/image_raw", msg_type="Image")
+joint_cmd = Topic(name="/so101/joint_cmd", msg_type="JointState")
 
-# --- Setup The Player (VLA) ---
+# --- The player ---
 policy = LeRobotPolicy(
-    name="my_policy",
-    policy_type="smolvla",
-    checkpoint="aleph-ra/smolvla_finetune_pick_orange_20000",
+    name="pick_orange_gr00t",
+    policy_type="groot",
+    checkpoint="aleph-ra/gr00t17_pick_orange_lora",
     dataset_info_file="https://huggingface.co/datasets/LightwheelAI/leisaac-pick-orange/resolve/main/meta/info.json",
+    actions_per_chunk=16,
 )
-vla_client = LeRobotClient(model=policy)
+client = LeRobotClient(model=policy, host="127.0.0.1", port=8080)
 
-# VLA Config (Mappings assumed defined as per previous tutorial)
-# joints_map = { ... }
-# camera_map = { ... }
+SO101_JOINTS = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"]
+limits = {joint: {"lower": -100.0, "upper": 100.0} for joint in SO101_JOINTS[:-1]}
+limits["gripper"] = {"lower": 0.0, "upper": 100.0}
 
 config = VLAConfig(
-    observation_sending_rate=5,
-    action_sending_rate=5,
-    joint_names_map=joints_map,
-    camera_inputs_map=camera_map,
-    robot_urdf_file="./so101_new_calib.urdf"
+    joint_names_map={f"{joint}.pos": joint for joint in SO101_JOINTS},
+    camera_inputs_map={"front": front_camera, "wrist": wrist_camera},
+    joint_limits=limits,
+    observation_sending_rate=0.55,
+    action_sending_rate=10.0,
+    aggregate_fn_name="latest_only",
 )
 
 player = VLA(
-    inputs=[state, camera1, camera2],
-    outputs=[joints_action],
-    model_client=vla_client,
+    inputs=[joint_states, front_camera, wrist_camera],
+    outputs=[joint_cmd],
+    model_client=client,
     config=config,
-    component_name="vla_player",
+    component_name="vla_sim",
 )
 
-# --- Setup The Referee (VLM) ---
-qwen_vl = OllamaModel(name="qwen_vl", checkpoint="qwen2.5vl:7b")
-qwen_client = OllamaClient(model=qwen_vl)
+# --- The referee ---
+judge_model = OllamaModel(
+    name="success_judge_vlm",
+    checkpoint="qwen2.5vl:3b",
+    options={"num_ctx": 4096, "num_predict": 5, "num_thread": 2},
+)
+judge_client = OllamaClient(model=judge_model, inference_timeout=240)
 
-# A static prompt for the VLM
-question = FixedInput(
-    name="prompt",
+judge_prompt = FixedInput(
+    name="judge_prompt",
     msg_type="String",
-    fixed="Look at the image. Are all the orange in the bowl? Answer only with YES or NO."
+    fixed=(
+        "Look at the white and blue bowl on the kitchen counter. Are ALL three of the "
+        "oranges inside that bowl, with none left on the counter? "
+        "Answer with exactly one word: YES or NO."
+    ),
 )
+success_check = Topic(name="/vla_sim/success_check", msg_type="String")
 
 referee = VLM(
-    inputs=[question, camera1],
-    outputs=[referee_verdict],
-    model_client=qwen_client,
-    trigger=camera1,
-    component_name="vlm_referee"
+    inputs=[judge_prompt, front_camera],
+    outputs=[success_check],
+    model_client=judge_client,
+    trigger=120.0,
+    component_name="success_judge",
 )
 
-# --- Define the Logic (Event) ---
-# Create an event that looks for "YES" in the VLM's output
-event_task_success = Event(
-    referee_verdict.msg.data.contains("YES")  # the topic, attribute and value to check in it
-)
-
-# Link the event to the VLA's stop mechanism
-player.set_termination_trigger(
-    mode="event",
-    stop_event=event_success,
-    max_timesteps=400 # Failsafe
-)
+# --- The event that closes the loop ---
+success_event = Event(success_check.msg.data.contains("YES"), on_change=True)
+player.set_termination_trigger(mode="event", stop_event=success_event, max_timesteps=1800)
 
 # --- Launch ---
 launcher = Launcher()
+launcher.enable_ui(inputs=[player.ui_main_action_input], outputs=[success_check, front_camera])
 launcher.add_pkg(components=[player, referee])
 launcher.bringup()
 ```
@@ -240,6 +226,5 @@ launcher.bringup()
 ---
 
 ```{tip}
-**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+**Promote this recipe to production.** While you are shaping it, run the script directly with `python recipe.py`. Once it is solid, drop it at `~/emos/recipes/<name>/recipe.py` and start it with `emos run <name>`, or from the dashboard. Either way every run is logged under `~/emos/logs`, and an operator gets a card to launch it from a browser. [Running Recipes](../../getting-started/running-recipes.md) covers the two ways of running a recipe and what differs per install mode.
 ```
-

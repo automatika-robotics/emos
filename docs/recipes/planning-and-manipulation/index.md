@@ -39,7 +39,7 @@ Navigation guided by sight, not maps. A planning VLM grounds free-form descripti
 :link: vla-manipulation
 :link-type: doc
 
-End-to-end neural manipulation. Use one of the latest VLA foundation models -- SmolVLA, Pi0, or any other policy from the HuggingFace LeRobot ecosystem -- and go straight from camera frames + text to joint commands.
+End-to-end neural manipulation. Use one of the latest VLA foundation models -- SmolVLA, Pi0 and Pi0.5, GR00T, ACT, Diffusion or any other policy LeRobot serves -- and go straight from camera frames + text to joint commands.
 :::
 
 :::{grid-item-card} {material-regular}`loop;1.2em;sd-text-primary` Event-Driven VLA

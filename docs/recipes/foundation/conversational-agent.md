@@ -12,7 +12,7 @@ from agents.components import VLM, SpeechToText, TextToSpeech
 
 This component listens to an audio input topic, that takes in a multibyte array of audio (captured in a ROS std_msgs message, which maps to Audio msg_type in EMOS) and can publish output to a text topic. It can also be configured to get the audio stream from microphones on board our robot. By default the component is configured to use a small Voice Activity Detection (VAD) model, [Silero-VAD](https://github.com/snakers4/silero-vad) to filter out any audio that is not speech.
 
-However, merely utilizing speech can be problematic in robots, due to the hands free nature of the audio system. Therefore its useful to add wakeword detection, so that speech-to-text is only activated when the robot is called with a specific phrase (e.g. 'Hey Jarvis').
+However, merely utilizing speech can be problematic in robots, due to the hands free nature of the audio system. Therefore its useful to add wakeword detection, so that speech-to-text is only activated when the robot is called with a specific phrase (such as 'ok robot').
 
 We will be using this configuration in our example. First we will setup our input and output topics and then create a config object which we can later pass to our component.
 
@@ -21,7 +21,7 @@ With **enable_vad** set to **True**, the component automatically downloads and d
 ```
 
 ```{note}
-With **enable_wakeword** set to **True**, the component automatically downloads and deploys a pre-trained model from [openWakeWord](https://github.com/dscripka/openWakeWord) by default in ONNX format, that can be invoked with **'Hey Jarvis'**. Other pre-trained models from openWakeWord are available [here](https://github.com/dscripka/openWakeWord). However it is recommended that you deploy own wakeword model, which can be easily trained by following [this amazing tutorial](https://github.com/dscripka/openWakeWord/blob/main/notebooks/automatic_model_training.ipynb). The tutorial notebook can be run in [Google Colab](https://colab.research.google.com/drive/1yyFH-fpguX2BTAW8wSQxTrJnJTM-0QAd?usp=sharing).
+With **enable_wakeword** set to **True**, the component downloads a small keyword-spotting model from [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) and listens for the phrase given in `wakeword_phrase`, which is 'ok robot' unless you set another one, or a list of them. Nothing is trained: any phrase works with the same model, and models for other languages are published with sherpa-onnx's keyword-spotting releases. The spotter needs `pip install sherpa-onnx sentencepiece`.
 ```
 
 ```python
@@ -33,7 +33,7 @@ audio_in = Topic(name="audio0", msg_type="Audio")
 text_query = Topic(name="text0", msg_type="String")
 
 s2t_config = SpeechToTextConfig(enable_vad=True,     # option to listen for speech through the microphone, set to False if using web UI
-                                enable_wakeword=True) # option to invoke the component with a wakeword like 'hey jarvis', set to False if using web UI
+                                enable_wakeword=True) # option to invoke the component with a wakeword, 'ok robot' by default, set to False if using web UI
 ```
 
 ```{warning}
@@ -104,6 +104,7 @@ mllm = VLM(
     inputs=[text_query, image0],  # Notice the text input is the same as the output of the previous component
     outputs=[text_answer],
     model_client=qwen_client,
+    config=mllm_config,
     trigger=text_query,
     component_name="vqa" # We have also given our component an optional name
 )
@@ -125,7 +126,7 @@ Notice that the template is a jinja2 template string, where the actual name of t
 The TextToSpeech component setup will be very similar to the SpeechToText component. We will once again use a RoboML client, this time with the unified `TransformersTTS` wrapper. RoboML serves any HuggingFace Transformers TTS model -- VITS, Bark, SpeechT5, SeamlessM4T, etc. -- through a single class; here we keep the default checkpoint, [Facebook's MMS-TTS-eng (VITS)](https://huggingface.co/facebook/mms-tts-eng), which is fast and lightweight enough to run comfortably on-device. The component can be configured to play audio on a playback device available onboard the robot, which we will utilize through our config. An output topic is optional for this component as we will be playing the audio directly on device.
 
 ```{note}
-In order to utilize _play_on_device_ you need to install a couple of dependencies as follows: `pip install soundfile sounddevice`
+In order to utilize _play_on_device_ you need to install a couple of dependencies as follows: `pip install soundfile pyaudio`
 ```
 
 ```python
@@ -184,7 +185,7 @@ whisper = Whisper(name="whisper")  # Custom model init params can be provided he
 roboml_whisper = RoboMLWSClient(whisper)
 
 s2t_config = SpeechToTextConfig(enable_vad=True,     # option to listen for speech through the microphone, set to False if using web UI
-                                enable_wakeword=True) # option to invoke the component with a wakeword like 'hey jarvis', set to False if using web UI
+                                enable_wakeword=True) # option to invoke the component with a wakeword, 'ok robot' by default, set to False if using web UI
 
 speech_to_text = SpeechToText(
     inputs=[audio_in],
@@ -240,16 +241,16 @@ To interact with topics on the robot, EMOS can create dynamically specified UIs.
 In the code above, we already specified the input and output topics for the UI by calling the function `launcher.enable_ui`. Furthermore, we can set `enable_vad` and `enable_wakeword` options in `s2t_config` to `False` and set `play_on_device` option in `t2s_config` to `False`. Now we are ready to use our browser based UI.
 
 ````{note}
-In order to run the client you will need to install [FastHTML](https://www.fastht.ml/) and [MonsterUI](https://github.com/AnswerDotAI/MonsterUI) with
+An EMOS install already has what the browser front end needs. Elsewhere, install [FastHTML](https://www.fastht.ml/) and [MonsterUI](https://github.com/AnswerDotAI/MonsterUI) with
 ```shell
 pip install python-fasthtml monsterui
 ````
 
-The client displays a web UI on **http://localhost:5001** if you have run it on your machine. Or you can access it at **http://<IP_ADDRESS_OF_THE_ROBOT>:5001** if you have run it on the robot.
+The client serves the web UI on **https://localhost:5001** if you have run it on your machine, or on **https://<IP_ADDRESS_OF_THE_ROBOT>:5001** if you have run it on the robot. The certificate is self-signed, so the browser asks you to accept it once.
 
 ---
 
 ```{tip}
-**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+**Promote this recipe to production.** While you are shaping it, run the script directly with `python recipe.py`. Once it is solid, drop it at `~/emos/recipes/<name>/recipe.py` and start it with `emos run <name>`, or from the dashboard. Either way every run is logged under `~/emos/logs`, and an operator gets a card to launch it from a browser. [Running Recipes](../../getting-started/running-recipes.md) covers the two ways of running a recipe and what differs per install mode.
 ```
 

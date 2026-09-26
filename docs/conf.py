@@ -115,6 +115,7 @@ language = "en"
 html_theme = "shibuya"
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
+html_js_files = ["sidebar-scroll.js"]
 html_favicon = "_static/favicon.png"
 sitemap_url_scheme = "{link}"
 

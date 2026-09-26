@@ -70,4 +70,11 @@ Combine conditions with AND, OR, NOT for smarter, multi-topic event triggers.
 Inject live topic data into action arguments -- semantic navigation, dynamic prompts.
 :::
 
+:::{grid-item-card} {material-regular}`motion_photos_on;1.2em;sd-text-primary` Motion Detection
+:link: motion-detection
+:link-type: doc
+
+Motion as an event source: a spoken alert and a VLM that wakes only when something moves, from a camera or a point cloud.
+:::
+
 ::::

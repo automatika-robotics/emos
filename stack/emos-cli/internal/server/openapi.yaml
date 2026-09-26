@@ -109,18 +109,47 @@ paths:
           description: identity
         "404":
           description: not_found
+  /license:
+    get:
+      summary: The license kept on this machine, without its key. Always offline-OK.
+      description: |
+        Read from the machine, never from the support portal. `licensed` is false
+        for an install without a license, which then carries `sales_email`.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/License"
   /recipes/local:
     get:
       summary: Recipes installed under ~/emos/recipes/. Always offline-OK.
+      description: |
+        Each entry carries `version`, the installed variant as the operator
+        sees it, when the recipe's manifest records one.
       responses:
         "200":
           description: ok
   /recipes/remote:
     get:
-      summary: Catalog of recipes from the Automatika API. Requires internet.
+      summary: Catalog of recipes this robot can use, from the Automatika API. Requires internet.
+      description: |
+        A recipe comes in a generic version and in versions made for a robot
+        plugin. Each entry carries the `version` this machine would get, chosen
+        from the installed robot plugin, its sensor plugins and the license on
+        the machine. Recipes with no version this robot can use are left out.
+        `unlicensed` names the robot a version is made for when the generic one
+        is offered for want of a license.
       responses:
         "200":
           description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CatalogRecipe"
         "503":
           description: offline or upstream failure
           content:
@@ -166,6 +195,91 @@ paths:
                   job_id: { type: string }
         "503":
           description: offline
+  /plugins/remote:
+    get:
+      summary: Catalog of robot and sensor plugins from the Automatika API. Requires internet.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    slug: { type: string }
+                    name: { type: string }
+                    vendor: { type: string }
+                    role: { type: string, enum: [robot, sensor] }
+                    description: { type: string }
+                    tags: { type: array, items: { type: string } }
+                    entry_point: { type: string }
+        "503":
+          description: offline or upstream failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+  /plugins/installed:
+    get:
+      summary: Installed plugins — the robot (or null) and the sensor plugins alongside it. Nothing installed is an ordinary 200, not a 404.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [robot, sensors]
+                properties:
+                  robot:
+                    oneOf:
+                      - $ref: "#/components/schemas/InstalledPlugin"
+                      - type: "null"
+                  sensors:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/InstalledPlugin"
+  /plugins/{slug}/install:
+    post:
+      summary: Start a plugin install job (clone, resolve dependencies, build). Returns a job_id; stream via /jobs/{id}/logs.
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "202":
+          description: accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id: { type: string }
+        "400": { description: EMOS not installed or missing slug }
+        "409": { description: another plugin install, update or removal is in progress, or a recipe is running }
+        "503": { description: offline }
+  /plugins/{slug}:
+    delete:
+      summary: Remove one installed plugin as a background job; the overlay is rebuilt from what remains.
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "202":
+          description: accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id: { type: string }
+        "404": { description: not installed }
+        "409": { description: another plugin install, update or removal is in progress, or a recipe is running }
   /runs:
     get:
       summary: Currently running + recent finished runs
@@ -185,10 +299,10 @@ paths:
                 rmw:
                   type: string
                   enum: [rmw_zenoh_cpp, rmw_fastrtps_cpp, rmw_cyclonedds_cpp]
-                skip_sensor_check: { type: boolean }
+                  description: Omit to leave RMW_IMPLEMENTATION as the daemon's environment has it, or ROS's default.
       responses:
         "202": { description: accepted }
-        "409": { description: another recipe already running }
+        "409": { description: another recipe already running, or plugins are being installed, updated or removed }
   /runs/{id}:
     get:
       summary: Status of a single run
@@ -257,6 +371,49 @@ components:
       type: http
       scheme: bearer
   schemas:
+    InstalledPlugin:
+      type: object
+      required: [slug, entry_point, role, repo, installed_at]
+      properties:
+        slug: { type: string }
+        entry_point: { type: string, description: "module:ClassName" }
+        role: { type: string, enum: [robot, sensor] }
+        repo: { type: string }
+        ref: { type: string }
+        image_url: { type: string }
+        sources:
+          type: array
+          items: { type: string }
+          description: Driver packages cloned and built from source alongside the plugin.
+        describe:
+          type: object
+          additionalProperties: true
+          description: The plugin's cached describe() tree (metadata, feedbacks, commands, actions, events, role).
+        installed_at: { type: string, format: date-time }
+    CatalogRecipe:
+      type: object
+      required: [name, display_name, version]
+      properties:
+        name: { type: string, description: The name the recipe is pulled and run by. }
+        display_name: { type: string }
+        description: { type: string }
+        tags: { type: array, items: { type: string } }
+        version: { type: string, description: "The version this machine gets: generic, or the robot (and sensors) it is made for." }
+        unlicensed: { type: string, description: The robot a version is made for, when the generic one is offered for want of a license. }
+    License:
+      type: object
+      required: [licensed]
+      properties:
+        licensed: { type: boolean }
+        holder: { type: string, description: Who the license was issued to. }
+        robot: { type: string, description: The robot the license is for. }
+        plugin_slug: { type: string, description: That robot's plugin in the catalog. }
+        tier: { type: string, enum: [expert, pro, enterprise] }
+        serial_number: { type: string }
+        activated_at: { type: string, format: date-time, description: When it was activated on the support portal. }
+        verified_at: { type: string, format: date-time, description: When this machine last verified it. }
+        support_url: { type: string, description: Where a license holder gets help. }
+        sales_email: { type: string, description: Where a license is asked for. Only without one. }
     APIError:
       type: object
       required: [code, message]

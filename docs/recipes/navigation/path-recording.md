@@ -5,8 +5,8 @@
 Sometimes you don't need a dynamic planner to calculate a new path every time. In scenarios like **routine patrols, warehousing, or repeatable docking**, it is often more reliable to record a "golden path" once and replay it exactly.
 
 The [Kompass](https://github.com/automatika-robotics/kompass) **Planner** component facilitates this via three ROS 2 services:
-1. `save_plan_to_file` -- Saves the currently active plan (or recorded history) to a CSV file.
-2. `load_plan_from_file` -- Loads a CSV file and publishes it as the current global plan.
+1. `save_plan_to_file` -- Saves the currently active plan (or recorded history) to a JSON file.
+2. `load_plan_from_file` -- Loads such a file and publishes it as the current global plan.
 3. `start_path_recording` -- Starts recording the robot's actual odometry history to be saved later.
 
 ---
@@ -23,7 +23,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 
 from kompass.robot import (
-    AngularCtrlLimits, LinearCtrlLimits, RobotGeometry, RobotType, RobotConfig, RobotFrames
+    AngularCtrlLimits, LinearCtrlLimits, RobotGeometryType, RobotType, RobotConfig
 )
 from kompass.components import (
     DriveManager, DriveManagerConfig, Planner, PlannerConfig,
@@ -39,15 +39,17 @@ def run_path_recorder():
     # 1. Robot Configuration
     my_robot = RobotConfig(
         model_type=RobotType.DIFFERENTIAL_DRIVE,
-        geometry_type=RobotGeometry.Type.CYLINDER,
+        geometry_type=RobotGeometryType.CYLINDER,
         geometry_params=np.array([0.1, 0.3]),
         ctrl_vx_limits=LinearCtrlLimits(max_vel=0.4, max_acc=1.5, max_decel=2.5),
-        ctrl_omega_limits=AngularCtrlLimits(max_vel=0.4, max_acc=2.0, max_decel=2.0, max_steer=np.pi / 3),
+        ctrl_omega_limits=AngularCtrlLimits(max_omega=0.4, max_acc=2.0, max_decel=2.0, max_ang=np.pi / 3),
     )
 
     # 2. Configure Components
     planner = Planner(component_name="planner", config=PlannerConfig(loop_rate=1.0))
     planner.run_type = "Timed"
+    goal = Topic(name="/clicked_point", msg_type="PointStamped")
+    planner.inputs(goal_point=goal)
 
     controller = Controller(component_name="controller")
     controller.algorithm = ControllersID.PURE_PURSUIT
@@ -83,8 +85,9 @@ def run_path_recorder():
 
     # 4. Launch
     launcher = Launcher()
-    launcher.kompass(
+    launcher.add_pkg(
         components=[map_server, planner, driver, controller],
+        package_name="kompass",
         multiprocessing=True,
     )
 
@@ -92,11 +95,10 @@ def run_path_recorder():
     launcher.inputs(location=odom_topic)
 
     launcher.robot = my_robot
-    launcher.frames = RobotFrames(world="map", odom="map", scan="LDS-01")
 
     # 5. Enable UI with path services exposed as inputs
     launcher.enable_ui(
-        inputs=[save_path_srv, load_path_srv, start_path_recording],
+        inputs=[goal, save_path_srv, load_path_srv, start_path_recording],
         outputs=[
             map_server.get_out_topic(TopicsKeys.GLOBAL_MAP),
             odom_topic,
@@ -114,7 +116,7 @@ if __name__ == "__main__":
 
 ## Workflow: Two Ways to Generate a Path
 
-Once the recipe is running and you have the EMOS Web UI open (`http://0.0.0.0:5001`), you can generate a path using either the planner or by manually driving the robot.
+Once the recipe is running and you have the EMOS Web UI open (`https://localhost:5001`, accepting the self-signed certificate once), you can generate a path using either the planner or by manually driving the robot.
 
 ### Option A: Save a Computed Plan
 
@@ -124,7 +126,7 @@ Once the recipe is running and you have the EMOS Web UI open (`http://0.0.0.0:50
 2. **Verify:** Check that the generated path looks good on the map.
 3. **Save:** In the UI Inputs panel, go to `planner/save_plan_to_file`:
    - **file_location:** `/tmp/`
-   - **file_name:** `computed_path.csv`
+   - **file_name:** `computed_path.json`
    - Click **Send**.
 
 ### Option B: Record a Driven Path (Teleop)
@@ -142,7 +144,7 @@ Once the recipe is running and you have the EMOS Web UI open (`http://0.0.0.0:50
 
 3. **Save:** When finished, select `planner/save_plan_to_file`:
    - **file_location:** `/tmp/`
-   - **file_name:** `driven_path.csv`
+   - **file_name:** `driven_path.json`
    - Click **Send**.
 
 Calling save automatically stops the recording process.
@@ -156,7 +158,7 @@ Now that you have your "Golden Path" saved (either computed or recorded), you ca
 1. **Restart:** You can restart the stack or simply clear the current plan.
 2. **Load:** In the UI Inputs panel, select `planner/load_plan_from_file`:
    - **file_location:** `/tmp/`
-   - **file_name:** `driven_path.csv` (or `computed_path.csv`)
+   - **file_name:** `driven_path.json` (or `computed_path.json`)
    - Click **Send**.
 
 The planner immediately loads the file and publishes it as the **Global Plan**. The **Controller** receives this path and begins executing it immediately, retracing the recorded steps exactly.
@@ -179,6 +181,6 @@ The planner immediately loads the file and publishes it as the **Global Plan**. 
 ---
 
 ```{tip}
-**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+**Promote this recipe to production.** While you are shaping it, run the script directly with `python recipe.py`. Once it is solid, drop it at `~/emos/recipes/<name>/recipe.py` and start it with `emos run <name>`, or from the dashboard. Either way every run is logged under `~/emos/logs`, and an operator gets a card to launch it from a browser. [Running Recipes](../../getting-started/running-recipes.md) covers the two ways of running a recipe and what differs per install mode.
 ```
 

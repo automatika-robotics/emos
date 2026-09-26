@@ -25,7 +25,7 @@ Five subsystems, all running in one launcher:
 | **Perception** | `Vision`, `VLM` | Detection feeds Memory; VLM answers visual questions on demand. |
 | **Spatial memory** | `Memory` | Stores detections + scene captions tagged with position. Exposes `locate`, `recall`, `semantic_search`, `body_status`, ten retrieval tools in total. |
 | **Voice** | `TextToSpeech` | The robot's mouthpiece. Cortex routes its replies straight through. |
-| **Navigation** | `Planner`, `Controller`, `LocalMapper`, `DriveManager` | The Kompass quartet. Cortex sends action goals to `Planner`'s main action server. |
+| **Navigation** | `Planner`, `Controller`, `LocalMapper`, `DriveManager` | The Kompass quartet. Cortex sends goals to `Planner`'s main action server through its `send_goal_to_planner_...` tool, waiting for each by default or letting it run with `wait_to_finish=false`. |
 | **The agent** | `Cortex` | Discovers all of the above, exposes them as LLM tools, plans and executes against natural-language goals. |
 
 The wiring is conventional EMOS. The Cortex section at the end is what turns the whole stack into a single self-directing agent.
@@ -43,17 +43,17 @@ from kompass.robot import (
     LinearCtrlLimits,
     RobotConfig,
     RobotFrames,
-    RobotGeometry,
+    RobotGeometryType,
     RobotType,
 )
 
 my_robot = RobotConfig(
     model_type=RobotType.DIFFERENTIAL_DRIVE,
-    geometry_type=RobotGeometry.Type.CYLINDER,
+    geometry_type=RobotGeometryType.CYLINDER,
     geometry_params=np.array([0.1, 0.3]),
     ctrl_vx_limits=LinearCtrlLimits(max_vel=0.4, max_acc=1.5, max_decel=2.5),
     ctrl_omega_limits=AngularCtrlLimits(
-        max_vel=0.4, max_acc=2.0, max_decel=2.0, max_steer=np.pi / 3
+        max_omega=0.4, max_acc=2.0, max_decel=2.0, max_ang=np.pi / 3
     ),
 )
 ```
@@ -249,7 +249,7 @@ launcher.inputs(location=position)
 
 # Robot config + frames
 launcher.robot = my_robot
-launcher.frames = RobotFrames(world="map", odom="odom", scan="base_scan")
+launcher.frames = RobotFrames(world="map", robot_base="base_link")
 
 launcher.enable_ui(
     inputs=[cortex.ui_main_action_input],
@@ -264,7 +264,7 @@ launcher.bringup()
 
 ## Driving the agent
 
-Run the recipe and let the robot wander around for a few minutes. Memory accumulates detections and scene captions tagged with positions. Then open `http://localhost:5001` and start typing.
+Run the recipe and let the robot wander around for a few minutes. Memory accumulates detections and scene captions tagged with positions. Then open `https://localhost:5001`, accept the self-signed certificate once, and start typing.
 
 ### Single-step goals
 
@@ -323,6 +323,6 @@ That entire stack of orchestration is replaced by the auto-discovery, the two-ph
 ---
 
 ```{tip}
-**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+**Promote this recipe to production.** While you are shaping it, run the script directly with `python recipe.py`. Once it is solid, drop it at `~/emos/recipes/<name>/recipe.py` and start it with `emos run <name>`, or from the dashboard. Either way every run is logged under `~/emos/logs`, and an operator gets a card to launch it from a browser. [Running Recipes](../../getting-started/running-recipes.md) covers the two ways of running a recipe and what differs per install mode.
 ```
 

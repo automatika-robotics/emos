@@ -25,7 +25,7 @@ from kompass.ros import Topic
 from kompass.robot import (
     AngularCtrlLimits,
     LinearCtrlLimits,
-    RobotGeometry,
+    RobotGeometryType,
     RobotType,
     RobotConfig,
     RobotFrames
@@ -36,7 +36,7 @@ import math
 # Define your robot's physical and control characteristics
 my_robot = RobotConfig(
     model_type=RobotType.DIFFERENTIAL_DRIVE,            # Type of robot motion model
-    geometry_type=RobotGeometry.Type.CYLINDER,          # Shape of the robot
+    geometry_type=RobotGeometryType.CYLINDER,          # Shape of the robot
     geometry_params=np.array([0.1, 0.3]),                # Diameter and height of the cylinder
     ctrl_vx_limits=LinearCtrlLimits(                     # Linear velocity constraints
         max_vel=0.4,
@@ -44,19 +44,18 @@ my_robot = RobotConfig(
         max_decel=2.5
     ),
     ctrl_omega_limits=AngularCtrlLimits(                 # Angular velocity constraints
-        max_vel=0.4,
+        max_omega=0.4,
         max_acc=2.0,
         max_decel=2.0,
-        max_steer=math.pi / 3                            # Steering angle limit (radians)
+        max_ang=math.pi / 3                            # Steering angle limit (radians)
     ),
 )
 
-# Define the robot's coordinates frames
+# Define the robot's coordinate frames. Sensor frames are read from the
+# messages and TF, so only these two are configured.
 my_frames = RobotFrames(
     world="map",
-    odom="odom",
     robot_base="body",
-    scan="lidar_link"
 )
 
 # Create the planner config using your robot setup
@@ -73,7 +72,7 @@ planner = Planner(
 
 # Additionally configure the component's inputs or outputs
 planner.inputs(
-    map_layer=Topic(name="/map", msg_type="OccupancyGrid"),
+    map=Topic(name="/map", msg_type="OccupancyGrid"),
     goal_point=Topic(name="/clicked_point", msg_type="PointStamped")
 )
 ```
@@ -86,9 +85,7 @@ Similar to traditional ROS 2 launch, you can maintain all your configuration par
 /**: # Common parameters for all components
   frames:
     robot_base: "body"
-    odom: "odom"
     world: "map"
-    scan: "lidar_link"
 
   robot:
     model_type: "DIFFERENTIAL_DRIVE"
@@ -101,14 +98,14 @@ Similar to traditional ROS 2 launch, you can maintain all your configuration par
       max_decel: 2.5
 
     ctrl_omega_limits:
-      max_vel: 0.4
+      max_omega: 0.4
       max_acc: 2.0
       max_decel: 2.0
-      max_steer: 1.0472  # ~ pi / 3
+      max_ang: 1.0472  # ~ pi / 3
 
 planner:
   inputs:
-    map_layer:
+    map:
       name: "/map"
       msg_type: "OccupancyGrid"
     goal_point:
@@ -126,9 +123,7 @@ Not a fan of YAML? EMOS lets you configure your components using TOML too. TOML 
 ```toml
 ["/**".frames]
 robot_base = "body"
-odom = "odom"
 world = "map"
-scan = "lidar_link"
 
 ["/**".robot]
 model_type = "DIFFERENTIAL_DRIVE"
@@ -141,15 +136,15 @@ max_acc = 1.5
 max_decel = 2.5
 
 ["/**".robot.ctrl_omega_limits]
-max_vel = 0.4
+max_omega = 0.4
 max_acc = 2.0
 max_decel = 2.0
-max_steer = 1.0472  # ~ pi / 3
+max_ang = 1.0472  # ~ pi / 3
 
 [planner]
 loop_rate = 1.0
 
-[planner.inputs.map_layer]
+[planner.inputs.map]
 name = "/map"
 msg_type = "OccupancyGrid"
 
@@ -167,9 +162,7 @@ Prefer curly braces? Or looking to pipe configs from an ML model or external too
   "/**": {
     "frames": {
       "robot_base": "body",
-      "odom": "odom",
-      "world": "map",
-      "scan": "lidar_link"
+      "world": "map"
     },
     "robot": {
       "model_type": "DIFFERENTIAL_DRIVE",
@@ -181,17 +174,17 @@ Prefer curly braces? Or looking to pipe configs from an ML model or external too
         "max_decel": 2.5
       },
       "ctrl_omega_limits": {
-        "max_vel": 0.4,
+        "max_omega": 0.4,
         "max_acc": 2.0,
         "max_decel": 2.0,
-        "max_steer": 1.0472
+        "max_ang": 1.0472
       }
     }
   },
   "planner": {
     "loop_rate": 1.0,
     "inputs": {
-      "map_layer": {
+      "map": {
         "name": "/map",
         "msg_type": "OccupancyGrid"
       },

@@ -3,23 +3,40 @@ package runner
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
-	"strings"
-	"time"
+	"syscall"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
-	"github.com/automatika-robotics/emos-cli/internal/container"
 	"github.com/automatika-robotics/emos-cli/internal/ui"
 )
 
 const (
-	emosRoot    = "/emos"
-	recipesRoot = "/emos/recipes"
+	emosRoot       = "/emos"
+	recipesRoot    = "/emos/recipes"
+	uiSecurityRoot = "/emos/.ui-security"
 )
 
 type recipeManifest struct {
 	ZenohRouterConfig string `json:"zenoh_router_config_file"`
+	// The version of the recipe that was installed, from the portal
+	Variant struct {
+		ID      string   `json:"id"`
+		Robot   string   `json:"robot"`
+		Sensors []string `json:"sensors"`
+	} `json:"variant"`
+}
+
+// WrongRobot is the robot plugin a recipe was made for, when it is not the one
+// installed. Empty for a generic recipe or a matching one.
+func (m *recipeManifest) WrongRobot(cfg *config.EMOSConfig) string {
+	robot := m.Variant.Robot
+	if robot == "" || (cfg != nil && cfg.Plugin != nil && cfg.Plugin.Slug == robot) {
+		return ""
+	}
+	return robot
 }
 
 // LoadManifest reads a recipe manifest file. Always returns a non-nil pointer
@@ -33,15 +50,43 @@ func LoadManifest(path string) *recipeManifest {
 	return m
 }
 
-func RunRecipe(recipeName, rmwImpl string, skipSensorCheck bool) error {
-	// Validate RMW implementation
-	validRMW := map[string]bool{
-		"rmw_fastrtps_cpp":   true,
-		"rmw_cyclonedds_cpp": true,
-		"rmw_zenoh_cpp":      true,
+// zenohRMW is the RMW implementation that needs a Zenoh router running.
+const zenohRMW = "rmw_zenoh_cpp"
+
+// RMWChoices are the RMW implementations an EMOS install carries.
+const RMWChoices = "rmw_fastrtps_cpp, rmw_zenoh_cpp"
+
+// ValidRMW reports whether rmw is one of RMWChoices.
+func ValidRMW(rmw string) bool {
+	switch rmw {
+	case "rmw_fastrtps_cpp", zenohRMW:
+		return true
 	}
-	if !validRMW[rmwImpl] {
-		return fmt.Errorf("invalid RMW implementation: %s (allowed: rmw_fastrtps_cpp, rmw_cyclonedds_cpp, rmw_zenoh_cpp)", rmwImpl)
+	return false
+}
+
+// CheckRMW rejects an RMW implementation a run cannot ask for. Empty asks for
+// none, which is allowed.
+func CheckRMW(rmw string) error {
+	if rmw == "" || ValidRMW(rmw) {
+		return nil
+	}
+	return fmt.Errorf("invalid RMW implementation: %s (allowed: %s)", rmw, RMWChoices)
+}
+
+// RMWLabel names the RMW a run asked for, where empty means none was.
+func RMWLabel(rmw string) string {
+	if rmw == "" {
+		return "environment default"
+	}
+	return rmw
+}
+
+// RunRecipe runs a recipe in the foreground. An empty rmwImpl sets no RMW
+// implementation, leaving the environment's.
+func RunRecipe(recipeName, rmwImpl string) error {
+	if err := CheckRMW(rmwImpl); err != nil {
+		return err
 	}
 
 	// Check recipe exists
@@ -53,171 +98,82 @@ func RunRecipe(recipeName, rmwImpl string, skipSensorCheck bool) error {
 		return fmt.Errorf("recipe not found")
 	}
 
-	// Parse manifest (optional — only needed for zenoh config)
-	var manifest recipeManifest
-	manifestPath := filepath.Join(recipePath, "manifest.json")
-	if data, err := os.ReadFile(manifestPath); err == nil {
-		json.Unmarshal(data, &manifest)
-	}
+	manifest := LoadManifest(filepath.Join(recipePath, "manifest.json"))
 
-	// Extract topics from recipe.py via AST
-	topics, err := ExtractTopics(recipeFile)
-	if err != nil {
-		ui.Warn(fmt.Sprintf("Could not extract topics: %v", err))
-	}
-	sensorTopics := SensorTopics(topics)
-
-	// Setup logging
-	os.MkdirAll(config.LogsDir, 0755)
-	timestamp := time.Now().Format("20060102_150405")
-	logFile := filepath.Join(config.LogsDir, fmt.Sprintf("%s_%s.log", recipeName, timestamp))
-
-	// Determine strategy from config
 	cfg := config.LoadConfig()
-	if cfg == nil {
-		return fmt.Errorf("no EMOS installation found — run 'emos install' first")
+	if !cfg.IsInstalled() {
+		return errNotInstalled
 	}
-	mode := cfg.Mode
-	distro := cfg.ROSDistro
-	if distro == "" {
-		distro = "jazzy"
+	if robot := manifest.WrongRobot(cfg); robot != "" {
+		ui.Warn("This recipe was installed for the " + cfg.PluginLabel(robot) + ", which is not the robot installed now.")
+		ui.Faint("'emos pull " + recipeName + "' installs the version for this robot.")
 	}
+
+	logFile := LogFilePath(recipeName)
+	log, err := OpenLog(logFile)
+	if err != nil {
+		return err
+	}
+	defer log.Close()
 
 	ui.Header("EMOS - PRE-RECIPE SETUP")
 	ui.Info("Recipe Name: " + recipeName)
-	ui.Info("Mode: " + string(mode))
-	ui.Info("RMW Implementation: " + rmwImpl)
-	if len(sensorTopics) > 0 {
-		names := make([]string, len(sensorTopics))
-		for i, t := range sensorTopics {
-			names[i] = topicName(t.Name)
-		}
-		ui.Info("Sensor topics: " + strings.Join(names, ", "))
-	}
+	ui.Info("Mode: " + string(cfg.Mode))
+	ui.Info("RMW Implementation: " + RMWLabel(rmwImpl))
 
-	var strategy RuntimeStrategy
-	switch mode {
-	case config.ModeOSSContainer:
-		strategy = NewContainerStrategy(false)
-	case config.ModeLicensed:
-		strategy = NewContainerStrategy(true)
-	case config.ModeNative:
-		strategy = NewNativeStrategy()
-	case config.ModePixi:
-		strategy = NewPixiStrategy(cfg.PixiProjectDir)
-	default:
-		return fmt.Errorf("unknown install mode: %s", mode)
-	}
+	// From here a Ctrl+C stops the run, and what it started is cleaned up.
+	signals := make(chan os.Signal, 2)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	defer signal.Stop(signals)
 
-	// Execute the recipe pipeline
-	if err := strategy.PrepareEnvironment(); err != nil {
+	session, err := Prepare(cfg, rmwImpl, manifest,
+		StopOnSignal(signals, "interrupted before the recipe started"))
+	if err != nil {
 		return err
 	}
+	defer session.Close()
 
-	if err := strategy.SetRMWImpl(rmwImpl); err != nil {
+	ui.Header("LAUNCHING RECIPE: " + recipeName)
+	ui.Info("All output will be saved to: " + logFile)
+	ui.Success("BEGIN RECIPE OUTPUT")
+	fmt.Println()
+
+	handle, err := session.StartRecipe(recipeName, io.MultiWriter(os.Stdout, log))
+	if err != nil {
 		return err
 	}
-
-	if rmwImpl == "rmw_zenoh_cpp" {
-		if err := strategy.ConfigureZenoh(recipeName, &manifest); err != nil {
-			return err
-		}
-	}
-
-	if err := strategy.LaunchRobotHardware(); err != nil {
-		return err
-	}
-
-	if !skipSensorCheck {
-		if err := strategy.VerifySensorTopics(sensorTopics, distro); err != nil {
-			strategy.Cleanup()
-			return err
-		}
-	} else {
-		ui.Info("Sensor check skipped (--skip-sensor-check)")
-	}
-
-	err = strategy.ExecRecipe(recipeName, &manifest, logFile)
+	stopped, err := waitForRecipe(handle, signals)
 
 	fmt.Println()
-	if err != nil {
-		ui.Error(fmt.Sprintf("Recipe '%s' exited with an error.", recipeName))
-	} else {
+	switch {
+	case err != nil:
+		ui.Error(fmt.Sprintf("Recipe '%s' exited with an error: %v", recipeName, err))
+	case stopped:
+		ui.Success(fmt.Sprintf("Recipe '%s' stopped.", recipeName))
+	default:
 		ui.Success(fmt.Sprintf("Recipe '%s' finished successfully.", recipeName))
 	}
-
-	strategy.Cleanup()
 	return err
 }
 
-// killROSProcesses pkills any ROS processes the current user owns.
-func killROSProcesses() {
-	ui.Info("Killing host ROS processes...")
-	for _, proc := range []string{"roslaunch", "roscore", "ros2"} {
-		runQuiet("pkill", "-f", proc)
-	}
-	time.Sleep(time.Second)
-	ui.Success("Terminated host ROS processes.")
-}
-
-func setRMWImpl(rmwImpl string) {
-	script := fmt.Sprintf(`
-if grep -q '^export RMW_IMPLEMENTATION=' /ros_entrypoint.sh; then
-  sed -i 's|^export RMW_IMPLEMENTATION=.*|export RMW_IMPLEMENTATION=%s|' /ros_entrypoint.sh
-else
-  sed -i '1a export RMW_IMPLEMENTATION=%s' /ros_entrypoint.sh
-fi`, rmwImpl, rmwImpl)
-	container.Exec(config.ContainerName, script)
-}
-
-func configureZenoh(recipeName string, manifest *recipeManifest) error {
-	zenohConfig := manifest.ZenohRouterConfig
-	zenohConfigURI := ""
-
-	if zenohConfig != "" {
-		uri := recipesRoot + "/" + zenohConfig
-		if strings.HasSuffix(uri, ".json5") {
-			if !container.FileExists(config.ContainerName, uri) {
-				ui.Warn("Zenoh config file not found — using default")
-			} else {
-				zenohConfigURI = uri
-				ui.Info("Using Zenoh router config: " + zenohConfigURI)
+// waitForRecipe waits for the recipe to exit. The first signal asks it to shut
+// down, and another kills it.
+func waitForRecipe(h *RunHandle, signals <-chan os.Signal) (stopped bool, err error) {
+	for {
+		select {
+		case <-h.Done():
+			_, err := h.Wait()
+			return stopped, err
+		case <-signals:
+			if stopped {
+				ui.Warn("Killing the recipe.")
+				h.Kill()
+				continue
 			}
-		} else {
-			ui.Warn("Zenoh config must be .json5 — using default")
+			stopped = true
+			fmt.Println()
+			ui.Info("Stopping the recipe; press Ctrl+C again to force it.")
+			h.Interrupt()
 		}
-	} else {
-		ui.Info("Using default Zenoh router configuration.")
 	}
-
-	if err := ui.Spinner("Starting zenoh router...", func() error {
-		return container.ExecDetached(config.ContainerName,
-			"source ros_entrypoint.sh && ros2 run rmw_zenoh_cpp rmw_zenohd")
-	}); err != nil {
-		return err
-	}
-	time.Sleep(2 * time.Second)
-
-	if zenohConfigURI != "" {
-		container.Exec(config.ContainerName, fmt.Sprintf(`
-if grep -q '^export ZENOH_ROUTER_CONFIG_URI=' /ros_entrypoint.sh; then
-  sed -i 's|^export ZENOH_ROUTER_CONFIG_URI=.*|export ZENOH_ROUTER_CONFIG_URI=%s|' /ros_entrypoint.sh
-else
-  sed -i '1a export ZENOH_ROUTER_CONFIG_URI=%s' /ros_entrypoint.sh
-fi`, zenohConfigURI, zenohConfigURI))
-	} else {
-		container.Exec(config.ContainerName,
-			"sed -i '/^export ZENOH_ROUTER_CONFIG_URI=/d' /ros_entrypoint.sh")
-	}
-
-	return nil
 }
-
-// runQuiet runs a system command, ignoring errors (used for pkill etc.)
-func runQuiet(name string, args ...string) {
-	execCommand(name, args...).Run()
-}
-
-// topicChecker abstracts how to run `ros2 topic list` for different modes.
-type topicChecker func() (string, error)
-

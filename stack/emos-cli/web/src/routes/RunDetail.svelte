@@ -8,6 +8,7 @@
   let { params }: { params?: { id?: string } } = $props();
   // App.svelte remounts this component when the route changes; safe to
   // read params once at init and call the hook once.
+  // svelte-ignore state_referenced_locally
   const id = params?.id ?? '';
   const run = useRun(id);
   const cancel = useCancelRun();
@@ -24,7 +25,7 @@
         <div class="text-xs text-emos-text-3 mt-1">
           started {relTime($run.data.started_at)} ·
           duration {formatDuration($run.data.started_at, $run.data.finished_at)} ·
-          rmw {$run.data.rmw}
+          rmw {$run.data.rmw || 'default'}
         </div>
       {/if}
     </div>

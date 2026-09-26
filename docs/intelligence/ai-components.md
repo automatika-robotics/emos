@@ -1,55 +1,54 @@
 # AI Components
 
-A **Component** is the primary execution unit in EmbodiedAgents, the EMOS intelligence framework. Components represent functional behaviors -- for example, the ability to process text, understand images, or synthesize speech. Components can be combined arbitrarily to create more complex systems such as multi-modal agents with perception-action loops.
+EmbodiedAgents, the intelligence layer of EMOS, is a set of components, each one a capability the robot can have: understanding speech, describing what the camera sees, detecting objects, remembering what it has seen, moving an arm. They are ordinary EMOS [components](../concepts/components.md), so they have the same lifecycle, inputs and outputs, health status and fallbacks as everything else in a recipe, and they combine freely into perception and action loops.
 
-Most EmbodiedAgents components are **capabilities** -- a single thing the robot can do. LLM, VLM, VLA, Vision, SpeechToText, TextToSpeech, SemanticRouter, VideoMessageMaker each wrap a particular modality or model surface; [Memory](memory.md) is a capability too, giving the robot a graph-backed spatio-temporal record of what it has seen and felt. [Cortex](cortex.md) is the one component that doesn't sit in that family: it's a high-level planner-executor that *uses* the capabilities, turning natural-language goals into ordered calls against the available component capabilities.
+Most of them wrap a model, and where the model runs is a separate choice: a cloud API, a model server on the network, or a local model on the robot itself. [Clients](clients.md) covers the first two and [Models](models.md) the local ones. One component stands apart: [Cortex](cortex.md) uses the others. It takes a goal in natural language and works out which capabilities to call, in what order, to reach it.
 
-```{note}
-To learn more about the internal structure and lifecycle behavior of components, check out the concept [here](../concepts/components.md).
-```
-
-## Available Components
-
-EmbodiedAgents provides a suite of ready-to-use components. These can be composed into flexible execution graphs for building autonomous, perceptive, and interactive robot behavior. Each component focuses on a particular modality or functionality, from vision and speech to map reasoning and VLA-based manipulation.
+## The components
 
 ```{list-table}
 :widths: 20 80
 :header-rows: 1
 
-* - Component Name
-  - Description
+* - Component
+  - What it does
 
 * - **LLM**
-  - Uses large language models (e.g., LLaMA) to process text input. Can be used for reasoning, tool calling, instruction following, or dialogue. It can also utilize vector DBs for storing and retrieving contextual information. Supports built-in local LLM fallback for offline operation.
+  - Runs a large language model on text: reasoning, instruction following, dialogue and tool calling. It can draw on a vector database for context and falls back to a local model when its server is out of reach.
 
 * - **VLM**
-  - Leverages multimodal LLMs (e.g., Llava) for understanding and processing both text and image data. Inherits all functionalities of the LLM component. It can also utilize multimodal LLM based planning models for task-specific outputs (e.g. pointing, grounding, affordance etc.). Supports built-in local VLM fallback for offline operation. **This component is also called MLLM**.
-
-* - **VLA**
-  - Provides an interface to utilize Vision Language Action (VLA) models for manipulation and control tasks. It can use VLA Policies (such as SmolVLA, Pi0 etc.) served with HuggingFace LeRobot Async Policy Server and publish them to common topic formats in MoveIt Servo and ROS2 Control.
-
-* - **SpeechToText**
-  - Converts spoken audio into text using speech-to-text models (e.g., Whisper). Suitable for voice command recognition. It also implements small on-board models for Voice Activity Detection (VAD) and Wakeword recognition, using audio capture devices onboard the robot. Supports built-in local STT for on-device transcription.
-
-* - **TextToSpeech**
-  - Synthesizes audio from text using HuggingFace Transformers TTS models (Bark, VITS, SpeechT5, SeamlessM4T, etc.) via the unified `TransformersTTS` wrapper. Output audio can be played using the robot's speakers or published to a topic. Implements `say(text)` and `stop_playback` functions to play/stop audio based on events from other components or the environment. Supports built-in local TTS for on-device speech synthesis.
-
-* - **Memory**
-  - Provides a graph-backed spatio-temporal memory powered by [eMEM](https://github.com/automatika-robotics/emem). Encodes perception layers (e.g. detections, scene captions) and interoception layers (e.g. battery, internal flags) into an episodic, entity-aware graph and exposes ten retrieval tools as component actions. Replaces the deprecated **MapEncoding** -- see the dedicated [Memory page](memory.md).
-
-* - **Cortex**
-  - The agentic core. An AI-powered planner-executor that inspects the rest of the recipe, decomposes a natural-language goal into a sequence of component-action calls, and runs them while monitoring the outputs. See [Cortex](cortex.md).
-
-* - **SemanticRouter**
-  - Routes information between topics based on semantic content and predefined routing rules. Uses a vector DB for semantic matching or an LLM for decision-making. This allows for creating complex graphs of components where a single input source can trigger different information processing pathways.
+  - The same for images and text together, on a multimodal model. Beyond describing a scene and answering questions about it, it runs task models for pointing, grounding and affordance, and with a depth source it turns what it grounds into 3D boxes. Its `describe` and `run_task` actions let an event or Cortex ask a question or run a task on the current frame. Also known as **MLLM**.
 
 * - **Vision**
-  - An essential component in all vision-powered robots. Performs object detection and tracking on incoming images. Outputs object classes, bounding boxes, and confidence scores. It implements a low-latency small on-board classification model as well. Supports a built-in local ONNX classifier for on-device detection.
+  - Object detection and tracking on images, with classes, boxes and confidences, from a model server or a small on-board classifier. Given depth, from an RGBD camera, a depth image or a point cloud, it publishes metric 3D boxes in the frame you choose, which is what MoveIt and Memory consume.
 
-* - **VideoMessageMaker**
-  - Generates ROS video messages from input image messages. A video message is a collection of image messages that have a perceivable motion. The primary task of this component is to make intentionality decisions about what sequence of consecutive images should be treated as one coherent temporal sequence. The chunking method used for selecting images for a video can be configured in component config. Useful for sending videos to ML models that take image sequences.
+* - **VLA**
+  - Drives manipulation and control with a vision-language-action policy served by LeRobot's policy server: SmolVLA, Pi0 and Pi0.5, GR00T, ACT, Diffusion and others. Camera and joint-state inputs go in, joint commands come out in the formats MoveIt Servo and ROS 2 Control expect, and a goal on its action server runs one task.
+
+* - **MoveIt**
+  - Motion planning and execution for an arm through a running MoveIt 2 `move_group`, as an action server with pose, joint, named, Cartesian, pick and place goals, and gripper control. Objects that Vision detects in 3D are placed in the planning scene as obstacles. Every one of its actions is a tool for Cortex.
+
+* - **SpeechToText**
+  - Turns spoken audio into text. It runs its own voice activity detection and a wakeword spotter with a phrase you choose, on audio captured on the robot, and transcribes with a model server or a local model.
+
+* - **TextToSpeech**
+  - Turns text into speech, played on the robot's speakers or published as audio, from a model server or one of several local model families. Its `say` and `stop_playback` actions are made for events: announce a warning, stop talking when someone speaks.
+
+* - **Memory**
+  - A graph-backed spatio-temporal memory of what the robot has seen and felt, built on [eMEM](https://github.com/automatika-robotics/emem): detections, scene descriptions and internal state, each at a place and a time, with retrieval tools for the recipe and for Cortex. See [Memory](memory.md).
+
+* - **Cortex**
+  - The agent. It discovers every action, action server, service, routine and plugin action in the recipe, plans a sequence of calls for a natural-language goal, and runs it while watching the outputs. See [Cortex](cortex.md).
+
+* - **SemanticRouter**
+  - Sends an input to one of several destinations by what it says, using a vector database of examples or an LLM to decide, so one microphone or one text input can drive several pipelines.
+
+* - **MotionDetector**
+  - Detects motion in an image stream or a point cloud stream and publishes a boolean, which makes it an event source, along with the frames of the episode as a video or the motion centres as poses. Given the robot's odometry it ignores the robot's own movement. It replaces the earlier VideoMessageMaker.
 ```
 
 ```{seealso}
-For details on Topics, component configuration, run types, health checks, and fallback behaviors, see the [Core Concepts](../concepts/components.md) section.
+- [Clients](clients.md) and [Models](models.md) for where the models run.
+- [Cortex](cortex.md) and [Memory](memory.md) for the two components with pages of their own.
+- The [foundation](../recipes/foundation/index.md) and [planning and manipulation](../recipes/planning-and-manipulation/index.md) recipes for these components at work.
 ```

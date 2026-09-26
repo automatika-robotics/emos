@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -42,7 +43,7 @@ var updateCmd = &cobra.Command{
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {
-	ui.Banner(config.Version)
+	banner()
 
 	// Self-update the CLI binary first
 	updated, err := selfUpdateCLI()
@@ -52,6 +53,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		fmt.Println()
 	}
 	if updated {
+		restartDashboard()
 		fmt.Println()
 		ui.Info("Please run 'emos update' again to update your installation.")
 		return nil
@@ -71,8 +73,6 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	switch cfg.Mode {
 	case config.ModeOSSContainer:
 		modeErr = updateOSSContainer(cfg)
-	case config.ModeLicensed:
-		modeErr = updateLicensed(cfg)
 	case config.ModeNative:
 		modeErr = updateNative(cfg)
 	case config.ModePixi:
@@ -84,21 +84,60 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return modeErr
 	}
 
-	// Pull the active robot plugin to its latest commit and rebuild it.
-	if cfg.Plugin != nil {
+	// Pull the installed plugins, robot and sensors, to their latest commits
+	// and rebuild them.
+	if len(cfg.Plugins()) > 0 {
 		fmt.Println()
-		ui.Header("UPDATING ROBOT PLUGIN")
-		if err := plugin.Update(cfg, os.Stdout); err != nil {
-			ui.Warn("Plugin update failed: " + err.Error())
+		ui.Header("UPDATING PLUGINS")
+		// The stack is already updated, so a busy plugin lock skips this step
+		// rather than failing the whole update.
+		if unlock, err := lockPlugins(); err == nil {
+			defer unlock()
+			if err := plugin.Update(cfg, os.Stdout); err != nil {
+				ui.Warn("Plugin update failed: " + err.Error())
+			}
 		}
 	}
+	refreshLicense()
 	return nil
+}
+
+// refreshLicense verifies the kept licence again when the portal can be
+// reached. An update never fails on it, and an unreachable portal goes unsaid.
+func refreshLicense() {
+	old := config.LoadLicense()
+	if old == nil {
+		return
+	}
+	lic, err := api.VerifyLicense(old.Key)
+	switch {
+	case err == nil:
+		if config.SaveLicense(lic) == nil && lic.PluginSlug != old.PluginSlug {
+			ui.Warn("The license on this machine is now for " + licensedRobot(lic) + ", it was for " + licensedRobot(old) + ".")
+			ui.Faint("Install its plugin with 'emos plugin install " + lic.PluginSlug + "'.")
+		}
+	case errors.Is(err, api.ErrInvalidLicense), errors.Is(err, api.ErrLicenseNotClaimed):
+		ui.Warn("The portal no longer accepts the license kept on this machine. Ask about it at " + config.SupportURL + ".")
+	}
+}
+
+// restartDashboard restarts the dashboard service, when it runs, so it serves
+// the binary the self-update just installed.
+func restartDashboard() {
+	if !installer.IsActive(config.DashboardServiceName) {
+		return
+	}
+	ui.Info("Restarting the dashboard on the new version (requires sudo)...")
+	if err := installer.RestartUnit(config.DashboardServiceName); err != nil {
+		ui.Warn("The dashboard still runs the previous version: " + err.Error())
+		ui.Faint("Restart it with 'sudo systemctl restart " + config.DashboardServiceName + "'.")
+	}
 }
 
 // selfUpdateCLI checks for a newer CLI release and replaces the current binary.
 // Returns true if the binary was updated and the caller should exit.
 func selfUpdateCLI() (bool, error) {
-	if config.Version == "dev" {
+	if strings.HasPrefix(config.Version, "dev") {
 		ui.Info("Development build, skipping CLI update check.")
 		return false, nil
 	}
@@ -111,14 +150,13 @@ func selfUpdateCLI() (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to check releases: %w", err)
 	}
-	if latestVersion == config.Version {
+	if !updcheck.IsNewer(config.Version, latestVersion) {
 		ui.Success("CLI is already up to date (v" + config.Version + ")")
 		return false, nil
 	}
 
-	// We still need the asset list to find the right per-arch binary, so
-	// hit /releases/latest a second time
-	resp, err := http.Get(config.ReleasesURL())
+	// The asset list names the per-arch binary
+	resp, err := http.Get(config.ReleaseTagURL(latestVersion))
 	if err != nil {
 		return false, fmt.Errorf("failed to fetch release assets: %w", err)
 	}
@@ -198,9 +236,13 @@ func selfUpdateCLI() (bool, error) {
 }
 
 func updateOSSContainer(cfg *config.EMOSConfig) error {
+	// The channel's image; plugin builds read it from the config
 	image := config.PublicImageTag(cfg.ROSDistro)
-	if cfg.ImageTag != "" {
-		image = cfg.ImageTag
+	if cfg.ImageTag != image {
+		cfg.ImageTag = image
+		if err := config.SaveConfig(cfg); err != nil {
+			ui.Warn("Failed to save config: " + err.Error())
+		}
 	}
 
 	fmt.Println("  Checking for EMOS container updates...")
@@ -233,51 +275,6 @@ func updateOSSContainer(cfg *config.EMOSConfig) error {
 	return nil
 }
 
-func updateLicensed(cfg *config.EMOSConfig) error {
-	licenseKey := cfg.LicenseKey
-	if licenseKey == "" {
-		// Fallback to license file
-		keyBytes, err := os.ReadFile(config.LicenseFile)
-		if err != nil {
-			ui.Error("No license key found.")
-			return fmt.Errorf("no license key")
-		}
-		licenseKey = string(keyBytes)
-	}
-
-	fmt.Println("  Checking for EmbodiedOS container updates...")
-	fmt.Println()
-
-	var creds *api.Credentials
-	err := ui.Spinner("Verifying license...", func() error {
-		var e error
-		creds, e = api.ValidateLicense(licenseKey)
-		return e
-	})
-	if err != nil {
-		return err
-	}
-
-	if container.Exists(config.ContainerName) {
-		if err := ui.Spinner("Removing existing container...", func() error {
-			return container.Remove(config.ContainerName)
-		}); err != nil {
-			return fmt.Errorf("failed to remove container: %w", err)
-		}
-	}
-
-	if err := deployRobotFiles(creds); err != nil {
-		return err
-	}
-	if err := deployContainer(creds); err != nil {
-		return err
-	}
-
-	fmt.Println()
-	ui.SuccessBox("EmbodiedOS container updated successfully!")
-	return nil
-}
-
 func updatePixi(cfg *config.EMOSConfig) error {
 	projectDir := cfg.PixiProjectDir
 	if projectDir == "" {
@@ -285,8 +282,7 @@ func updatePixi(cfg *config.EMOSConfig) error {
 		return fmt.Errorf("pixi project dir not set")
 	}
 
-	pixiBin, err := installer.ResolvePixi()
-	if err != nil {
+	if _, err := installer.ResolvePixi(); err != nil {
 		ui.Error("pixi is required to update a pixi-mode install but was not found.")
 		fmt.Println("  Install it with: " + installer.PixiInstallHint)
 		return err
@@ -294,6 +290,15 @@ func updatePixi(cfg *config.EMOSConfig) error {
 
 	fmt.Println("  Updating EMOS pixi workspace...")
 	fmt.Println()
+
+	// The CUDA wheels are built for the versions the release names, so they go
+	// before the pull and are offered again at the end.
+	if installer.HasCUDAPackages(projectDir) {
+		ui.Info("Putting the CUDA packages aside for the update...")
+		if err := installer.RemoveCUDAPackages(projectDir, pixiBuildEnv()); err != nil {
+			return err
+		}
+	}
 
 	// Preserve user-added pixi dependencies across the git pull: stash the
 	// manifest, pull, then reapply.
@@ -306,11 +311,12 @@ func updatePixi(cfg *config.EMOSConfig) error {
 		ui.Info("Preserved local pixi dependencies for the update.")
 	}
 
-	// Pull latest source
-	if err := ui.Spinner("Pulling latest source...", func() error {
-		return runGit(projectDir, "pull")
+	// A nightly's tag or main, whichever this binary follows
+	ref := config.WorkspaceRef()
+	if err := ui.Spinner("Fetching "+ref+"...", func() error {
+		return installer.SyncWorkspace(projectDir, ref)
 	}); err != nil {
-		return fmt.Errorf("git pull failed: %w", err)
+		return fmt.Errorf("could not fetch %s: %w", ref, err)
 	}
 
 	// Update submodules
@@ -333,28 +339,19 @@ func updatePixi(cfg *config.EMOSConfig) error {
 
 	// Reinstall dependencies
 	ui.Info("Updating pixi environment...")
-	pixiInstall := exec.Command(pixiBin, "install")
-	pixiInstall.Dir = projectDir
-	pixiInstall.Env = pixiBuildEnv()
-	pixiInstall.Stdout = os.Stdout
-	pixiInstall.Stderr = os.Stderr
-	if err := pixiInstall.Run(); err != nil {
-		return fmt.Errorf("pixi install failed: %w", err)
+	if err := installer.RunPixi(projectDir, pixiBuildEnv(), "install"); err != nil {
+		return err
 	}
 
 	// Rebuild
 	ui.Info("Rebuilding EMOS packages...")
-	pixiSetup := exec.Command(pixiBin, "run", "setup")
-	pixiSetup.Dir = projectDir
-	pixiSetup.Env = pixiBuildEnv()
-	pixiSetup.Stdout = os.Stdout
-	pixiSetup.Stderr = os.Stderr
-	if err := pixiSetup.Run(); err != nil {
-		return fmt.Errorf("pixi run setup failed: %w", err)
+	if err := installer.RunPixi(projectDir, pixiBuildEnv(), "run", "setup"); err != nil {
+		return err
 	}
 
 	fmt.Println()
 	ui.SuccessBox("EMOS pixi workspace updated successfully!")
+	offerCUDAPackages(projectDir)
 	return nil
 }
 

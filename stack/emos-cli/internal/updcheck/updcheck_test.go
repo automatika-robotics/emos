@@ -7,13 +7,14 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
 )
 
-// withFakeReleases redirects config.ReleasesURL() at a httptest.Server for
+// withFakeReleases redirects config.LatestReleaseURL() at a httptest.Server for
 // the duration of the test by overriding the GitHub host through
 // http.DefaultTransport... actually that's hard. Instead we monkey-patch
 // the package-level httpClient with one that rewrites the request URL via
@@ -28,7 +29,7 @@ func withFakeReleases(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 
 	target, _ := url.Parse(srv.URL)
 	httpClient = &http.Client{
-		Timeout: 5 * time.Second,
+		Timeout:   5 * time.Second,
 		Transport: rewriteRT{target: target},
 	}
 	return srv
@@ -119,6 +120,15 @@ func TestIsNewer_Table(t *testing.T) {
 		{"0.6", "0.7.0", false}, // missing patch
 		// leading v on either side is tolerated
 		{"v0.6.1", "v0.7.0", true},
+		// pre-releases: a nightly is older than its release, newer nightlies win
+		{"0.8.0-dev.20260924", "0.8.0", true},
+		{"0.8.0", "0.8.0-dev.20260924", false},
+		{"0.8.0-dev.20260924", "0.8.0-dev.20260925", true},
+		{"0.8.0-dev.20260925", "0.8.0-dev.20260924", false},
+		{"0.8.0-dev.20260924", "0.8.0-dev.20260924", false},
+		{"0.8.0", "0.8.1-dev.20260930", true},
+		{"0.8.1-dev.20260930", "0.8.0", false},
+		{"0.7.6", "0.8.0-dev.20260924", true},
 	}
 	for _, tc := range cases {
 		got := IsNewer(tc.current, tc.latest)
@@ -292,5 +302,62 @@ func TestRefreshIfStale_FetchFailureKeepsCache(t *testing.T) {
 	if !ok || updated != "0.6.0" {
 		data, _ := os.ReadFile(filepath.Join(tmp, cacheFileName))
 		t.Fatalf("failed refresh clobbered the cache: latest=%q ok=%v file=%q", updated, ok, string(data))
+	}
+}
+
+func TestLatestOnTheDevChannelTakesTheNewestNightly(t *testing.T) {
+	orig := config.Version
+	t.Cleanup(func() { config.Version = orig })
+	config.Version = "0.8.0-dev.20260901"
+
+	withFakeReleases(t, func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/releases") {
+			t.Errorf("a dev binary asked %s, not the release list", r.URL.Path)
+		}
+		// Newest first, as GitHub lists them: a release, two nightlies, an rc that is not a nightly
+		w.Write([]byte(`[
+			{"tag_name": "v0.8.0", "prerelease": false},
+			{"tag_name": "v0.8.0-dev.20260920", "prerelease": true},
+			{"tag_name": "v0.8.0-dev.20260925", "prerelease": true},
+			{"tag_name": "v0.9.0-rc.1", "prerelease": true}
+		]`))
+	})
+	got, err := Latest(context.Background())
+	if err != nil {
+		t.Fatalf("Latest: %v", err)
+	}
+	if got != "0.8.0-dev.20260925" {
+		t.Errorf("Latest() on dev = %q, want the newest nightly", got)
+	}
+}
+
+func TestLatestOnTheDevChannelIsNeverARelease(t *testing.T) {
+	orig := config.Version
+	t.Cleanup(func() { config.Version = orig })
+	config.Version = "0.8.0-dev.20260901"
+
+	withFakeReleases(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[{"tag_name": "v0.8.0", "prerelease": false}]`))
+	})
+	if got, err := Latest(context.Background()); err == nil {
+		t.Errorf("Latest() on dev offered %q although no nightly exists", got)
+	}
+}
+
+func TestCachedLatestIgnoresTheOtherChannel(t *testing.T) {
+	withTmpConfigDir(t)
+	orig := config.Version
+	t.Cleanup(func() { config.Version = orig })
+
+	config.Version = "0.8.0-dev.20260901"
+	if err := writeCache("0.8.0-dev.20260925", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if latest, _, ok := CachedLatest(); !ok || latest != "0.8.0-dev.20260925" {
+		t.Fatalf("the dev binary does not see its own cache: %q %v", latest, ok)
+	}
+	config.Version = "0.7.6"
+	if latest, _, ok := CachedLatest(); ok {
+		t.Errorf("the stable binary took the dev cache: %q", latest)
 	}
 }

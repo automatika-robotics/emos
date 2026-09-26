@@ -1,42 +1,47 @@
 # Robot Configuration
 
-Before EMOS can drive your robot, it needs to understand its physical constraints. You define this "Digital Twin" using the `RobotConfig` object, which aggregates the Motion Model, Geometry, and Control Limits.
+Before EMOS can drive a robot it needs to know what the robot is: how it moves, how big it is, and how fast it may go. That description is a `RobotConfig`, and the launcher hands it to every navigation component. A [robot plugin](../concepts/robot-plugins.md) carries one for its robot, so a recipe on a supported robot writes none of this. For any other robot, or to override the plugin's, the recipe builds it:
 
 ```python
 import numpy as np
-from kompass_core.models import RobotConfig, RobotType, RobotGeometry
+from kompass.robot import (
+    AngularCtrlLimits,
+    LinearCtrlLimits,
+    RobotConfig,
+    RobotGeometryType,
+    RobotType,
+)
 
-# Example: Defining a simple box-shaped Ackermann robot
-robot_config = RobotConfig(
-    model_type=RobotType.ACKERMANN,
-    geometry_type=RobotGeometry.Type.BOX,
-    geometry_params=np.array([1.0, 1.0, 1.0]) # x, y, z
+my_robot = RobotConfig(
+    model_type=RobotType.DIFFERENTIAL_DRIVE,
+    geometry_type=RobotGeometryType.CYLINDER,
+    geometry_params=np.array([0.1, 0.3]),
+    ctrl_vx_limits=LinearCtrlLimits(max_vel=0.4, max_acc=1.5, max_decel=2.5),
+    ctrl_omega_limits=AngularCtrlLimits(max_omega=0.4, max_acc=2.0, max_decel=2.0, max_ang=np.pi / 3),
 )
 ```
 
-## Motion Models
+Every field is required on purpose. A robot without limits is not a robot EMOS will move, so `RobotConfig()` with nothing in it is an error rather than a default. The classes live in Sugarcoat and are re-exported by `kompass.robot` and `kompass.config`.
 
-EMOS supports three distinct kinematic models. Choose the one that matches your robot's drivetrain.
+## Motion models
 
-- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`directions_car;1.2em;sd-text-primary` Ackermann</span> — Car-Like Vehicles. Non-holonomic constraints (bicycle model). The robot has a limited steering angle and cannot rotate in place.
+Pick the one that matches the drivetrain, and the control maths follows.
 
-- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`swap_horiz;1.2em;sd-text-primary` Differential</span> — Two-Wheeled Robots. Capable of forward/backward motion and zero-radius rotation (spinning in place).
+- {material-regular}`directions_car;1.2em;sd-text-primary` **Ackermann.** Car-like vehicles. Non-holonomic, with a limited steering angle, and unable to turn in place.
+- {material-regular}`swap_horiz;1.2em;sd-text-primary` **Differential drive.** Two driven wheels, or a quadruped walking like one. Forward and backward motion and turning in place.
+- {material-regular}`open_with;1.2em;sd-text-primary` **Omni.** Holonomic platforms: mecanum wheels, or a quadruped that side-steps. Motion in any direction and rotation at once.
 
-- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`open_with;1.2em;sd-text-primary` Omni</span> — Holonomic Robots. Mecanum-wheel platforms or quadrupeds. Capable of instantaneous motion in any direction (x, y) and rotation.
+## Geometry
 
-## Robot Geometry
-
-The geometry defines the collision volume of the robot, used by the local planner for obstacle avoidance.
-
-The `geometry_params` argument expects a **NumPy array** containing specific dimensions based on the selected type:
+The geometry is the robot's collision volume, which planning and obstacle avoidance keep clear. `geometry_params` is a NumPy array whose meaning depends on the shape:
 
 ```{list-table}
 :widths: 15 25 60
 :header-rows: 1
 
 * - Type
-  - Parameters (np.array)
-  - Description
+  - Parameters
+  - Shape
 
 * - **BOX**
   - `[length, width, height]`
@@ -48,7 +53,7 @@ The `geometry_params` argument expects a **NumPy array** containing specific dim
 
 * - **SPHERE**
   - `[radius]`
-  - Perfect sphere.
+  - Sphere.
 
 * - **ELLIPSOID**
   - `[axis_x, axis_y, axis_z]`
@@ -63,114 +68,50 @@ The `geometry_params` argument expects a **NumPy array** containing specific dim
   - Vertical cone.
 ```
 
-```python
-import numpy as np
-from kompass_core.models import RobotConfig, RobotType, RobotGeometry
+The type is a `RobotGeometryType`, and the motion model a `RobotType`; both also accept their names as strings, `"CYLINDER"` and `"DIFFERENTIAL_DRIVE"`, which is how a configuration file spells them.
 
-# A cylinder robot (Radius=0.5m, Height=1.0m)
-cylinder_robot_config = RobotConfig(
-    model_type=RobotType.DIFFERENTIAL_DRIVE,
-    geometry_type=RobotGeometry.Type.CYLINDER,
-    geometry_params=np.array([0.5, 1.0])
-)
-```
+## Control limits
 
-## Control Limits
-
-Safety is paramount. You must explicitly define the kinematic limits for linear and angular velocities.
-
-For both linear and angular control limits we need to set:
-
-- Maximum velocity (m/s) or (rad/s)
-- Maximum acceleration (m/s^2) or (rad/s^2)
-- Maximum deceleration (m/s^2) or (rad/s^2)
-
-Additionally, for angular control limits we can set the maximum steering angle (rad).
-
-EMOS separates **Acceleration** limits from **Deceleration** limits. This allows you to configure a "gentle" acceleration for smooth motion, but a "hard" deceleration for emergency braking.
+The limits bound what any component may command. Linear limits apply to forward motion, and to sideways motion for an omni robot, and angular limits to rotation:
 
 ```python
-from kompass_core.models import LinearCtrlLimits, AngularCtrlLimits, RobotConfig, RobotType, RobotGeometry
-import numpy as np
-
-# 1. Linear Limits (Forward/Backward)
 ctrl_vx = LinearCtrlLimits(max_vel=1.0, max_acc=1.5, max_decel=2.5)
+ctrl_vy = LinearCtrlLimits(max_vel=0.5, max_acc=0.7, max_decel=3.5)   # omni robots only
+ctrl_omega = AngularCtrlLimits(max_omega=1.0, max_acc=2.0, max_decel=2.0, max_ang=np.pi / 3)
 
-# 2. Linear Limits (Lateral — for Omni robots)
-ctrl_vy = LinearCtrlLimits(max_vel=0.5, max_acc=0.7, max_decel=3.5)
-
-# 3. Angular Limits (Rotation)
-# max_steer is only used for Ackermann robots
-ctrl_omega = AngularCtrlLimits(
-    max_vel=1.0,
-    max_acc=2.0,
-    max_decel=2.0,
-    max_steer=np.pi / 3
-)
-
-# Setup your robot configuration
 my_robot = RobotConfig(
-    model_type=RobotType.DIFFERENTIAL_DRIVE,
-    geometry_type=RobotGeometry.Type.CYLINDER,
-    geometry_params=np.array([0.1, 0.3]),
+    model_type=RobotType.OMNI,
+    geometry_type=RobotGeometryType.BOX,
+    geometry_params=np.array([0.6, 0.4, 0.3]),
     ctrl_vx_limits=ctrl_vx,
+    ctrl_vy_limits=ctrl_vy,
     ctrl_omega_limits=ctrl_omega,
 )
 ```
 
-:::{tip}
-Deceleration limit is separated from the acceleration limit to allow the robot to decelerate faster thus ensuring safety.
-:::
+| Limit                     | Linear                | Angular                  |
+| :------------------------ | :-------------------- | :----------------------- |
+| Maximum velocity          | `max_vel` in m/s      | `max_omega` in rad/s     |
+| Maximum acceleration      | `max_acc` in m/s²     | `max_acc` in rad/s²      |
+| Maximum deceleration      | `max_decel` in m/s²   | `max_decel` in rad/s²    |
+| Minimum velocity          | `min_vel`, 0.05 m/s   | `min_omega`, 0.01 rad/s  |
+| Maximum steering angle    |                       | `max_ang` in rad, for Ackermann robots |
 
-:::{tip}
-For Ackermann robots, `ctrl_omega_limits.max_steer` defines the maximum physical steering angle of the wheels in radians.
-:::
+Acceleration and deceleration are separate so that a robot can accelerate gently and still brake hard. The minimum velocities are a dead band: commands below them are treated as a stop, which keeps a controller from creeping and lets the drive manager know when the robot has come to rest. `ctrl_vy_limits` is the one optional field, and defaults to no lateral motion.
 
-## Coordinate Frames
+## Coordinate frames
 
-EMOS needs to know the names of your TF frames to perform lookups. You configure this using the `RobotFrames` object.
-
-The components will automatically subscribe to `/tf` and `/tf_static` to track these frames.
+Only two frames are configured, the world frame that plans and maps are expressed in and the robot's base frame. Every other frame, a LiDAR's, a camera's, is read from the messages the sensor publishes and resolved through TF, so nothing about sensor placement is written here.
 
 ```python
 from kompass.config import RobotFrames
 
-frames = RobotFrames(
-    world='map',            # The fixed global reference frame
-    odom='odom',            # The drift-prone odometry frame
-    robot_base='base_link', # The center of the robot
-    scan='scan',            # Lidar frame
-    rgb='camera/rgb',       # RGB Camera frame
-    depth='camera/depth'    # Depth Camera frame
-)
+frames = RobotFrames(world="map", robot_base="base_link")
 ```
 
-```{list-table}
-:widths: 20 70
-:header-rows: 1
+Those are the defaults, so most recipes never set them. A robot plugin sets the base frame to the robot's own, and the launcher applies the frames to every component with `launcher.frames`, or one at a time with `launcher.robot_frame` and `launcher.world_frame`.
 
-* - Frame
-  - Description
-
-* - **world**
-  - The global reference for path planning (usually `map`).
-
-* - **odom**
-  - The continuous reference for local control loops.
-
-* - **robot_base**
-  - The physical center of the robot. All geometry is relative to this.
-
-* - **scan**
-  - Laserscan sensor frame.
-
-* - **rgb**
-  - RGB camera sensor frame.
-
-* - **depth**
-  - Depth camera sensor frame.
-```
-
-```{note}
-It is important to configure your coordinate frames names correctly and pass them to Kompass. Components in Kompass will subscribe automatically to the relevant `/tf` and `/tf_static` topics in ROS2 to get the necessary transformations.
+```{seealso}
+- [Configuration](../advanced/configuration.md) for the same description in a YAML, TOML or JSON file.
+- [Robot Plugins](../concepts/robot-plugins.md) for the description a plugin provides.
 ```

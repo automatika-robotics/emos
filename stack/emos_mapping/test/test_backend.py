@@ -1,0 +1,126 @@
+import json
+import os
+
+import numpy as np
+import pytest
+from ament_index_python.packages import PackageNotFoundError
+
+import emos_mapping.backend as backend
+from emos_mapping.backend import (
+    GLIM_NODE,
+    MAP_TOPIC,
+    glim_node,
+    read_dump,
+    strip_json_comments,
+    write_glim_config,
+)
+
+
+def load(path):
+    """GLIM's files carry comments; the ones the session rewrites do not"""
+    with open(path) as f:
+        return json.loads(strip_json_comments(f.read()))
+
+
+def write_dump(directory, submaps):
+    """A dump the way GLIM writes it: a numbered directory per submap with its
+    pose in data.txt and float32 xyz in points_compact.bin, next to the graph"""
+    os.makedirs(os.path.join(directory, "config"), exist_ok=True)
+    open(os.path.join(directory, "graph.bin"), "wb").close()
+    for i, (pose, points) in enumerate(submaps):
+        submap = os.path.join(directory, f"{i:06d}")
+        os.makedirs(submap)
+        rows = "\n".join("  ".join(f"{v:g}" for v in row) for row in pose)
+        with open(os.path.join(submap, "data.txt"), "w") as f:
+            f.write(f"id: {i}\nT_world_origin: \n{rows}\nT_origin_endpoint_L: \n{rows}\nnum_frames: 0\n")
+        np.asarray(points, dtype=np.float32).tofile(os.path.join(submap, "points_compact.bin"))
+
+
+def test_comments_are_stripped_but_strings_are_kept():
+    text = '{\n  // a comment\n  "url": "http://x/y", /* block\n comment */ "n": 1 // trailing\n}'
+    assert json.loads(strip_json_comments(text)) == {"url": "http://x/y", "n": 1}
+
+
+def test_session_config_names_the_topics_and_uses_the_cpu_modules(tmp_path):
+    directory = write_glim_config(str(tmp_path / "config"), "/livox/lidar", "/livox/imu")
+    assert directory == str(tmp_path / "config")
+    ros = load(os.path.join(directory, "config_ros.json"))["glim_ros"]
+    assert ros["points_topic"] == "/livox/lidar" and ros["imu_topic"] == "/livox/imu"
+    # Only the module publishing the map; GLIM's own viewer needs a display.
+    assert ros["extension_modules"] == ["librviz_viewer.so"]
+    # No base frame given: GLIM falls back to the IMU frame; never the self transform
+    assert ros["base_frame_id"] == "" and ros["publish_imu2lidar"] is False
+    ros = load(os.path.join(write_glim_config(str(tmp_path / "b"), "/p", "/i", base_frame="body"), "config_ros.json"))["glim_ros"]
+    assert ros["base_frame_id"] == "body"
+    cfg = load(os.path.join(directory, "config.json"))["global"]
+    assert cfg["config_odometry"] == "config_odometry_cpu.json"
+    assert cfg["config_sub_mapping"] == "config_sub_mapping_cpu.json"
+    assert cfg["config_global_mapping"] == "config_global_mapping_cpu.json"
+    # Every file the config names is there.
+    for name in cfg.values():
+        if name.endswith(".json"):
+            assert os.path.isfile(os.path.join(directory, name)), name
+
+
+def test_gpu_and_imu_free_variants(tmp_path):
+    cfg = load(os.path.join(write_glim_config(str(tmp_path / "gpu"), "/p", "/i", gpu=True), "config.json"))["global"]
+    assert cfg["config_odometry"] == "config_odometry_gpu.json"
+    assert cfg["config_global_mapping"] == "config_global_mapping_gpu.json"
+    cfg = load(os.path.join(write_glim_config(str(tmp_path / "noimu"), "/p", None), "config.json"))["global"]
+    assert cfg["config_odometry"] == "config_odometry_ct.json"
+
+
+def test_glim_is_launched_with_the_session_paths():
+    node = glim_node("/maps/a/glim/config", "/maps/a/glim/dump")
+    assert (node["package"], node["executable"], node["name"]) == ("glim_ros", "glim_rosnode", GLIM_NODE)
+    assert node["parameters"] == [{"config_path": "/maps/a/glim/config", "dump_path": "/maps/a/glim/dump"}]
+    assert MAP_TOPIC == f"/{GLIM_NODE}/map"
+
+
+def test_the_lidar_imu_offset_is_written_when_declared(tmp_path):
+    directory = write_glim_config(str(tmp_path / "c"), "/p", "/i", lidar_imu=((0.011, 0.023, -0.044), (0.0, 0.0, 0.0)))
+    sensors = load(os.path.join(directory, "config_sensors.json"))["sensors"]
+    assert sensors["T_lidar_imu"] == [0.011, 0.023, -0.044, 0.0, 0.0, 0.0, 1.0]
+    # Not declared: GLIM's own value stays
+    directory = write_glim_config(str(tmp_path / "d"), "/p", "/i")
+    assert load(os.path.join(directory, "config_sensors.json"))["sensors"]["T_lidar_imu"][:3] == [0.006, -0.012, 0.008]
+
+
+
+def test_the_backend_version_is_read_from_glims_manifest(tmp_path, monkeypatch):
+    (tmp_path / "package.xml").write_text("<package><name>glim_ros</name><version>1.2.2</version></package>")
+    monkeypatch.setattr(backend, "get_package_share_directory", lambda name: str(tmp_path))
+    assert backend.backend_version() == "1.2.2"
+
+
+def test_a_missing_backend_is_an_error_not_an_empty_version(monkeypatch):
+    def missing(name):
+        raise PackageNotFoundError(name)
+
+    monkeypatch.setattr(backend, "get_package_share_directory", missing)
+    with pytest.raises(PackageNotFoundError):
+        backend.backend_version()
+
+
+def test_cuda_modules_are_used_when_the_installed_glim_has_them(tmp_path, monkeypatch):
+    monkeypatch.setattr(backend, "get_package_prefix", lambda name: str(tmp_path))
+    assert not backend.backend_has_cuda()
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "lib" / "libodometry_estimation_cpu.so").write_text("")
+    assert not backend.backend_has_cuda()
+    (tmp_path / "lib" / "libodometry_estimation_gpu.so").write_text("")
+    assert backend.backend_has_cuda()
+
+
+def test_the_dump_is_read_at_the_submaps_optimised_poses(tmp_path):
+    turned = [[0.0, -1.0, 0.0, 10.0], [1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.5], [0.0, 0.0, 0.0, 1.0]]
+    write_dump(str(tmp_path), [(np.eye(4), [(1.0, 0.0, 0.0), (0.0, 2.0, 0.0)]), (turned, [(1.0, 0.0, 0.0)])])
+    points = read_dump(str(tmp_path))
+    assert points.dtype == np.float32
+    assert points.tolist() == [[1.0, 0.0, 0.0], [0.0, 2.0, 0.0], [10.0, 1.0, 0.5]]
+
+
+def test_there_is_no_map_without_a_dump_or_a_submap(tmp_path):
+    assert read_dump(str(tmp_path / "missing")) is None
+    write_dump(str(tmp_path), [])
+    assert read_dump(str(tmp_path)) is None

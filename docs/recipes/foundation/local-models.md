@@ -17,9 +17,9 @@ Models are auto-downloaded from HuggingFace on first use. Subsequent runs load f
 Local models require one additional pip package depending on the component type:
 
 - **LLM / VLM**: `pip install llama-cpp-python`
-- **STT / TTS**: `pip install sherpa-onnx`
+- **STT / TTS**: `pip install sherpa-onnx`, plus `sentencepiece` for the wakeword spotter
 
-These are pre-installed in EMOS Docker containers.
+The container and pixi installs of EMOS include them.
 
 ## Local LLM
 
@@ -89,7 +89,7 @@ launcher.add_pkg(components=[vlm])
 launcher.bringup()
 ```
 
-The default model is **Moondream2** (GGUF format).
+The default model is **Qwen3-VL 2B Instruct** in GGUF format. Gemma, Moondream, MiniCPM and LLaVA checkpoints load the same way, recognised from their names, and `local_model_options` passes options through to llama.cpp, such as `filename` to pick one file out of a repository.
 
 ```{warning}
 Streaming output (`stream=True`) is not supported with local VLM models. The component will return the complete response once inference finishes.
@@ -97,7 +97,7 @@ Streaming output (`stream=True`) is not supported with local VLM models. The com
 
 ## Local Speech-to-Text
 
-Convert spoken audio to text using an on-device Whisper model:
+Convert spoken audio to text with an on-device model:
 
 ```python
 from agents.components import SpeechToText
@@ -125,7 +125,7 @@ launcher.add_pkg(components=[stt])
 launcher.bringup()
 ```
 
-The default model is **Whisper tiny.en** (via sherpa-onnx). For other languages or larger models, see the [sherpa-onnx pretrained models](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/index.html) and set `local_model_path` accordingly.
+The default model is **NVIDIA Parakeet TDT 0.6B**, quantised to int8, via sherpa-onnx. Whisper, Moonshine, SenseVoice, Paraformer and other families load the same way. For other languages or larger models, see the [sherpa-onnx pretrained models](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/index.html) and set `local_model_path` accordingly.
 
 ```{warning}
 Streaming output (`stream=True`) is not supported with local STT models. Use a WebSocket client (e.g. RoboMLWSClient) if you need streaming transcription.
@@ -160,11 +160,7 @@ launcher.add_pkg(components=[tts])
 launcher.bringup()
 ```
 
-The default model is **Kokoro EN** (via sherpa-onnx).
-
-```{warning}
-Streaming output (`stream=True`) is not supported with local TTS models.
-```
+The default model is **Pocket TTS** via sherpa-onnx, and it streams its audio as it is produced. Kokoro, Matcha, VITS, Supertonic, ZipVoice and Kitten load the same way; `speaker_id` picks a voice for models that have several, and `local_model_options` tunes speed and style per family.
 
 ## Complete Example: Local Conversational Agent
 
@@ -177,7 +173,7 @@ from agents.components import VLM, SpeechToText, TextToSpeech
 from agents.config import SpeechToTextConfig, VLMConfig, TextToSpeechConfig
 from agents.ros import Topic, Launcher
 
-# --- Speech-to-Text (Whisper tiny.en via sherpa-onnx) ---
+# --- Speech-to-Text (Parakeet via sherpa-onnx) ---
 audio_in = Topic(name="audio0", msg_type="Audio")
 text_query = Topic(name="text0", msg_type="String")
 
@@ -194,7 +190,7 @@ speech_to_text = SpeechToText(
     component_name="speech_to_text",
 )
 
-# --- VLM (Moondream2 via llama-cpp-python) ---
+# --- VLM (Qwen3-VL via llama-cpp-python) ---
 image_in = Topic(name="image_raw", msg_type="Image")
 text_answer = Topic(name="text1", msg_type="String")
 
@@ -208,7 +204,7 @@ vlm = VLM(
     component_name="vision_brain",
 )
 
-# --- Text-to-Speech (Kokoro via sherpa-onnx) ---
+# --- Text-to-Speech (Pocket TTS via sherpa-onnx) ---
 tts_config = TextToSpeechConfig(
     enable_local_model=True,
     play_on_device=True,
@@ -239,6 +235,6 @@ This recipe creates the same pipeline as the [Conversational Agent](conversation
 ---
 
 ```{tip}
-**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+**Promote this recipe to production.** While you are shaping it, run the script directly with `python recipe.py`. Once it is solid, drop it at `~/emos/recipes/<name>/recipe.py` and start it with `emos run <name>`, or from the dashboard. Either way every run is logged under `~/emos/logs`, and an operator gets a card to launch it from a browser. [Running Recipes](../../getting-started/running-recipes.md) covers the two ways of running a recipe and what differs per install mode.
 ```
 

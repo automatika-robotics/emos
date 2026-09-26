@@ -23,10 +23,10 @@ import (
 // Compute returns a stable adjective-noun pair for this device.
 //
 // Fingerprint priority:
-//   1. license key, if present (most stable across hardware swaps)
-//   2. primary network MAC (survives reinstalls but not NIC swaps)
-//   3. random one-shot fallback (used only when the host can't expose
-//      either of the above; logs the situation upstream)
+//  1. license key, if present (most stable across hardware swaps)
+//  2. primary network MAC (survives reinstalls but not NIC swaps)
+//  3. random one-shot fallback (used only when the host can't expose
+//     either of the above; logs the situation upstream)
 //
 // The returned name is lowercased ASCII separated by '-' and is always a
 // valid mDNS hostname segment.

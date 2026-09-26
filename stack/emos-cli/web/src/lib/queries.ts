@@ -1,8 +1,9 @@
-// TanStack Query glue. Centralising hook keys here makes invalidation
+// TanStack Query glue. Centralised hook keys here makes invalidation
 // (e.g. after a recipe pull finishes) one-liner-clean from any component.
 
 import { createQuery, createMutation, useQueryClient, type CreateQueryResult } from '@tanstack/svelte-query';
 import { api, ApiException } from './api';
+import { isPluginJob, startedPluginJobs } from './pluginJobs';
 
 export const keys = {
   health: ['health'] as const,
@@ -11,11 +12,12 @@ export const keys = {
   connectivity: ['connectivity'] as const,
   authMe: ['authMe'] as const,
   robot: ['robot'] as const,
+  license: ['license'] as const,
   recipesLocal: ['recipes', 'local'] as const,
   recipesRemote: ['recipes', 'remote'] as const,
   recipeDetail: (name: string) => ['recipes', 'detail', name] as const,
   pluginsRemote: ['plugins', 'remote'] as const,
-  pluginActive: ['plugins', 'active'] as const,
+  pluginsInstalled: ['plugins', 'installed'] as const,
   runs: ['runs'] as const,
   run: (id: string) => ['runs', id] as const,
   jobs: ['jobs'] as const,
@@ -53,6 +55,10 @@ export const useRobot = () =>
     staleTime: 60_000,
   });
 
+// Refetched now and then, so a license activated from the CLI shows up.
+export const useLicense = () =>
+  createQuery({ queryKey: keys.license, queryFn: api.license, refetchInterval: 60_000, staleTime: 30_000 });
+
 export const useRecipesLocal = () =>
   createQuery({ queryKey: keys.recipesLocal, queryFn: api.recipesLocal, staleTime: 5000 });
 
@@ -86,18 +92,10 @@ export const usePluginsRemote = () =>
     staleTime: 30_000,
   });
 
-export const usePluginActive = () =>
+export const usePluginsInstalled = () =>
   createQuery({
-    queryKey: keys.pluginActive,
-    // 404 means no plugin installed — model that as null, not an error.
-    queryFn: async () => {
-      try {
-        return await api.pluginActive();
-      } catch (err) {
-        if (err instanceof ApiException && err.status === 404) return null;
-        throw err;
-      }
-    },
+    queryKey: keys.pluginsInstalled,
+    queryFn: api.pluginsInstalled,
     staleTime: 10_000,
   });
 
@@ -122,13 +120,24 @@ export const useJobs = () =>
   // <10s) and we want the card to reflect failure/success without lag.
   createQuery({ queryKey: keys.jobs, queryFn: api.jobs, refetchInterval: 2000 });
 
+// The jobs list for PluginJobWatcher, polled only while a plugin job runs.
+// Starting one from this dashboard refetches the list, which starts the
+// polling.
+export const usePluginJobsWatch = () =>
+  createQuery({
+    queryKey: keys.jobs,
+    queryFn: api.jobs,
+    refetchInterval: (q) =>
+      (q.state.data ?? []).some((j) => isPluginJob(j) && j.status === 'running') ? 2000 : false,
+  });
+
 // Mutations -----------------------------------------------------------------
 
 export function useStartRun() {
   const qc = useQueryClient();
   return createMutation({
-    mutationFn: (vars: { recipe: string; rmw?: string; skip_sensor_check?: boolean }) =>
-      api.runStart(vars.recipe, { rmw: vars.rmw, skip_sensor_check: vars.skip_sensor_check }),
+    mutationFn: (vars: { recipe: string; rmw?: string }) =>
+      api.runStart(vars.recipe, { rmw: vars.rmw }),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.runs }),
   });
 }
@@ -167,20 +176,25 @@ export function useDeleteRecipe() {
 export function useInstallPlugin() {
   const qc = useQueryClient();
   return createMutation({
-    // 202: the install job was registered. Plugins.svelte watches the jobs
-    // list and refreshes the active plugin when the job finishes.
+    // 202: the install job was registered. PluginJobWatcher follows it and
+    // refreshes the installed set when it ends.
     mutationFn: (slug: string) => api.pluginInstall(slug),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.jobs }),
+    onSuccess: ({ job_id }) => {
+      startedPluginJobs.add(job_id);
+      qc.invalidateQueries({ queryKey: keys.jobs });
+    },
   });
 }
 
 export function useRemovePlugin() {
   const qc = useQueryClient();
   return createMutation({
-    mutationFn: () => api.pluginRemove(),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: keys.pluginActive });
-      qc.invalidateQueries({ queryKey: keys.robot });
+    // 202: removal runs as a job (the overlay is rebuilt). PluginJobWatcher
+    // follows it and refreshes the installed set when it ends.
+    mutationFn: (slug: string) => api.pluginRemove(slug),
+    onSuccess: ({ job_id }) => {
+      startedPluginJobs.add(job_id);
+      qc.invalidateQueries({ queryKey: keys.jobs });
     },
   });
 }

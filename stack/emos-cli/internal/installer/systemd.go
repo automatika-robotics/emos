@@ -128,6 +128,13 @@ func (u SystemdUnit) IsSupported() bool {
 	return err == nil
 }
 
+// RestartUnit restarts a system unit, through sudo.
+func RestartUnit(unitName string) error {
+	cmd := exec.Command("sudo", "systemctl", "restart", unitName)
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
 // IsActive returns true if `systemctl is-active <unit>` reports active.
 // Returns false on non-systemd hosts or for any other status (inactive,
 // failed, etc.). Free function so callers can check by unit name without
@@ -204,25 +211,4 @@ func userHomeDir(username string) string {
 		return h
 	}
 	return ""
-}
-
-// ContainerUnit auto-restarts the EMOS Docker container at boot. Used by
-// the licensed install flow. No ReadWritePaths because the unit only shells
-// `docker` (which talks to /var/run/docker.sock, outside ProtectSystem's
-// reach), and the container itself has its own mounts.
-func ContainerUnit(containerName string) SystemdUnit {
-	return SystemdUnit{
-		Name:        config.ServiceName,
-		Description: "EmbodiedOS Container",
-		After:       []string{"docker.service"},
-		Requires:    []string{"docker.service"},
-		ExecStart:   "/usr/bin/docker start -a " + containerName,
-		ExecStop:    "/usr/bin/docker stop -t 2 " + containerName,
-		Restart:     "always",
-		Hardening: []string{
-			"NoNewPrivileges=true",
-			"ProtectSystem=strict",
-			"PrivateTmp=true",
-		},
-	}
 }

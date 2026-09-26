@@ -1,22 +1,14 @@
 # Architecture
 
-**The unified orchestration layer for Physical AI.**
+EMOS, the Embodied Operating System, is the software layer that turns a robot into a physical AI agent. It gives quadrupeds, humanoids and mobile robots one runtime in which they see, think, move and adapt, and it does so without caring which robot it is on. The application, a recipe, is written once against standard interfaces, and a plugin adapts it to the hardware.
 
-EMOS (The Embodied Operating System) is the software layer that transforms quadrupeds, humanoids, and mobile robots into **Physical AI Agents**. Just as Android standardized the smartphone hardware market, EMOS provides a bundled, hardware-agnostic runtime that allows robots to see, think, move, and adapt in the real world.
+## The body and the mind
 
-## The Body/Mind Split
+EMOS separates the robot's **body** from its **mind**. The body is the hardware: motors, sensors, actuators and the drivers that speak to them. The mind is the software that perceives, reasons and decides. Between the two sits a standard interface, and everything EMOS adds to a robot lives on the mind's side of it. That is what lets the same recipe run on a wheeled base, a quadruped or a humanoid.
 
-At its core, EMOS decouples the robot's **Body** from its **Mind**, creating a standard interface for intelligence.
+## The stack
 
-- {material-regular}`precision_manufacturing;1.2em;sd-text-primary` **The Body** encompasses the physical hardware: motors, sensors, actuators, and the low-level drivers that control them. EMOS abstracts over the specifics of any particular robot platform, whether it is a wheeled AMR, a quadruped, or a humanoid.
-
-- {material-regular}`psychology;1.2em;sd-text-primary` **The Mind** is the software intelligence that perceives the world, reasons about it, and decides how to act. EMOS provides the cognitive and navigational primitives that turn raw sensor data into purposeful behavior.
-
-This separation means that the same application logic --- a "Recipe" --- can be written once and deployed across entirely different robot bodies without rewriting code. EMOS handles the translation between intent and hardware.
-
-## The Three Layers
-
-EMOS is built on three open-source, publicly developed core components that work in tandem. Each layer addresses a distinct concern of the robotic software stack.
+Three open-source packages make up the stack, each building on the one below it.
 
 :::{image} ../_static/images/diagrams/emos_diagram_light.png
 :align: center
@@ -30,63 +22,54 @@ EMOS is built on three open-source, publicly developed core components that work
 :class: dark-only
 :::
 
-### Intelligence Layer: EmbodiedAgents
+### Sugarcoat, the architecture layer
 
-[EmbodiedAgents](https://github.com/automatika-robotics/embodied-agents) is the orchestration framework for building agentic graphs of ML models. It provides:
+[Sugarcoat](https://github.com/automatika-robotics/sugarcoat) is the framework the other two are built on. It provides the primitives every recipe is made of:
 
-- {material-regular}`visibility;1.2em;sd-text-primary` **Multi-modal perception** using vision-language models, object detectors, and speech processing.
-- {material-regular}`memory;1.2em;sd-text-primary` **Hierarchical spatio-temporal memory** for contextual reasoning about the robot's environment over time.
-- {material-regular}`alt_route;1.2em;sd-text-primary` **Semantic routing** that directs user commands to the correct capability (navigation, vision, conversation) based on intent.
-- {material-regular}`sync;1.2em;sd-text-primary` **Adaptive reconfiguration** that allows the robot to switch between cloud APIs and local models at runtime based on connectivity and latency requirements.
+- {material-regular}`autorenew;1.2em;sd-text-primary` [Components](components.md), lifecycle-managed nodes that report their health and heal themselves.
+- {material-regular}`flash_on;1.2em;sd-text-primary` [Events and actions](events-and-actions.md) and [routines](routines.md), the reactive layer that switches behaviour on live data.
+- {material-regular}`rocket_launch;1.2em;sd-text-primary` The [launcher](launcher.md) and its Monitor, which bring a recipe up in threads or processes and orchestrate it while it runs.
+- {material-regular}`extension;1.2em;sd-text-primary` The [plugin framework](robot-plugins.md), through which a robot and its sensors are adapted to the standard interfaces.
+- {material-regular}`web;1.2em;sd-text-primary` The [web interface](web-ui.md) a recipe can serve for itself.
 
-### Navigation Layer: Kompass
+### Kompass, the navigation layer
 
-[Kompass](https://github.com/automatika-robotics/kompass) is the event-driven navigation stack responsible for real-world mobility. It provides:
+[Kompass](https://github.com/automatika-robotics/kompass) is the event-driven navigation stack: global and local mapping, planning, control and a motion server, built as Sugarcoat components. Its heavy geometry runs on the GPU where there is one, on any vendor's, and it drives wheeled, legged and tracked platforms alike. See [Navigation](../navigation/overview.md).
 
-- {material-regular}`speed;1.2em;sd-text-primary` **GPGPU-accelerated planning** that moves heavy geometric computation to the GPU, achieving up to 3,106x speedups over CPU-based approaches and freeing the CPU for application logic.
-- {material-regular}`settings;1.2em;sd-text-primary` **Hardware-agnostic control** that works across wheeled, legged, and tracked platforms.
-- {material-regular}`bolt;1.2em;sd-text-primary` **Event-driven architecture** where planners and controllers react to environmental changes (obstacles, terrain shifts, emergency stops) rather than running in fixed polling loops.
+### EmbodiedAgents, the intelligence layer
 
-### Architecture Layer: Sugarcoat
+[EmbodiedAgents](https://github.com/automatika-robotics/embodied-agents) is the framework for agentic graphs of models: vision-language models, speech in and out, object detection in two and three dimensions, a spatio-temporal memory, semantic routing of commands, motion policies, and Cortex, the agent that plans with the recipe's actions and routines as its tools. Its components run models locally or through cloud APIs and can switch between them at run time. See [Intelligence](../intelligence/overview.md).
 
-[Sugarcoat](https://github.com/automatika-robotics/sugarcoat) is the meta-framework that provides the foundational system design primitives on which both EmbodiedAgents and Kompass are built. It provides:
+## Around the stack
 
-- {material-regular}`autorenew;1.2em;sd-text-primary` **Lifecycle-managed Components** that replace standard ROS2 nodes with self-healing, health-aware execution units.
-- {material-regular}`flash_on;1.2em;sd-text-primary` **An Event-Driven system** that enables dynamic behavior switching based on real-time environmental context.
-- {material-regular}`rocket_launch;1.2em;sd-text-primary` **A Launcher and Monitor** that orchestrate multi-process or multi-threaded deployments with automatic lifecycle management.
-- {material-regular}`code;1.2em;sd-text-primary` **A beautifully imperative Python API** for specifying system configurations as "Recipes" rather than XML launch files.
+Three more things ship with EMOS and sit around the stack rather than inside it.
 
-## How the Layers Work Together
+**Plugins** adapt one robot or one sensor to the interfaces above. A robot plugin carries the robot's odometry, sensors and commands, its own actions and events, its localization and how it is mapped. A sensor plugin adds one device that is not part of the robot. They are installed from a catalog, and the [plugins](../getting-started/plugins.md) page covers using them.
 
-The three layers form a vertical stack where each layer builds on the one below it:
+**The CLI**, `emos`, installs the stack in one of three modes, keeps it updated, manages plugins, builds and manages [maps](../getting-started/mapping.md), and runs recipes with their logs kept. It is the operator's tool on the robot itself. See the [CLI reference](../getting-started/cli.md).
 
-1. **Sugarcoat (Architecture)** provides the execution primitives: Components, Topics, Events, Actions, Fallbacks, and the Launcher. Every node in the system --- whether it handles perception, planning, or control --- is a Sugarcoat Component with lifecycle management, health reporting, and self-healing capabilities.
+**The dashboard** is the robot's web page: recipes to pull, run and follow, plugins to install, maps, and the system's state, served securely to a paired browser on the same network. It is separate from the web interface a recipe serves for itself. See the [dashboard](../getting-started/dashboard.md).
 
-2. **Kompass (Navigation)** builds on Sugarcoat's Component model to implement specialized navigation nodes: path planners, motion controllers, and drivers. These nodes communicate through Sugarcoat Topics, react to Sugarcoat Events, and recover from failures using Sugarcoat Fallbacks.
+## Recipes
 
-3. **EmbodiedAgents (Intelligence)** builds on the same Component model to implement cognitive nodes: vision-language models, semantic routers, and memory systems. These nodes can trigger navigation behaviors in Kompass, respond to navigation events, and share data through the common Topic infrastructure.
-
-At runtime, all three layers are unified by the **Launcher**, which brings the complete system to life in a single Python script --- the Recipe. The Recipe declares which components to run, how they are wired together, what events to monitor, and what actions to take when conditions change. The result is a robot that can see, think, move, and adapt, all orchestrated from one coherent system.
-
-## Recipes: The Developer Interface
-
-A Recipe is a standard Python script that uses the EMOS API to declare an entire robotic application. Recipes are not just scripts; they are complete agentic workflows that combine intelligence, navigation, and system orchestration into a single, readable specification.
+A recipe is a Python script that declares a whole application: which components run, how they are wired, which plugin adapts the robot, which events matter and what happens when they fire. There are no launch files and no scattered configuration.
 
 ```python
 from ros_sugar import Launcher
-from ros_sugar.core import Event, Action
+from ros_sugar.core import Event
 from ros_sugar.io import Topic
+from myrobot_plugin import MyRobotPlugin
 
-# Define components from any EMOS layer
-# ... intelligence components from EmbodiedAgents
-# ... navigation components from Kompass
-# ... custom components built on Sugarcoat
+# Components from any layer: perception from EmbodiedAgents,
+# planning and control from Kompass, or your own on Sugarcoat
 
-# Wire them together with Topics, Events, and Actions
-# Launch everything with a single call
-launcher = Launcher(multi_processing=True)
-launcher.add_pkg(components=[...], events_actions={...})
+robot = MyRobotPlugin()
+launcher = Launcher()
+launcher.add_plugin(robot)
+launcher.add_pkg(components=[planner, controller], package_name="kompass", multiprocessing=True)
+launcher.add_pkg(components=[vision, agent], package_name="agents", multiprocessing=True)
+launcher.on(robot.events.low_battery(20.0), robot.actions.dock())
 launcher.bringup()
 ```
 
-This imperative, Pythonic approach replaces the traditional ROS2 workflow of XML launch files and YAML configurations with a single source of truth that is easy to read, version, and share.
+The same script runs from a terminal while it is being written and through `emos run` or the dashboard once it is done. [Running Recipes](../getting-started/running-recipes.md) covers both.

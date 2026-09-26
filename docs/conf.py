@@ -78,13 +78,9 @@ autodoc2_class_docstring = "both"
 autodoc2_render_plugin = "myst"
 autodoc2_hidden_objects = ["private", "dunder", "undoc"]
 autodoc2_module_all_regexes = [
-    r"agents.config",
-    r"agents.models",
-    r"agents.vectordbs",
-    r"agents.ros",
-    r"agents.clients\.[^\.]+",
-    r"components\*",
-    r"core\*",
+    r"agents\.(config|models|ros|vectordbs)",
+    r"agents\.clients\.[^\.]+",
+    r"kompass\.(control|robot)",
 ]
 
 templates_path = ["_templates"]
@@ -119,6 +115,7 @@ language = "en"
 html_theme = "shibuya"
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
+html_js_files = ["sidebar-scroll.js"]
 html_favicon = "_static/favicon.png"
 sitemap_url_scheme = "{link}"
 
@@ -147,15 +144,22 @@ LLMS_TXT_SELECTION = [
     "why-emos.md",
     "getting-started/installation.md",
     "getting-started/quickstart.md",
+    "getting-started/dashboard.md",
+    "getting-started/running-recipes.md",
+    "getting-started/plugins.md",
+    "getting-started/mapping.md",
     "getting-started/cli.md",
+    "getting-started/troubleshooting.md",
     # Core Concepts -- understand the architecture before writing code
     "concepts/architecture.md",
     "concepts/components.md",
     "concepts/topics.md",
     "concepts/events-and-actions.md",
+    "concepts/routines.md",
     "concepts/status-and-fallbacks.md",
     "concepts/launcher.md",
     "concepts/robot-plugins.md",
+    "concepts/web-ui.md",
     # Intelligence Layer (EmbodiedAgents) -- components, clients, models
     "intelligence/overview.md",
     "intelligence/ai-components.md",
@@ -170,9 +174,11 @@ LLMS_TXT_SELECTION = [
     "navigation/control.md",
     "navigation/drive-manager.md",
     "navigation/mapping.md",
+    "navigation/mission-manager.md",
     "navigation/motion-server.md",
     # Cognition Recipes -- from simple to complete agent
     "recipes/foundation/conversational-agent.md",
+    "recipes/foundation/local-models.md",
     "recipes/foundation/prompt-engineering.md",
     "recipes/foundation/semantic-map.md",
     "recipes/foundation/goto-navigation.md",
@@ -186,9 +192,12 @@ LLMS_TXT_SELECTION = [
     "recipes/planning-and-manipulation/planning-models.md",
     "recipes/planning-and-manipulation/vla-manipulation.md",
     "recipes/planning-and-manipulation/event-driven-vla.md",
+    "recipes/planning-and-manipulation/moveit-manipulation.md",
     # Navigation Recipes
     "recipes/navigation/simulation-quickstarts.md",
     "recipes/navigation/point-navigation.md",
+    "recipes/navigation/real-robot-navigation.md",
+    "recipes/navigation/multi-waypoint-mission.md",
     "recipes/navigation/path-recording.md",
     "recipes/navigation/motion-testing.md",
     "recipes/navigation/vision-tracking-rgb.md",
@@ -203,6 +212,7 @@ LLMS_TXT_SELECTION = [
     "recipes/events-and-resilience/cross-component-events.md",
     "recipes/events-and-resilience/composed-events.md",
     "recipes/events-and-resilience/context-aware-actions.md",
+    "recipes/events-and-resilience/motion-detection.md",
     # Advanced -- configuration, extending, algorithms
     "advanced/configuration.md",
     "advanced/extending.md",
@@ -235,8 +245,12 @@ def generate_llms_txt(app, exception):
     preamble = (
         "# EMOS Documentation -- Context for AI Agents\n\n"
         "You are an expert EMOS recipe developer. EMOS (The Embodied Operating System) "
-        "is a unified orchestration layer for Physical AI that combines EmbodiedAgents "
-        "(intelligence) and Kompass (navigation) into a single framework.\n\n"
+        "is a unified orchestration layer for Physical AI built on three packages: "
+        "Sugarcoat (components, events, actions, routines and the launcher), "
+        "EmbodiedAgents (intelligence) and Kompass (navigation). A robot is connected to a "
+        "recipe either through an EMOS robot plugin, which adapts the robot's own interfaces, "
+        "actions, events, localization and mapping, or, when no plugin exists for it, "
+        "through its plain ROS 2 topics.\n\n"
         "## How to Write an EMOS Recipe\n\n"
         "An EMOS Recipe is a pure Python script that defines a robot behavior. "
         "When writing recipes, follow these principles:\n\n"
@@ -251,16 +265,32 @@ def generate_llms_txt(app, exception):
         "model_client. Set `trigger` to control when the component executes. Use `Memory` "
         "for spatio-temporal memory and `Cortex` as an agentic harness that auto-discovers "
         "the rest of the graph as LLM tools.\n"
-        "4. **Wire Navigation** -- For mobile robots, configure a `RobotConfig` and "
-        "instantiate Kompass components (Planner, Controller, DriveManager) with appropriate "
-        "algorithms (DWA, PurePursuit, etc.).\n"
-        "5. **Add Events & Fallbacks** -- Use `on_fail()` per component for restart-style "
-        "recovery, `launcher.on_process_fail()` for process-level crash recovery, and custom "
-        "event/action pairs for runtime adaptivity. Events can trigger model swaps, component "
-        "restarts, or arbitrary callbacks.\n"
-        "6. **Launch** -- Use `Launcher()` to add component packages with "
-        "`launcher.add_pkg(components=[...], multiprocessing=True)` and call `bringup()`. "
-        "The `multiprocessing` flag goes on `add_pkg`, not on the Launcher constructor.\n\n"
+        "4. **Connect the Robot** -- First check whether an EMOS plugin exists for the robot "
+        "(`emos plugin list` shows the catalog; the Plugins page lists them). If one exists, "
+        "use it, whether or not the robot also has ROS 2 interfaces: "
+        "`launcher.add_plugin(robot)`, topics declared with `use_plugin=True` (or a sensor "
+        "plugin's id) are served by the plugin, its events and actions are "
+        "`robot.events.<name>()` and `robot.actions.<name>()`, and it supplies the `RobotConfig` "
+        "and base frame. If no plugin exists, use the robot's ROS 2 topics directly with "
+        "`Topic(name=..., msg_type=...)` and describe it with `launcher.robot = RobotConfig(...)` "
+        "(every field is mandatory: `RobotType`, `RobotGeometryType`, `geometry_params`, "
+        "`LinearCtrlLimits(max_vel, max_acc, max_decel)`, "
+        "`AngularCtrlLimits(max_omega, max_acc, max_decel, max_ang)`).\n"
+        "5. **Wire Navigation** -- Instantiate Kompass components (Planner, Controller, "
+        "DriveManager, LocalMapper, MapServer, MissionManager) with appropriate algorithms "
+        "(DWA, PurePursuit, Stanley, DVZ, vision followers). The MapServer takes a map file "
+        "path, or `robot.MAPPING.active_grid_path()` for a map built with `emos map` on a "
+        "robot with a plugin.\n"
+        "6. **Add Events, Routines & Fallbacks** -- Register events with "
+        "`launcher.on(event, action)`; a `Routine` sequences monitored actions with a success "
+        "condition, timeout and retries per step. Use `on_fail(action=...)` per component for "
+        "recovery, `launcher.on_process_fail()` for process-level crash recovery. Every action "
+        "returns `(success, message)`.\n"
+        "7. **Launch** -- Add component packages with "
+        "`launcher.add_pkg(components=[...], package_name=..., multiprocessing=True)` and call "
+        "`bringup()`. The `multiprocessing` flag goes on `add_pkg`, not on the Launcher "
+        "constructor, and there is no `launcher.kompass()`. `launcher.enable_ui(...)` serves an "
+        "HTTPS web interface and JSON API for the recipe.\n\n"
         "The documentation below is ordered as a curriculum: architecture first, then "
         "components and APIs, then example recipes of increasing complexity.\n\n"
         "---\n\n"

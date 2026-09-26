@@ -23,7 +23,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 
 from kompass.robot import (
-    AngularCtrlLimits, LinearCtrlLimits, RobotGeometry, RobotType, RobotConfig, RobotFrames
+    AngularCtrlLimits, LinearCtrlLimits, RobotGeometryType, RobotType, RobotConfig
 )
 from kompass.components import (
     DriveManager, DriveManagerConfig, MapServer, MapServerConfig,
@@ -38,10 +38,10 @@ def run_motion_test():
     # Define physical limits (crucial for the MotionServer to generate valid test commands)
     my_robot = RobotConfig(
         model_type=RobotType.DIFFERENTIAL_DRIVE,
-        geometry_type=RobotGeometry.Type.CYLINDER,
+        geometry_type=RobotGeometryType.CYLINDER,
         geometry_params=np.array([0.1, 0.3]),
         ctrl_vx_limits=LinearCtrlLimits(max_vel=0.4, max_acc=1.5, max_decel=2.5),
-        ctrl_omega_limits=AngularCtrlLimits(max_vel=0.4, max_acc=2.0, max_decel=2.0, max_steer=np.pi / 3),
+        ctrl_omega_limits=AngularCtrlLimits(max_omega=0.4, max_acc=2.0, max_decel=2.0, max_ang=np.pi / 3),
     )
 
     # 2. Configure Motion Server
@@ -85,14 +85,13 @@ def run_motion_test():
 
     # 6. Launch
     launcher = Launcher()
-    launcher.kompass(components=[map_server, driver, motion_server], multiprocessing=True)
+    launcher.add_pkg(components=[map_server, driver, motion_server], package_name="kompass", multiprocessing=True)
 
     # Link Odometry (the response we want to record)
     odom_topic = Topic(name="/odometry/filtered", msg_type="Odometry")
     launcher.inputs(location=odom_topic)
 
     launcher.robot = my_robot
-    launcher.frames = RobotFrames(world="map", odom="map", scan="LDS-01")
 
     # 7. Enable UI
     # Expose the RUN_TESTS input so we can trigger it from the browser
@@ -121,7 +120,7 @@ python3 motion_test.py
 
 ### 2. Open the UI
 
-Open your browser to the local UI URL (e.g., `http://0.0.0.0:5001`). You will see the map and the robot.
+Open your browser to the local UI URL (e.g., `https://localhost:5001`). You will see the map and the robot.
 
 ### 3. Trigger the Test
 
@@ -179,6 +178,6 @@ The **MotionServer** generates commands, but usually sends them to the **DriveMa
 ---
 
 ```{tip}
-**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+**Promote this recipe to production.** While you are shaping it, run the script directly with `python recipe.py`. Once it is solid, drop it at `~/emos/recipes/<name>/recipe.py` and start it with `emos run <name>`, or from the dashboard. Either way every run is logged under `~/emos/logs`, and an operator gets a card to launch it from a browser. [Running Recipes](../../getting-started/running-recipes.md) covers the two ways of running a recipe and what differs per install mode.
 ```
 

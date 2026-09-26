@@ -63,7 +63,7 @@ def navigate_to_location(location_name: str):
 
 ```python
 from kompass.ros import Event, Action
-from sugar.msg import ComponentStatus
+from automatika_ros_sugar.msg import ComponentStatus
 
 # Trigger on any new command, but only if the mapper is healthy
 event_command_received = Event(
@@ -128,14 +128,14 @@ import os
 import subprocess
 import numpy as np
 
-from sugar.msg import ComponentStatus
+from automatika_ros_sugar.msg import ComponentStatus
 from kompass.components import (
     Controller, DriveManager, Planner, PlannerConfig, LocalMapper,
 )
 from kompass.config import RobotConfig
 from kompass.control import ControllersID
 from kompass.robot import (
-    AngularCtrlLimits, LinearCtrlLimits, RobotGeometry, RobotType,
+    AngularCtrlLimits, LinearCtrlLimits, RobotGeometryType, RobotType,
 )
 from kompass.ros import Topic, Launcher, Action, Event
 
@@ -164,11 +164,11 @@ command_topic = Topic(name="/user_command", msg_type="String")
 # --- Robot Configuration ---
 my_robot = RobotConfig(
     model_type=RobotType.DIFFERENTIAL_DRIVE,
-    geometry_type=RobotGeometry.Type.CYLINDER,
+    geometry_type=RobotGeometryType.CYLINDER,
     geometry_params=np.array([0.1, 0.3]),
     ctrl_vx_limits=LinearCtrlLimits(max_vel=0.2, max_acc=1.5, max_decel=2.5),
     ctrl_omega_limits=AngularCtrlLimits(
-        max_vel=0.4, max_acc=2.0, max_decel=2.0, max_steer=np.pi / 3
+        max_omega=0.4, max_acc=2.0, max_decel=2.0, max_ang=np.pi / 3
     ),
 )
 
@@ -209,10 +209,11 @@ events_actions = {
 
 # --- Launch ---
 launcher = Launcher()
-launcher.kompass(
+launcher.add_pkg(
     components=[planner, controller, driver, mapper],
+    package_name="kompass",
     activate_all_components_on_start=True,
-    multi_processing=True,
+    multiprocessing=True,
     events_actions=events_actions,
 )
 
@@ -225,6 +226,6 @@ launcher.bringup()
 ---
 
 ```{tip}
-**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+**Promote this recipe to production.** While you are shaping it, run the script directly with `python recipe.py`. Once it is solid, drop it at `~/emos/recipes/<name>/recipe.py` and start it with `emos run <name>`, or from the dashboard. Either way every run is logged under `~/emos/logs`, and an operator gets a card to launch it from a browser. [Running Recipes](../../getting-started/running-recipes.md) covers the two ways of running a recipe and what differs per install mode.
 ```
 

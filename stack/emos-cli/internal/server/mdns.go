@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	mdnsServiceType   = "_emos._tcp"
-	mdnsSharedHost    = "emos" // shared shortcut: any EMOS device on the LAN
+	mdnsServiceType         = "_emos._tcp"
+	mdnsSharedHost          = "emos" // shared shortcut: any EMOS device on the LAN
 	mdnsSharedInstanceLabel = "EMOS"
 )
 

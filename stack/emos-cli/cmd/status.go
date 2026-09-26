@@ -18,8 +18,9 @@ var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Display EMOS installation status",
 	Run: func(cmd *cobra.Command, args []string) {
-		ui.Banner(config.Version)
+		banner()
 		ui.StatusCard(config.Version)
+		printChannel()
 		printUpdateAvailable()
 
 		cfg := config.LoadConfig()
@@ -27,6 +28,7 @@ var statusCmd = &cobra.Command{
 			fmt.Println()
 			ui.Error("No EMOS installation found.")
 			ui.Faint("Run 'emos install' to get started.")
+			statusLicense()
 			return
 		}
 
@@ -35,7 +37,7 @@ var statusCmd = &cobra.Command{
 		ui.Info("ROS Distro: " + cfg.ROSDistro)
 
 		switch cfg.Mode {
-		case config.ModeOSSContainer, config.ModeLicensed:
+		case config.ModeOSSContainer:
 			status := container.Status(config.ContainerName)
 			switch status {
 			case "running":
@@ -55,14 +57,7 @@ var statusCmd = &cobra.Command{
 		case config.ModePixi:
 			pixiStatus(cfg)
 		}
-
-		if cfg.Mode == config.ModeLicensed {
-			if cfg.LicenseKey != "" {
-				ui.Success("License Key: Configured")
-			} else {
-				ui.Warn("License Key: Not set")
-			}
-		}
+		statusLicense()
 	},
 }
 
@@ -173,6 +168,7 @@ func checkPackages(tryImport func(module string) error, listROSPkgs func() (stri
 		"automatika_embodied_agents",
 		"kompass",
 		"kompass_interfaces",
+		"emos_mapping",
 	}
 
 	for _, name := range rosPkgs {
@@ -182,4 +178,14 @@ func checkPackages(tryImport func(module string) error, listROSPkgs func() (stri
 			ui.Error(fmt.Sprintf("  %s: Not found", name))
 		}
 	}
+}
+
+// printChannel says when this binary follows the nightly builds, and how to
+// leave them.
+func printChannel() {
+	if config.Channel() != "dev" {
+		return
+	}
+	ui.Faint("Channel: dev (nightly builds of unreleased EMOS)")
+	ui.Faint("Back to stable: curl -fsSL " + config.InstallerURL() + " | sudo bash, then 'emos update'")
 }

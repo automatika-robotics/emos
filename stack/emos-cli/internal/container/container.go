@@ -57,17 +57,6 @@ func Remove(name string) error {
 	return err
 }
 
-func Login(registry, user, token string) error {
-	cmd := docker("login", registry, "-u", user, "--password-stdin")
-	cmd.Stdin = strings.NewReader(token)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("docker login failed: %s", strings.TrimSpace(stderr.String()))
-	}
-	return nil
-}
-
 func Pull(image string) error {
 	cmd := docker("pull", image)
 	cmd.Stdout = os.Stdout
@@ -100,13 +89,6 @@ func Run(name, image string, extraArgs ...string) error {
 	args = append(args, extraArgs...)
 	args = append(args, image)
 	_, err := run(args...)
-	return err
-}
-
-func RunWithArgs(name, image string, args []string) error {
-	fullArgs := append([]string{"run"}, args...)
-	fullArgs = append(fullArgs, "--name", name, image)
-	_, err := run(fullArgs...)
 	return err
 }
 
@@ -144,33 +126,6 @@ func Exec(name, command string) (string, error) {
 
 func ExecDetached(name, command string) error {
 	_, err := run("exec", "-d", name, "bash", "-c", command)
-	return err
-}
-
-func ExecInteractive(name, command string) error {
-	cmd := docker("exec", "-it", name, "bash", "-c", command)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-func Cp(name, src, dst string) error {
-	_, err := run("cp", src, name+":"+dst)
-	return err
-}
-
-func CpFrom(name, src, dst string) error {
-	_, err := run("cp", name+":"+src, dst)
-	return err
-}
-
-func Top(name string) (string, error) {
-	return run("top", name)
-}
-
-func Restart(name string) error {
-	_, err := run("restart", name)
 	return err
 }
 

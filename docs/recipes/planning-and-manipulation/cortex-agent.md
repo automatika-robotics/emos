@@ -19,23 +19,25 @@ A capability component such as `Vision` exposes its primary work as topics (`/de
 ```python
 class Vision(Component):
     @component_action(description={...})
-    def track(self, label: str): ...
+    def track(self, label: str) -> ActionReturnType: ...
 
     @component_action(description={...})
-    def take_picture(self, save_path: str = "..."): ...
+    def take_picture(self, save_path: str = "...") -> ActionReturnType: ...
 ```
 
-These actions are normally invisible -- they require explicit wiring through the events/actions system to be useful. **Cortex changes that.** When you drop a Cortex component into the launcher, on activation it walks every managed component and discovers:
+Each returns `(success, message)`, and the message is what a caller sees. These actions are normally invisible -- they require explicit wiring through the events/actions system to be useful. **Cortex changes that.** When you drop a Cortex component into the launcher, the launcher hands it a registry of everything in the recipe that can be called by name, from every component in every process, and on activation Cortex turns the entries into tools:
 
 | What gets discovered | What Cortex does with it |
 |---|---|
-| `@component_action` methods | Auto-registers as an LLM tool, namespaced as `{component}.{method}`. Each carries its OpenAI-format description so the planner knows what it does. |
+| `@component_action` methods | Auto-registers as an LLM tool, namespaced as `{component}-{method}`. Each carries its OpenAI-format description so the planner knows what it does. |
 | `@component_fallback` methods | Same as above -- exposed as callable recovery tools the planner can fall back to. |
-| Additional ROS services (`get_ros_entrypoints()`) | Registered as `send_request_to_{name}`, with the request schema auto-translated to JSON properties so the LLM can fill the fields. |
-| Additional ROS action servers | Registered as `send_goal_to_{name}` with the same schema translation. |
+| Additional ROS services (`get_ros_entrypoints()`) | Registered as `send_request_to_{component}_{service}`, with the request schema auto-translated to JSON properties so the LLM can fill the fields. |
+| Additional ROS action servers | Registered as `send_goal_to_{component}_{server}` with the same schema translation, plus a `wait_to_finish` flag that decides whether the step waits for the goal or lets it run while the plan continues. |
 | The component's main action server | Registered the same way -- so a Planner running as `ActionServer` becomes a callable navigation tool. |
 | Component config parameters | Reachable via the built-in `update_parameter(component, param_name, new_value)` execution tool -- the LLM can re-tune any parameter at runtime. |
 | Component structure | Reachable via the built-in `inspect_component(name)` planning tool -- the LLM reads the recipe live before committing a plan. |
+| Routines hosted by the Monitor, from events, the web UI or `Cortex(routines=[...])` | Each becomes a `routine-<name>` tool, a whole procedure the planner can start, with `pause_routine`, `resume_routine` and `abort_routine` beside it. |
+| Time | The built-in `wait(duration)` execution tool, for a plan that has to hold for a moment. |
 
 Every one of those tools is automatic. You write the components; Cortex makes them addressable.
 
@@ -45,11 +47,11 @@ Every one of those tools is automatic. You write the components; Cortex makes th
 
 A robot that, when you tell it *"describe what you see and then start tracking the person"*, will:
 
-1. Plan three steps -- call `vlm.describe`, feed its answer to `tts.say`, then call `vision.track`.
-2. Execute them in order -- describing the scene, speaking the description through `tts.say`, then asking `Vision` to start tracking the requested label.
+1. Plan three steps -- call `vlm-describe`, feed its answer to `tts-say`, then call `vision-track`.
+2. Execute them in order -- describing the scene, speaking the description through `tts-say`, then asking `Vision` to start tracking the requested label.
 3. Report each step's result back into the planning loop and close out the episode.
 
-The recipe is short. There is no event wiring. There are no fallback policies. There are no topic-routed connections between the VLM, the TTS, and Cortex -- speech happens because Cortex calls `tts.say()` as a tool, not because some output topic is silently subscribed by TTS. We don't write a single prompt either -- Cortex's built-in prompts plus the auto-discovered tool descriptions are the prompt.
+The recipe is short. There is no event wiring. There are no fallback policies. There are no topic-routed connections between the VLM, the TTS, and Cortex -- speech happens because Cortex calls `tts-say()` as a tool, not because some output topic is silently subscribed by TTS. We don't write a single prompt either -- Cortex's built-in prompts plus the auto-discovered tool descriptions are the prompt.
 
 ---
 
@@ -81,7 +83,7 @@ vision = Vision(
     component_name="vision",
 )
 
-# VLM — visual question answering. Cortex invokes it via ``vlm.describe``,
+# VLM — visual question answering. Cortex invokes it via ``vlm-describe``,
 # and the action's return value comes back as the tool result.
 vlm_model = OllamaModel(name="qwen_vl", checkpoint="qwen2.5vl:latest")
 vlm_client = OllamaClient(vlm_model)
@@ -97,7 +99,7 @@ vlm = VLM(
     component_name="vlm",
 )
 
-# TTS — speech happens via Cortex calling ``tts.say(text=...)``.
+# TTS — speech happens via Cortex calling ``tts-say(text=...)``.
 tts_input = Topic(name="tts_input", msg_type="String")
 
 tts = TextToSpeech(
@@ -125,7 +127,7 @@ planner_client = OllamaClient(planner_model)
 
 # Cortex publishes its text-only replies (cases where the planner decides no
 # tool calls are needed) to this topic for downstream consumers (e.g. the Web
-# UI). When the planner *does* want the robot to speak, it calls ``tts.say``
+# UI). When the planner *does* want the robot to speak, it calls ``tts-say``
 # as a tool -- it does not rely on this topic being subscribed by TTS.
 cortex_output = Topic(name="cortex_output", msg_type="String")
 
@@ -194,20 +196,20 @@ launcher.bringup()
 
 ## Talking to the agent
 
-Open the Web UI at `http://localhost:5001` and send tasks in plain English:
+Open the Web UI at `https://localhost:5001`, accept the self-signed certificate once, and send tasks in plain English:
 
 | Goal | What Cortex plans |
 |---|---|
-| *"describe what you see"* | Two steps: `vlm.describe` produces a sentence; `tts.say` is called with that sentence as its `text` argument. |
-| *"start tracking the person"* | One step: `vision.track(label="person")`. The Vision component's `@component_action` starts continuous tracking on the named label (results stream on the `trackings` topic) and returns a confirmation string immediately. |
+| *"describe what you see"* | Two steps: `vlm-describe` produces a sentence; `tts-say` is called with that sentence as its `text` argument. |
+| *"start tracking the person"* | One step: `vision-track(label="person")`. The Vision component's `@component_action` starts continuous tracking on the named label (results stream on the `trackings` topic) and returns `(True, message)`, and the planner sees the message immediately. |
 | *"take a picture, describe it, then track whatever's in front of you"* | Three steps, sequenced. The third step's argument is bound from the second step's output -- Cortex resolves `<output from step 2>` placeholders at runtime. |
 | *"toggle the LED"* | One step: the custom `toggle_led` action you registered. |
-| *"are you ok?"* | No actions needed. The planner returns text only; the reply lands on the `cortex_output` topic. (If you want it spoken, your prompt can nudge the planner to always end with a `tts.say` call.) |
+| *"are you ok?"* | No actions needed. The planner returns text only; the reply lands on the `cortex_output` topic. (If you want it spoken, your prompt can nudge the planner to always end with a `tts-say` call.) |
 
 Or send a goal from another terminal directly to Cortex's action server:
 
 ```shell
-ros2 action send_goal /cortex_<process_id>/cortex_input_command \
+ros2 action send_goal /cortex/cortex_input_command \
     automatika_embodied_agents/action/VisionLanguageAction \
     "{task: 'describe what you see and track the person'}"
 ```
@@ -221,13 +223,13 @@ Watch the launcher's main logging card to see the planning trace, the goals Cort
 When you sent the goal *"describe what you see and then start tracking the person"*, Cortex:
 
 1. Built a plan via the planning loop. The first iteration optionally called `inspect_component("vision")` to confirm the tool surface, then committed three execution tool calls.
-2. Confirmed and called each step in turn. The first (`vlm.describe`) returned a text description; the second (`tts.say`) was called with that description bound as its `text` argument and the speaker spoke it; the third (`vision.track`) asked the Vision component to start continuous tracking on the named label and returned a confirmation string. Tracking results then streamed on the component's `trackings` topic for any downstream consumer to use.
+2. Confirmed and called each step in turn. The first (`vlm-describe`) returned a text description; the second (`tts-say`) was called with that description bound as its `text` argument and the speaker spoke it; the third (`vision-track`) asked the Vision component to start continuous tracking on the named label and returned a confirmation string. Tracking results then streamed on the component's `trackings` topic for any downstream consumer to use.
 3. With every step's tool result folded back into the trace, the episode closed and the plan returned `SUCCEEDED`.
 
 Compare that to the equivalent recipe written without Cortex: bespoke event wiring for the trigger, hand-tuned prompts on each component, manual sequencing of the speech and tracking calls. **Cortex collapses all of that into the one component you just dropped in.**
 
 ```{tip}
-For the long-running case -- where Cortex *should* dispatch a Kompass action server like the Controller's `track_vision_target` (or the Planner's `navigate_to_goal`) and watch its feedback stream until the goal completes -- add the `Controller` (or `Planner`) component to the launcher. Cortex auto-registers each one's main action server as `send_goal_to_<server>` and switches into asynchronous monitoring mode. See [Cortex Driving the Full Stack](cortex-navigation.md).
+For the long-running case -- where Cortex *should* dispatch a Kompass action server like the Controller's `track_vision_target` (or the Planner's `navigate_to_goal`) and watch its feedback stream until the goal completes -- add the `Controller` (or `Planner`) component to the launcher. Cortex auto-registers each one's main action server as `send_goal_to_<component>_<server>` and switches into asynchronous monitoring mode. See [Cortex Driving the Full Stack](cortex-navigation.md).
 ```
 
 ---
@@ -241,6 +243,6 @@ For the long-running case -- where Cortex *should* dispatch a Kompass action ser
 ---
 
 ```{tip}
-**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+**Promote this recipe to production.** While you are shaping it, run the script directly with `python recipe.py`. Once it is solid, drop it at `~/emos/recipes/<name>/recipe.py` and start it with `emos run <name>`, or from the dashboard. Either way every run is logged under `~/emos/logs`, and an operator gets a card to launch it from a browser. [Running Recipes](../../getting-started/running-recipes.md) covers the two ways of running a recipe and what differs per install mode.
 ```
 

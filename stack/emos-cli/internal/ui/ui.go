@@ -1,7 +1,10 @@
 package ui
 
 import (
+	"bufio"
+	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -38,9 +41,13 @@ const banner = `
 ███████╗██║ ╚═╝ ██║╚██████╔╝███████║
 ╚══════╝╚═╝     ╚═╝ ╚═════╝ ╚══════╝`
 
-func Banner(version string) {
+// Banner prints the logo and the version, and under them any lines given.
+func Banner(version string, lines ...string) {
 	fmt.Println(bannerStyle.Render(banner))
 	fmt.Println(boldBlue.Render(fmt.Sprintf("  EmbodiedOS Management CLI v%s", version)))
+	for _, line := range lines {
+		Faint(line)
+	}
 	fmt.Println()
 }
 
@@ -114,18 +121,51 @@ func Confirm(prompt string) bool {
 	return result
 }
 
+// Input asks for a line of text, falling back to defaultVal when the answer is
+// empty or the prompt is cancelled.
 func Input(prompt, defaultVal string) string {
+	result, err := Prompt(prompt, defaultVal)
+	if err != nil {
+		return defaultVal
+	}
+	return result
+}
+
+// Prompt asks for a line of text, returning defaultVal for an empty answer and
+// an error when the user cancels with Ctrl+C.
+func Prompt(prompt, defaultVal string) (string, error) {
 	var result string
-	huh.NewInput().
+	err := huh.NewInput().
 		Title(prompt).
 		Value(&result).
 		Placeholder(defaultVal).
 		WithTheme(huhTheme()).
 		Run()
-	if result == "" {
-		return defaultVal
+	if err != nil {
+		return "", err
 	}
-	return result
+	if result == "" {
+		return defaultVal, nil
+	}
+	return result, nil
+}
+
+// WaitForEnter prints title, styled like a form's button, and waits for the
+// Enter key, or for ctx to end. It draws nothing after that, so other output
+// can appear while it waits.
+func WaitForEnter(ctx context.Context, title string) error {
+	fmt.Printf("  %s\n", huhTheme().Focused.FocusedButton.Render(title))
+	pressed := make(chan struct{})
+	go func() {
+		bufio.NewReader(os.Stdin).ReadString('\n')
+		close(pressed)
+	}()
+	select {
+	case <-pressed:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func Spinner(title string, fn func() error) error {

@@ -1,6 +1,6 @@
-// Package tlsca mints and persists a self-signed TLS certificate for the
-// EMOS dashboard. The certificate is created on first boot, stored under
-// ~/.config/emos/, and rotated when nearing expiry.
+// Package tlsca mints and persists the robot's self-signed TLS certificate,
+// served by the EMOS dashboard and every recipe UI. It is created on first
+// use, stored under ~/emos/.ui-security/, and rotated when nearing expiry.
 package tlsca
 
 import (
@@ -54,8 +54,8 @@ func Ensure(deviceName string) (*Info, error) {
 // Generate mints a fresh self-signed certificate and persists it,
 // overwriting any existing files.
 func Generate(deviceName string) (*Info, error) {
-	if err := os.MkdirAll(config.ConfigDir, 0o700); err != nil {
-		return nil, fmt.Errorf("ensure config dir: %w", err)
+	if err := os.MkdirAll(config.UISecurityDir, 0o700); err != nil {
+		return nil, fmt.Errorf("ensure certificate dir: %w", err)
 	}
 
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -136,7 +136,7 @@ func Paths() (certPath, keyPath string) { return paths() }
 // --- internals ---
 
 func paths() (string, string) {
-	return filepath.Join(config.ConfigDir, certFile), filepath.Join(config.ConfigDir, keyFile)
+	return filepath.Join(config.UISecurityDir, certFile), filepath.Join(config.UISecurityDir, keyFile)
 }
 
 func load() (*Info, error) {

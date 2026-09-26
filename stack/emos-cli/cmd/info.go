@@ -14,13 +14,14 @@ import (
 
 var infoCmd = &cobra.Command{
 	Use:   "info <recipe_name_or_path>",
-	Short: "Show sensor and topic requirements for a recipe",
-	Long: `Inspect a recipe's Python source to extract Topic declarations via AST analysis.
+	Short: "Show the topics a recipe uses and what provides them",
+	Long: `Inspect a recipe's Python source to extract Topic declarations via AST analysis,
+including whether a plugin or a ROS topic provides each one.
 
 Accepts either a recipe name (looked up in ~/emos/recipes/) or a direct path to a .py file.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ui.Banner(config.Version)
+		banner()
 		return runInfo(args[0])
 	},
 }
@@ -55,13 +56,6 @@ func runInfo(arg string) error {
 	if err != nil {
 		return err
 	}
-
-	// Determine distro from config or default
-	distro := "jazzy"
-	if cfg := config.LoadConfig(); cfg != nil && cfg.ROSDistro != "" {
-		distro = cfg.ROSDistro
-	}
-
-	runner.DisplayTopicInfo(recipeName, topics, distro)
+	runner.DisplayTopicInfo(recipeName, topics, config.LoadConfig())
 	return nil
 }

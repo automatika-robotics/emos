@@ -11,14 +11,13 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/automatika-robotics/emos-cli/internal/config"
+	"github.com/automatika-robotics/emos-cli/internal/plugin"
 	"github.com/automatika-robotics/emos-cli/internal/runner"
 )
 
 type startRunBody struct {
-	Recipe          string `json:"recipe"`
-	RMW             string `json:"rmw,omitempty"`
-	SkipSensorCheck bool   `json:"skip_sensor_check,omitempty"`
+	Recipe string `json:"recipe"`
+	RMW    string `json:"rmw,omitempty"`
 }
 
 func (s *Server) handleRunsList(w http.ResponseWriter, r *http.Request) {
@@ -49,10 +48,7 @@ func (s *Server) handleRunsStart(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, codeBadRequest, "invalid recipe name")
 		return
 	}
-	if body.RMW == "" {
-		body.RMW = "rmw_zenoh_cpp"
-	}
-	if !validRMW(body.RMW) {
+	if body.RMW != "" && !runner.ValidRMW(body.RMW) {
 		writeErr(w, http.StatusBadRequest, codeBadRequest, "invalid rmw implementation")
 		return
 	}
@@ -78,15 +74,28 @@ func (s *Server) handleRunsStart(w http.ResponseWriter, r *http.Request) {
 		cancelCh:       make(chan struct{}),
 		handleAttached: make(chan struct{}),
 	}
-	if err := s.runtime.TryLock(run); err != nil {
+	// Claimed under workMu, the same as a plugin job, so a recipe and a plugin
+	// change can never both start.
+	s.workMu.Lock()
+	if plugin.Busy() {
+		s.workMu.Unlock()
+		writeErr(w, http.StatusConflict, codeConflict,
+			"plugins are being installed, updated or removed; try again once that finishes")
+		return
+	}
+	err = s.runtime.TryLock(run)
+	s.workMu.Unlock()
+	if err != nil {
 		writeErr(w, http.StatusConflict, codeAlreadyRunning,
 			"a recipe is already running; stop it before starting a new one")
 		return
 	}
 
-	go s.runRecipeAsync(run, recipeDir, body)
+	// A copy, since the run changes as soon as it starts.
+	accepted := s.runtime.Get(run.ID)
+	s.goTracked(func() { s.runRecipeAsync(run, recipeDir, body) })
 
-	writeJSON(w, http.StatusAccepted, run)
+	writeJSON(w, http.StatusAccepted, accepted)
 }
 
 // runRecipeAsync owns the full lifecycle of a single run from preparing
@@ -94,139 +103,68 @@ func (s *Server) handleRunsStart(w http.ResponseWriter, r *http.Request) {
 // Run record's Error field. Cancellation during preparing flips the run to
 // canceled at the next checkpoint.
 func (s *Server) runRecipeAsync(run *Run, recipeDir string, body startRunBody) {
-	logf, err := openSetupLog(run.LogPath)
+	logf, err := runner.OpenLog(run.LogPath)
 	if err != nil {
 		s.runtime.FailPreflight(run, fmt.Errorf("open log file: %w", err))
 		return
 	}
-	defer func() {
-		// Close only if we never attached a process; the recipe process
-		// inherits the file descriptor when started by StartRecipe.
-		if run.handle == nil {
-			logf.Close()
-		}
-	}()
-
 	step := func(format string, a ...any) {
 		fmt.Fprintf(logf, "[setup] "+format+"\n", a...)
 	}
-	check := func() bool {
+	// fail ends a run that never started its recipe.
+	fail := func(err error) {
+		if errors.Is(err, errRunCanceled) {
+			s.runtime.CancelPreflight(run)
+		} else {
+			step("ERROR: %s", err)
+			s.runtime.FailPreflight(run, err)
+		}
+		logf.Close()
+	}
+	checkpoint := func(stage string) error {
 		select {
 		case <-run.CancelCh():
 			step("cancelled by user")
-			return true
+			return errRunCanceled
 		default:
-			return false
+			step("%s", stage)
+			return nil
 		}
 	}
 
-	step("preparing run: recipe=%s rmw=%s", run.Recipe, run.RMW)
-
+	step("preparing run: recipe=%s, rmw=%s", run.Recipe, runner.RMWLabel(body.RMW))
 	manifest := runner.LoadManifest(filepath.Join(recipeDir, "manifest.json"))
-
-	strategy, err := s.buildStrategy()
+	if robot := manifest.WrongRobot(s.cfg); robot != "" {
+		step("warning: this recipe was installed for the %s, not the robot installed now; pull it again for this robot", s.cfg.PluginLabel(robot))
+	}
+	session, err := runner.Prepare(s.cfg, body.RMW, manifest, checkpoint)
 	if err != nil {
-		step("ERROR: %s", err)
-		s.runtime.FailPreflight(run, err)
+		fail(err)
 		return
 	}
-
-	// Hand the strategy a fresh run for cleanup-after-exit.
-	// We wait on the run's HandleAttached channel for the happens-before
-	// guarantee, then on the handle's Done channel for the actual exit.
-	deferStrategyCleanup := func() {
-		go func() {
-			<-run.HandleAttached()
-			if h := run.Handle(); h != nil {
-				<-h.Done()
-			}
-			_ = strategy.Cleanup()
-		}()
-	}
-
-	step("preparing environment")
-	if err := strategy.PrepareEnvironment(); err != nil {
-		step("ERROR: environment preparation failed: %s", err)
-		s.runtime.FailPreflight(run, err)
-		return
-	}
-	if check() {
-		s.runtime.CancelPreflight(run)
-		return
-	}
-
-	step("setting RMW implementation: %s", body.RMW)
-	if err := strategy.SetRMWImpl(body.RMW); err != nil {
-		step("ERROR: %s", err)
-		s.runtime.FailPreflight(run, err)
-		return
-	}
-
-	if body.RMW == "rmw_zenoh_cpp" {
-		step("starting zenoh router")
-		if err := strategy.ConfigureZenoh(run.Recipe, manifest); err != nil {
-			step("ERROR: %s", err)
-			s.runtime.FailPreflight(run, err)
-			return
-		}
-	}
-	if check() {
-		s.runtime.CancelPreflight(run)
-		return
-	}
-
-	step("launching robot hardware (if configured)")
-	if err := strategy.LaunchRobotHardware(); err != nil {
-		step("ERROR: %s", err)
-		s.runtime.FailPreflight(run, err)
-		return
-	}
-
-	if !body.SkipSensorCheck {
-		step("verifying required sensor topics")
-		topics, _ := runner.ExtractTopics(filepath.Join(recipeDir, "recipe.py"))
-		sensors := runner.SensorTopics(topics)
-		distro := s.cfg.ROSDistro
-		if distro == "" {
-			distro = "jazzy"
-		}
-		if err := strategy.VerifySensorTopics(sensors, distro); err != nil {
-			step("ERROR: %s", err)
-			_ = strategy.Cleanup()
-			s.runtime.FailPreflight(run, err)
-			return
-		}
-	} else {
-		step("sensor verification skipped (--skip-sensor-check)")
-	}
-	if check() {
-		s.runtime.CancelPreflight(run)
-		_ = strategy.Cleanup()
-		return
-	}
-
-	step("starting recipe process")
-	logf.Close() // strategy will reopen for append; avoid two writers
-	handle, err := strategy.StartRecipe(run.Recipe, manifest, run.LogPath)
+	handle, err := session.StartRecipe(run.Recipe, logf)
 	if err != nil {
-		s.runtime.FailPreflight(run, err)
-		_ = strategy.Cleanup()
+		session.Close()
+		fail(err)
 		return
 	}
 
-	s.runtime.AttachHandle(run, handle)
-	deferStrategyCleanup()
+	// A cancel can land after the last checkpoint, while the process starts;
+	// AttachHandle then stops the process.
+	if !s.runtime.AttachHandle(run, handle) {
+		session.Close()
+		logf.Close()
+		return
+	}
+	s.goTracked(func() {
+		<-handle.Done()
+		logf.Close()
+		session.Close()
+	})
 }
 
-// openSetupLog opens (and creates) the run log file in append mode. Used by
-// the pre-flight goroutine to stream "[setup] ..." progress before the
-// recipe process takes over the file.
-func openSetupLog(path string) (*os.File, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return nil, err
-	}
-	return os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-}
+// errRunCanceled ends the setup of a run stopped from the dashboard.
+var errRunCanceled = errors.New("run canceled")
 
 func (s *Server) handleRunCancel(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
@@ -316,31 +254,4 @@ func (s *Server) handleRunLogs(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-}
-
-func validRMW(rmw string) bool {
-	switch rmw {
-	case "rmw_fastrtps_cpp", "rmw_cyclonedds_cpp", "rmw_zenoh_cpp":
-		return true
-	}
-	return false
-}
-
-// --- strategy factory (mirrors runner.RunRecipe's switch) ---
-
-func (s *Server) buildStrategy() (runner.RuntimeStrategy, error) {
-	if !s.cfg.IsInstalled() {
-		return nil, errors.New("no install config")
-	}
-	switch s.cfg.Mode {
-	case config.ModeOSSContainer:
-		return runner.NewContainerStrategy(false), nil
-	case config.ModeLicensed:
-		return runner.NewContainerStrategy(true), nil
-	case config.ModeNative:
-		return runner.NewNativeStrategy(), nil
-	case config.ModePixi:
-		return runner.NewPixiStrategy(s.cfg.PixiProjectDir), nil
-	}
-	return nil, fmt.Errorf("unknown install mode: %s", s.cfg.Mode)
 }

@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/automatika-robotics/emos-cli/internal/api"
 	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/container"
 	"github.com/automatika-robotics/emos-cli/internal/installer"
@@ -24,44 +23,59 @@ var (
 
 var installCmd = &cobra.Command{
 	Use:   "install [license-key]",
-	Short: "Install EMOS (container, native, pixi, or licensed mode)",
-	Args:  cobra.MaximumNArgs(1),
-	RunE:  runInstall,
+	Short: "Install EMOS (container, native or pixi mode)",
+	Long: "Install EMOS in container, native or pixi mode. EMOS is free to install and use.\n\n" +
+		"A license key is optional. With one, given here or typed when asked, the install\n" +
+		"also sets up the robot plugin the license is for.",
+	Args: cobra.MaximumNArgs(1),
+	RunE: runInstall,
 }
 
 func init() {
 	installCmd.Flags().StringVar(&installModeFlag, "mode", "",
-		"Installation mode: container, native, pixi, or licensed")
+		"Installation mode: container, native or pixi")
 	installCmd.Flags().StringVar(&installDistroFlag, "distro", "",
 		"ROS 2 distribution (jazzy, humble, kilted)")
 }
 
 func runInstall(cmd *cobra.Command, args []string) error {
-	ui.Banner(config.Version)
+	banner()
 
-	// If a license key is provided directly, go to licensed flow
-	if len(args) == 1 {
-		return installLicensed(args[0])
+	install, err := chooseInstall()
+	if err != nil {
+		return err
 	}
+	// The key is checked before the long install, so a mistake shows now
+	lic, err := installLicense(args)
+	if err != nil {
+		return err
+	}
+	if err := install(); err != nil {
+		return err
+	}
+	if lic != nil {
+		installLicensedRobot(cmd, lic)
+	} else {
+		licenseNudge()
+	}
+	offerDashboardAutoStart()
+	return nil
+}
 
-	// If --mode flag is set, skip the menu
+// chooseInstall returns the installer of the mode given by --mode, or of the
+// one the operator picks from the menu.
+func chooseInstall() (func() error, error) {
 	switch installModeFlag {
 	case "container", "oss-container":
-		return installOSSContainer()
+		return installOSSContainer, nil
 	case "native":
-		return installNative()
+		return installNative, nil
 	case "pixi":
-		return installPixi()
-	case "licensed":
-		key := ui.Input("Enter your EMOS license key", "")
-		if key == "" {
-			return fmt.Errorf("license key is required for licensed mode")
-		}
-		return installLicensed(key)
+		return installPixi, nil
 	case "":
 		// Show interactive menu
 	default:
-		return fmt.Errorf("unknown mode: %s (use container, native, pixi, or licensed)", installModeFlag)
+		return nil, fmt.Errorf("unknown mode: %s (use container, native or pixi)", installModeFlag)
 	}
 
 	fmt.Println("  Welcome to EMOS - The Embodied Operating System")
@@ -72,25 +86,49 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		"Container Install         (No ROS required - runs in Docker)",
 		"Native Install            (Requires existing ROS 2 installation)",
 		"Pixi Install              (Self-contained ROS via pixi - no system ROS needed)",
-		"I have an EMOS License Key",
 	})
+	return []func() error{installOSSContainer, installNative, installPixi}[choice], nil
+}
 
-	switch choice {
-	case 0:
-		return installOSSContainer()
-	case 1:
-		return installNative()
-	case 2:
-		return installPixi()
-	case 3:
-		key := ui.Input("Enter your EMOS license key", "")
-		if key == "" {
-			return fmt.Errorf("license key is required")
-		}
-		return installLicensed(key)
+// installLicense settles which licence this install is for. Nil installs EMOS
+// without one.
+func installLicense(args []string) (*config.License, error) {
+	var key string
+	if len(args) == 1 {
+		key = args[0]
+	} else if lic := config.LoadLicense(); lic != nil {
+		ui.Info("Using the license kept on this machine, for " + licensedRobot(lic) + ".")
+		return lic, nil
+	} else {
+		key = ui.Input("EMOS license key (press Enter to install without one)", "")
+	}
+	if key = strings.TrimSpace(key); key == "" {
+		return nil, nil
 	}
 
-	return nil
+	lic, err := verifyLicense(key, false)
+	if err != nil {
+		if ui.Confirm("Install EMOS without a license? 'emos license activate <key>' adds it later.") {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if err := config.SaveLicense(lic); err != nil {
+		return nil, fmt.Errorf("could not save the license: %w", err)
+	}
+	ui.Success("License verified, for " + licensedRobot(lic) + ".")
+	return lic, nil
+}
+
+// installLicensedRobot installs the robot plugin a licence is for. EMOS is
+// installed by now, so a failure is reported and does not undo it.
+func installLicensedRobot(cmd *cobra.Command, lic *config.License) {
+	fmt.Println()
+	ui.Info("This license is for " + licensedRobot(lic) + ", so its plugin is installed next.")
+	if err := runPluginInstall(cmd, []string{lic.PluginSlug}); err != nil {
+		ui.Error("The " + licensedRobot(lic) + " plugin was not installed: " + err.Error())
+		ui.Faint("EMOS itself is installed. Install the plugin with 'emos plugin install " + lic.PluginSlug + "'.")
+	}
 }
 
 func selectDistro() string {
@@ -174,7 +212,6 @@ func installOSSContainer() error {
 	ui.SuccessBox("EMOS installed successfully (container mode)!")
 	ui.Faint("Run 'emos pull <recipe>' to download a recipe, then 'emos run <recipe>' to execute it.")
 	ui.Faint("Ensure your sensor drivers are running externally (host or separate containers).")
-	offerDashboardAutoStart()
 	return nil
 }
 
@@ -244,13 +281,22 @@ func installNative() error {
 	ui.Faint("EMOS packages are now installed in /opt/ros/" + chosen.Distro + "/")
 	ui.Faint("You can run recipes directly: python3 ~/emos/recipes/<recipe>/recipe.py")
 	ui.Faint("Or use the CLI: emos pull <recipe> && emos run <recipe>")
-	offerDashboardAutoStart()
 	return nil
 }
 
 // pixiBuildEnv adds SKBUILD_STRICT_CONFIG=false so scikit-build-core ignores pixi's unknown config settings.
 func pixiBuildEnv() []string {
 	return append(os.Environ(), "SKBUILD_STRICT_CONFIG=false")
+}
+
+// pixiCloneArgs is the git invocation that fetches the EMOS workspace. The
+// default branch, or ref when the binary was built from one.
+func pixiCloneArgs(ref, url, dir string) []string {
+	args := []string{"clone", "--depth", "1"}
+	if ref != "" {
+		args = append(args, "--branch", ref)
+	}
+	return append(args, url, dir)
 }
 
 func installPixi() error {
@@ -292,8 +338,11 @@ func installPixi() error {
 
 	ui.Header("CLONING EMOS WORKSPACE")
 	ui.Faint("Target: " + projectDir)
+	if config.SourceRef != "" {
+		ui.Faint("Source: " + config.SourceRef)
+	}
 	if err := ui.Spinner("Cloning EMOS repository...", func() error {
-		c := exec.Command("git", "clone", "--depth", "1", config.RepoURL(), projectDir)
+		c := exec.Command("git", pixiCloneArgs(config.SourceRef, config.RepoURL(), projectDir)...)
 		if out, err := c.CombinedOutput(); err != nil {
 			return fmt.Errorf("%s", strings.TrimSpace(string(out)))
 		}
@@ -316,22 +365,12 @@ func installPixi() error {
 	ui.Header("BUILDING EMOS PACKAGES (pixi)")
 	ui.Faint("This can take 10-20 minutes on a first install.")
 
-	pixiInstall := exec.Command(pixiBin, "install")
-	pixiInstall.Dir = projectDir
-	pixiInstall.Env = pixiBuildEnv()
-	pixiInstall.Stdout = os.Stdout
-	pixiInstall.Stderr = os.Stderr
-	if err := pixiInstall.Run(); err != nil {
-		return fmt.Errorf("pixi install failed: %w", err)
+	if err := installer.RunPixi(projectDir, pixiBuildEnv(), "install"); err != nil {
+		return err
 	}
 
-	pixiSetup := exec.Command(pixiBin, "run", "setup")
-	pixiSetup.Dir = projectDir
-	pixiSetup.Env = pixiBuildEnv()
-	pixiSetup.Stdout = os.Stdout
-	pixiSetup.Stderr = os.Stderr
-	if err := pixiSetup.Run(); err != nil {
-		return fmt.Errorf("pixi run setup failed: %w", err)
+	if err := installer.RunPixi(projectDir, pixiBuildEnv(), "run", "setup"); err != nil {
+		return err
 	}
 
 	// Re-save the full struct here so the canonical fields are authoritative
@@ -351,143 +390,31 @@ func installPixi() error {
 	ui.SuccessBox("EMOS installed successfully (pixi mode)!")
 	ui.Faint("Workspace: " + projectDir)
 	ui.Faint("Run recipes with: emos pull <recipe> && emos run <recipe>")
-	offerDashboardAutoStart()
+	offerCUDAPackages(projectDir)
 	return nil
 }
 
-func installLicensed(licenseKey string) error {
-	// Check for existing installation
-	if container.Exists(config.ContainerName) {
-		ui.Warn("An existing EmbodiedOS container was found.")
-		if !ui.Confirm("This will REMOVE the existing container and perform a fresh installation. Are you sure?") {
-			ui.Error("Installation aborted.")
-			return fmt.Errorf("aborted by user")
-		}
+// offerCUDAPackages offers to rebuild the packages that can use CUDA on a machine with it. A build that fails leaves the install on the CPU packages.
+func offerCUDAPackages(projectDir string) {
+	cuda := installer.DetectCUDA()
+	if cuda == nil {
+		return
 	}
-
-	fmt.Println("  Starting EmbodiedOS installation...")
+	packages := strings.Join(installer.CUDAPackages, " and ")
 	fmt.Println()
-
-	os.MkdirAll(config.ConfigDir, 0755)
-
-	// Validate license
-	var creds *api.Credentials
-	err := ui.Spinner("Validating license key...", func() error {
-		var e error
-		creds, e = api.ValidateLicense(licenseKey)
-		return e
-	})
-	if err != nil {
-		return err
+	ui.Info(fmt.Sprintf("CUDA %s was detected at %s, so the CUDA-optimized versions of %s can be used.",
+		cuda.Version, cuda.Root, packages))
+	ui.Faint("They are compiled from source, which may take upto half an hour or more.")
+	if !ui.Confirm(fmt.Sprintf("Build %s for CUDA %s now?", packages, cuda.Version)) {
+		ui.Info("Keeping the CPU versions.")
+		return
 	}
-
-	// Remove existing container
-	if container.Exists(config.ContainerName) {
-		err := ui.Spinner("Removing existing container...", func() error {
-			return container.Remove(config.ContainerName)
-		})
-		if err != nil {
-			return err
-		}
+	if err := installer.InstallCUDAPackages(projectDir, cuda.Root, pixiBuildEnv()); err != nil {
+		ui.Error("The CUDA versions did not build, so the CPU versions will be installed: " + err.Error())
+		ui.Faint("Run 'emos update' to be offered the build again.")
+		return
 	}
-
-	// Save license key
-	if err := os.WriteFile(config.LicenseFile, []byte(licenseKey), 0600); err != nil {
-		ui.Warn("Failed to save license file: " + err.Error())
-	}
-
-	// Create directories
-	os.MkdirAll(filepath.Join(config.HomeDir, "emos", "recipes"), 0755)
-	os.MkdirAll(filepath.Join(config.HomeDir, "emos", "logs"), 0755)
-
-	// Deploy robot files
-	if err := deployRobotFiles(creds); err != nil {
-		return err
-	}
-
-	// Deploy container
-	if err := deployContainer(creds); err != nil {
-		return err
-	}
-
-	// Save config
-	cfg := &config.EMOSConfig{
-		Mode:       config.ModeLicensed,
-		LicenseKey: licenseKey,
-		ROSDistro:  "jazzy",
-		ImageTag:   creds.FullImage(),
-	}
-	if err := config.SaveConfig(cfg); err != nil {
-		ui.Warn("Failed to save config: " + err.Error())
-	}
-
-	// Create systemd service for the EMOS container (auto-restart on boot).
-	if ui.Confirm("Create systemd service for auto-restart?") {
-		unit := installer.ContainerUnit(config.ContainerName)
-		if err := unit.Install(true, true); err != nil {
-			ui.Warn("Failed to create systemd service: " + err.Error())
-		} else {
-			ui.Success("Systemd service created and started.")
-		}
-	}
-
-	fmt.Println()
-	ui.SuccessBox("EmbodiedOS installed successfully!")
-	offerDashboardAutoStart()
-	return nil
-}
-
-func deployRobotFiles(creds *api.Credentials) error {
-	ui.Header("DEPLOYING ROBOT FILES")
-
-	return ui.Spinner("Cloning deployment repository...", func() error {
-		tmpDir, err := os.MkdirTemp("", "emos-deploy-*")
-		if err != nil {
-			return err
-		}
-		defer os.RemoveAll(tmpDir)
-
-		gitURL := fmt.Sprintf("https://%s:%s@github.com/%s/%s.git",
-			creds.Username, creds.Password, config.GitHubOrg, creds.DeploymentRepo)
-
-		cmd := exec.Command("git", "clone", "--depth", "1", gitURL, tmpDir)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("git clone failed: %s", string(out))
-		}
-
-		robotSrc := filepath.Join(tmpDir, "robot")
-		if _, err := os.Stat(robotSrc); os.IsNotExist(err) {
-			return fmt.Errorf("cloned repository does not contain a 'robot' directory")
-		}
-
-		robotDest := filepath.Join(config.HomeDir, "emos", "robot")
-		os.RemoveAll(robotDest)
-
-		return exec.Command("cp", "-r", robotSrc, robotDest).Run()
-	})
-}
-
-func deployContainer(creds *api.Credentials) error {
-	ui.Header("DEPLOYING CONTAINER")
-
-	err := ui.Spinner("Logging into Docker registry...", func() error {
-		return container.Login(creds.Registry, creds.Username, creds.Password)
-	})
-	if err != nil {
-		return err
-	}
-
-	fmt.Println()
-	ui.Info("Pulling EmbodiedOS container image...")
-	ui.Faint("This may take several minutes depending on your network connection.")
-	if err := container.Pull(creds.FullImage()); err != nil {
-		return fmt.Errorf("failed to pull Docker image: %w", err)
-	}
-	ui.Success("Pulled latest image.")
-
-	return ui.Spinner("Starting EmbodiedOS container...", func() error {
-		return container.Run(config.ContainerName, creds.FullImage())
-	})
+	ui.Success(fmt.Sprintf("%s now use CUDA %s.", packages, cuda.Version))
 }
 
 // offerDashboardAutoStart prompts the user to enable the dashboard at boot

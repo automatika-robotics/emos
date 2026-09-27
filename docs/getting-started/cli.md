@@ -100,7 +100,7 @@ Updates the CLI first. When a newer release exists it replaces its own binary, r
 emos status
 ```
 
-Shows the CLI version, an update notice when a newer release exists, the install mode and ROS distro, the installed robot plugin and sensor plugins, the container's state or the pixi workspace, and whether each EMOS Python package and ROS package is present. On the dev channel it also prints `Channel: dev`, how to get back to stable, and the commit every stack package and plugin runs, since a nightly is known by its commits rather than a version.
+Shows the CLI version, an update notice when a newer release exists, the install mode and ROS distro, the installed robot plugin and sensor plugins, the container's state or the pixi workspace, and the installed version of each EMOS package. On the dev channel it also prints `Channel: dev`, how to get back to stable, and the commit each package and plugin was built from in place of the version, since a nightly is known by its commits rather than a version.
 
 ### `emos version`
 

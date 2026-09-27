@@ -113,7 +113,7 @@ See [Plugins](../getting-started/plugins.md) for installing, updating and removi
 
 ## Writing your own
 
-The reference plugin, [`emos-plugin-example`](https://github.com/automatika-robotics/emos-plugin-example), implements one robot across every transport family, UDP telemetry and velocity commands, a ROS-topic battery feed and a ROS-service docking action, with a mock robot and a test suite. Copy it and adapt it. The full authoring guide, from wrapping custom message types to declaring mounts and mapping, is in the Sugarcoat documentation: [Creating a Plugin](https://automatika-robotics.github.io/sugarcoat/development/custom_robot_plugin.html).
+The reference plugin, [`emos-plugin-example`](https://github.com/automatika-robotics/emos-plugin-example), implements one robot across every transport family, UDP telemetry and velocity commands, a ROS-topic battery feed and a ROS-service docking action, with a mock robot and a test suite. Copy it and adapt it. The full authoring guide, from wrapping custom message types to declaring mounts and mapping, is in the Sugarcoat documentation: [Creating a Plugin](https://sugarcoat.automatikarobotics.com/development/custom_robot_plugin.html).
 
 Two things are specific to EMOS.
 
@@ -141,6 +141,6 @@ deps:
 
 ```{seealso}
 - [Plugins](../getting-started/plugins.md) for installing and using plugins.
-- [Creating a Plugin](https://automatika-robotics.github.io/sugarcoat/development/custom_robot_plugin.html) for the full authoring guide.
+- [Creating a Plugin](https://sugarcoat.automatikarobotics.com/development/custom_robot_plugin.html) for the full authoring guide.
 - [Extending EMOS](../advanced/extending.md) for custom components and deploying them as services.
 ```

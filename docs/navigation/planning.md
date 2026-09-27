@@ -44,7 +44,7 @@ Whatever the run type, the planner also serves three services for saved paths: `
   - `Topic(name="/map", msg_type="OccupancyGrid", qos_profile=QoSConfig(durability=TRANSIENT_LOCAL))`
 
 * - goal_point
-  - [`nav_msgs.msg.Odometry`](https://docs.ros.org/en/noetic/api/nav_msgs/html/msg/Odometry.html), [`geometry_msgs.msg.PoseStamped`](http://docs.ros.org/en/jade/api/geometry_msgs/html/msg/PoseStamped.html), [`geometry_msgs.msg.PointStamped`](http://docs.ros.org/en/jade/api/geometry_msgs/html/msg/PointStamped.html), `automatika_embodied_agents.msg.Detections`, `automatika_embodied_agents.msg.PointsOfInterest`
+  - [`nav_msgs.msg.Odometry`](https://docs.ros.org/en/noetic/api/nav_msgs/html/msg/Odometry.html), [`geometry_msgs.msg.PoseStamped`](http://docs.ros.org/en/jade/api/geometry_msgs/html/msg/PoseStamped.html), [`geometry_msgs.msg.PointStamped`](https://docs.ros.org/en/jade/api/geometry_msgs/html/msg/PointStamped.html), `automatika_embodied_agents.msg.Detections`, `automatika_embodied_agents.msg.PointsOfInterest`
   - 1
   - `Topic(name="/goal", msg_type="PointStamped")`
 

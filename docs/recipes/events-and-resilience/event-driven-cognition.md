@@ -133,7 +133,7 @@ In order to run the client you will need to install [FastHTML](https://www.fasth
 pip install python-fasthtml monsterui
 ````
 
-The client displays a web UI on **http://localhost:5001** if you have run it on your machine. Or you can access it at **http://<IP_ADDRESS_OF_THE_ROBOT>:5001** if you have run it on the robot.
+The client displays a web UI on **https://localhost:5001** if you have run it on your machine. Or you can access it at **https://<IP_ADDRESS_OF_THE_ROBOT>:5001** if you have run it on the robot.
 
 ### Complete Code
 

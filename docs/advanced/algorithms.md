@@ -251,7 +251,7 @@ A collision-free admissibility criteria is implemented within the trajectory sam
 
 Once admissible trajectories are sampled, the **Best Trajectory** is selected by minimizing a weighted cost function. You can tune these weights (`costs_weights`) to change the robot's behavior (e.g., sticking closer to the path vs. prioritizing obstacle clearance). See [Trajectory Cost Evaluation](#trajectory-cost-evaluation) for details.
 
-[^dwa]: [Dieter Fox, Wolf Burgard and Sebastian Thrun. The Dynamic Window Approach to Collision Avoidance. IEEE Robotics & Automation Magazine (Volume: 4, Issue: 1, March 1997)](https://www.ri.cmu.edu/pub_files/pub1/fox_dieter_1997_1/fox_dieter_1997_1.pdf)
+[^dwa]: [Dieter Fox, Wolf Burgard and Sebastian Thrun. The Dynamic Window Approach to Collision Avoidance. IEEE Robotics & Automation Magazine (Volume: 4, Issue: 1, March 1997)](https://publications.ri.cmu.edu/storage/publications/pub_files/pub1/fox_dieter_1997_1/fox_dieter_1997_1.pdf)
 
 ---
 

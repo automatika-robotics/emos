@@ -4,7 +4,7 @@
 
 Most EMOS recipes you've seen so far are *programmed*: events trigger components, components publish to topics, fallbacks recover from failure -- and you, the recipe author, hand-wired every link. The Cortex component is a different shape. Drop a Cortex into your recipe and it discovers every other component you added, registers every method they expose as a callable tool, and -- given a high-level goal like *"track the person on the left and tell me what they're holding"* -- decomposes it into an ordered plan, dispatches each step, watches the feedback, and replans on failure. No orchestration glue from you.
 
-If [Claude Code](https://claude.com/claude-code) is an agentic harness for software engineering, **Cortex is an agentic harness for embodied intelligence**. The capability components -- Vision, VLM, TTS, navigation, memory -- are the robot's limbs and senses. Cortex is the part that decides *what to do next* using these capabilities.
+If [Claude Code](https://claude.com/product/claude-code) is an agentic harness for software engineering, **Cortex is an agentic harness for embodied intelligence**. The capability components -- Vision, VLM, TTS, navigation, memory -- are the robot's limbs and senses. Cortex is the part that decides *what to do next* using these capabilities.
 
 ```{seealso}
 For the conceptual model and the full list of capabilities Cortex auto-discovers, see [Cortex](../../intelligence/cortex.md). For Cortex paired with a graph-backed spatio-temporal memory, see [Memory and Cortex](cortex-memory.md). For Cortex orchestrating the navigation stack on top of all of that, see [Cortex Driving the Full Stack](cortex-navigation.md).

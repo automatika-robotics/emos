@@ -33,7 +33,7 @@ There are three ways to install EMOS, and the right one depends mostly on what i
 
 :::{tab-item} pixi
 
-Pixi mode gives you a complete ROS 2 Jazzy environment under your home directory, with nothing installed system-wide. You need [pixi](https://pixi.sh) itself before you begin, and a new shell after installing it so that it is on your path:
+Pixi mode gives you a complete ROS 2 Jazzy environment under your home directory, with nothing installed system-wide. You need [pixi](https://pixi.prefix.dev/) itself before you begin, and a new shell after installing it so that it is on your path:
 
 ```bash
 curl -fsSL https://pixi.sh/install.sh | bash
@@ -119,7 +119,7 @@ Extra sensors, whether mounted on the robot or placed somewhere in its environme
 EMOS is agnostic to model serving platforms. You need at least one of the following available on your network:
 
 - {material-regular}`download;1.2em;sd-text-primary` **[Ollama](https://ollama.com)** Recommended for local inference.
-- {material-regular}`smart_toy;1.2em;sd-text-primary` **[RoboML](https://github.com/automatika-robotics/robo-ml)** Automatika's own open-source model serving package for quick prototyping.
+- {material-regular}`smart_toy;1.2em;sd-text-primary` **[RoboML](https://github.com/automatika-robotics/roboml)** Automatika's own open-source model serving package for quick prototyping.
 - {material-regular}`api;1.2em;sd-text-primary` **OpenAI API-compatible fast inference servers** e.g. [llama.cpp](https://github.com/ggml-org/llama.cpp), [vLLM](https://github.com/vllm-project/vllm), [SGLang](https://github.com/sgl-project/sglang).
 - {material-regular}`precision_manufacturing;1.2em;sd-text-primary` **[LeRobot](https://github.com/huggingface/lerobot)** For Vision-Language-Action (VLA) models, version 0.6.0 or newer.
 - {material-regular}`cloud;1.2em;sd-text-primary` **Cloud endpoints** e.g. OpenAI, Claude, HuggingFace Inference etc. The API key is read from an environment variable.

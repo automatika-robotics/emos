@@ -51,7 +51,7 @@ RoboBrain 2.0 supports a wide range of embodied perception and planning capabili
 In our scenario, we use RoboBrain2.0 to perform **grounding** -- that is, mapping the object description (parsed by the LLM component) to a visual detection in the agent's camera view. This detection includes spatial coordinates that can be forwarded to the navigation system for physical movement. RoboBrain2.0 is available in RoboML, which we are using as a model serving platform here.
 
 ```{note}
-RoboML is an aggregator library that provides a model serving apparatus for locally serving open-source ML models useful in robotics. Learn about setting up RoboML [here](https://www.github.com/automatika-robotics/roboml).
+RoboML is an aggregator library that provides a model serving apparatus for locally serving open-source ML models useful in robotics. Learn about setting up RoboML [here](https://github.com/automatika-robotics/roboml).
 ```
 
 ```{important}

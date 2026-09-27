@@ -5,7 +5,7 @@ EMOS is designed to be extended. This guide covers how to create custom componen
 ## Creating Custom Components
 
 :::{tip}
-To see detailed examples of packages built with EMOS, check out [Kompass](https://automatika-robotics.github.io/kompass/) (navigation) and [EmbodiedAgents](https://automatika-robotics.github.io/embodied-agents/) (intelligence).
+To see detailed examples of packages built with EMOS, check out [Kompass](https://kompass.automatikarobotics.com/) (navigation) and [EmbodiedAgents](https://agents.automatikarobotics.com/) (intelligence).
 :::
 
 :::{note}

@@ -107,6 +107,7 @@ myst_enable_extensions = [
     "substitution",
     "tasklist",
 ]
+myst_linkify_fuzzy_links = False
 myst_heading_anchors = 7
 
 # -- HTML output

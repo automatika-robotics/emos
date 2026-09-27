@@ -129,7 +129,7 @@ Everything above is available from the dashboard's [Plugins page](dashboard.md#p
 
 ## Writing your own
 
-If your robot is not in the catalog, you can write a plugin for it. The step-by-step guide is in the Sugarcoat documentation, [Creating a Plugin](https://automatika-robotics.github.io/sugarcoat/development/custom_robot_plugin.html), and [`emos-plugin-example`](https://github.com/automatika-robotics/emos-plugin-example) is a complete plugin to copy from. What EMOS adds on top, the entry point and the dependency manifest that `emos plugin install` reads, is described in [Robot Plugins](../concepts/robot-plugins.md).
+If your robot is not in the catalog, you can write a plugin for it. The step-by-step guide is in the Sugarcoat documentation, [Creating a Plugin](https://sugarcoat.automatikarobotics.com/development/custom_robot_plugin.html), and [`emos-plugin-example`](https://github.com/automatika-robotics/emos-plugin-example) is a complete plugin to copy from. What EMOS adds on top, the entry point and the dependency manifest that `emos plugin install` reads, is described in [Robot Plugins](../concepts/robot-plugins.md).
 
 ```{seealso}
 - [Robot Plugins](../concepts/robot-plugins.md) for how plugins work and what they can declare.

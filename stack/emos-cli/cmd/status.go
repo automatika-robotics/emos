@@ -35,6 +35,7 @@ var statusCmd = &cobra.Command{
 		fmt.Println()
 		ui.Info("Mode: " + string(cfg.Mode))
 		ui.Info("ROS Distro: " + cfg.ROSDistro)
+		statusPlugins(cfg)
 
 		switch cfg.Mode {
 		case config.ModeOSSContainer:
@@ -57,6 +58,7 @@ var statusCmd = &cobra.Command{
 		case config.ModePixi:
 			pixiStatus(cfg)
 		}
+		statusCommits(cfg)
 		statusLicense()
 	},
 }
@@ -188,4 +190,110 @@ func printChannel() {
 	}
 	ui.Faint("Channel: dev (nightly builds of unreleased EMOS)")
 	ui.Faint("Back to stable: curl -fsSL " + config.InstallerURL() + " | sudo bash, then 'emos update'")
+}
+
+// statusPlugins prints the installed robot plugin and sensor plugins.
+func statusPlugins(cfg *config.EMOSConfig) {
+	if cfg.Plugin == nil {
+		ui.Info("Robot plugin: none")
+	} else {
+		ui.Info("Robot plugin: " + pluginLabel(*cfg.Plugin))
+	}
+	if len(cfg.SensorPlugins) == 0 {
+		return
+	}
+	names := make([]string, 0, len(cfg.SensorPlugins))
+	for _, p := range cfg.SensorPlugins {
+		names = append(names, pluginLabel(p))
+	}
+	ui.Info("Sensor plugins: " + strings.Join(names, ", "))
+}
+
+// pluginLabel is the hardware's name with the catalog slug, or the slug alone
+// when the plugin gave no name.
+func pluginLabel(p config.PluginInfo) string {
+	if name := p.DisplayName(); name != p.Slug {
+		return fmt.Sprintf("%s (%s)", name, p.Slug)
+	}
+	return p.Slug
+}
+
+// The stack packages checked out under the workspace's stack/ directory.
+var stackPackages = []string{"sugarcoat", "kompass", "embodied-agents"}
+
+// statusCommits lists the commit every part of the install runs. Only on the
+// dev channel, where a build is known by its commits.
+func statusCommits(cfg *config.EMOSConfig) {
+	if config.Channel() != "dev" {
+		return
+	}
+	var rows [][]string
+	switch cfg.Mode {
+	case config.ModePixi:
+		rows = workspaceCommits(cfg.PixiProjectDir)
+	case config.ModeNative:
+		rows = workspaceCommits(filepath.Join(cfg.WorkspacePath, "src", ".emos-repo"))
+	case config.ModeOSSContainer:
+		rows = imageCommits(cfg.ImageTag)
+	}
+	for _, p := range cfg.Plugins() {
+		rows = append(rows, []string{p.Slug, gitShortHead(filepath.Join(config.PluginSrcDir(), p.Slug))})
+	}
+	if len(rows) == 0 {
+		return
+	}
+	fmt.Println()
+	ui.Info("Commits:")
+	for _, row := range rows {
+		ui.Faint(fmt.Sprintf("  %-20s %s", row[0], row[1]))
+	}
+}
+
+// workspaceCommits reads the EMOS checkout at dir and its stack submodules.
+func workspaceCommits(dir string) [][]string {
+	rows := [][]string{{"emos", gitShortHead(dir)}}
+	for _, pkg := range stackPackages {
+		rows = append(rows, []string{pkg, gitShortHead(filepath.Join(dir, "stack", pkg))})
+	}
+	return rows
+}
+
+// imageCommits reads the commits the nightly image was built from off its
+// labels. Images built before the labels existed report unknown.
+func imageCommits(image string) [][]string {
+	if image == "" {
+		return nil
+	}
+	revision := container.ImageLabel(image, "org.opencontainers.image.revision")
+	if revision == "" {
+		return [][]string{{"emos", "unknown (the image carries no commit labels)"}}
+	}
+	return append([][]string{{"emos", shortCommit(revision)}}, parseStackLabel(container.ImageLabel(image, "io.emos.stack"))...)
+}
+
+// parseStackLabel turns "sugarcoat@f5ab9cc kompass@5edb164" into rows.
+func parseStackLabel(label string) [][]string {
+	var rows [][]string
+	for _, entry := range strings.Fields(label) {
+		if name, sha, ok := strings.Cut(entry, "@"); ok {
+			rows = append(rows, []string{name, shortCommit(sha)})
+		}
+	}
+	return rows
+}
+
+// gitShortHead is the short commit checked out at dir, or unknown.
+func gitShortHead(dir string) string {
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "--short=7", "HEAD").Output()
+	if err != nil {
+		return "unknown"
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func shortCommit(sha string) string {
+	if len(sha) > 7 {
+		return sha[:7]
+	}
+	return sha
 }

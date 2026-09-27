@@ -261,6 +261,13 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      - name: Record the source commits
+        id: commits
+        run: |
+          echo "emos=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          stack=$(git ls-tree HEAD stack/ | awk '$2 == "commit" {printf "%s@%s ", $4, substr($3, 1, 7)}' | sed 's|stack/||g; s/ $//')
+          echo "stack=$stack" >> "$GITHUB_OUTPUT"
+
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -269,6 +276,10 @@ jobs:
           push: true
           provenance: false
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.ros_distro }}-dev-${{ matrix.arch }}
+          labels: |
+            org.opencontainers.image.revision=${{ steps.commits.outputs.emos }}
+            org.opencontainers.image.version=${{ needs.candidate.outputs.version }}
+            io.emos.stack=${{ steps.commits.outputs.stack }}
           cache-from: type=gha,scope=${{ matrix.ros_distro }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.ros_distro }}-${{ matrix.arch }}
 

@@ -146,7 +146,7 @@ If you want to run the latest EMOS before it is released, there is a nightly bui
 curl -fsSL https://raw.githubusercontent.com/automatika-robotics/emos/main/stack/emos-cli/scripts/install.sh | sudo bash -s -- --dev
 ```
 
-On a machine that already has EMOS, follow that with `emos update`, and the workspace, or the container image, moves to the same nightly.
+On a machine that already has EMOS, follow that with `emos update`, and the workspace, or the container image, moves to the same nightly. A nightly is known by its commits rather than a version, so on the dev channel `emos status` lists the commit every stack package and plugin runs.
 
 ## Uninstalling
 

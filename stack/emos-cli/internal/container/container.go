@@ -42,6 +42,16 @@ func Status(name string) string {
 	return out
 }
 
+// ImageLabel returns the value of a label on a local image, empty when the
+// image or the label is absent.
+func ImageLabel(image, label string) string {
+	out, err := run("image", "inspect", "-f", "{{ index .Config.Labels \""+label+"\" }}", image)
+	if err != nil {
+		return ""
+	}
+	return out
+}
+
 func Start(name string) error {
 	_, err := run("start", name)
 	return err

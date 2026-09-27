@@ -38,8 +38,9 @@ By install mode:
                Files in /opt/ros/<distro>/ are co-mingled with ROS by
                colcon and cannot be cleanly uninstalled — the command
                prints the manual rm commands instead of running them.
-  - pixi:      removes .pixi/, build/, install/, log/ under the EMOS
-               repo directory. The cloned repo itself is preserved.
+  - pixi:      removes the EMOS workspace (the clone, its environment and
+               build) at ~/.local/share/emos. A checkout of the user only
+               loses .pixi/, build/, install/ and log/; the clone stays.
 
 By default, also removes ~/emos/recipes, ~/emos/logs, and ~/.config/emos.
 Use --keep-data and --keep-config to preserve these. A license is kept either

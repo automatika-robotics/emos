@@ -156,7 +156,7 @@ emos uninstall
 
 Run this as your own user rather than with `sudo`; the command escalates on its own for the few steps that need root.
 
-It also removes the plugin workspace at `~/emos/workspace`, your recipes and logs under `~/emos` unless you pass `--keep-data`, and `~/.config/emos` unless you pass `--keep-config`.
+What goes depends on the install mode: a pixi install's whole workspace under `~/.local/share/emos`, a native install's build workspace together with kompass-core, or the container, whose image stays unless you pass `--remove-image`. The dashboard service is stopped and removed in every mode. It also removes the plugin workspace at `~/emos/workspace`, your recipes and logs under `~/emos` unless you pass `--keep-data`, and `~/.config/emos` unless you pass `--keep-config`.
 
 A few things are deliberately left alone: the maps in `~/emos/maps`, exported maps in `~/emos/map-archives`, and the robot's certificate and API keys in `~/emos/.ui-security`. The CLI binary is never removed either, the command prints the one-liner for that.
 

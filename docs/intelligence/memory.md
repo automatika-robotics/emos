@@ -21,7 +21,7 @@ For a hands-on intro to Memory by itself, see [Spatio-Temporal Memory](../recipe
 
 - **Pixi:** `cd ~/.local/share/emos && pixi add --pypi emem`
 - **Native:** `pip install emem` into your ROS 2 Python environment
-- **Container:** `docker exec -it emos-container pip install emem` (ephemeral — bake it into a derived image to persist)
+- **Container:** `docker exec -it emos pip install emem` (ephemeral — bake it into a derived image to persist)
 ```
 
 ---

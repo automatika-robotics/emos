@@ -18,8 +18,8 @@ var kompassCoreTagsURL = "https://api.github.com/repos/automatika-robotics/kompa
 // module still loads in the environment.
 const kompassCoreProbe = `python3 -c 'import importlib.metadata as m, kompass_cpp; print(m.version("kompass-core"))'`
 
-// LatestKompassCore is the newest kompass-core tag.
-func LatestKompassCore(ctx context.Context) (string, error) {
+// latestKompassCore is the newest kompass-core tag.
+func latestKompassCore(ctx context.Context) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, kompassCoreTagsURL, nil)
 	if err != nil {
 		return "", err
@@ -52,7 +52,7 @@ func KompassCoreCurrent(probe func(script string) (string, error)) (bool, string
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	latest, err := LatestKompassCore(ctx)
+	latest, err := latestKompassCore(ctx)
 	return kompassCoreVerdict(lastLine(out), latest, err)
 }
 

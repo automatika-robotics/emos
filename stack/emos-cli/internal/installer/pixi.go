@@ -1,6 +1,7 @@
 package installer
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -163,13 +164,75 @@ func InstallCUDAPackages(projectDir, cudaRoot string, env []string) error {
 	return RunPixi(projectDir, env, cudaPackagesArgs("add", specs, runtime.GOARCH)...)
 }
 
+// SetAsideCUDAPackages puts the workspace at projectDir back on the
+// repository's packages and keeps the wheels. An update does this before it
+// pulls, and RestoreCUDAPackages after it.
+func SetAsideCUDAPackages(projectDir string, env []string) error {
+	// pixi remove fails on entries the manifest does not have
+	if !HasCUDAPackages(projectDir) {
+		return nil
+	}
+	return RunPixi(projectDir, env, cudaPackagesArgs("remove", CUDAPackages, runtime.GOARCH)...)
+}
+
 // RemoveCUDAPackages puts the workspace at projectDir back on the repository's
-// packages, and forgets the wheels. An update does this before it pulls.
+// packages, and forgets the wheels.
 func RemoveCUDAPackages(projectDir string, env []string) error {
-	if err := RunPixi(projectDir, env, cudaPackagesArgs("remove", CUDAPackages, runtime.GOARCH)...); err != nil {
+	if err := SetAsideCUDAPackages(projectDir, env); err != nil {
 		return err
 	}
 	return os.RemoveAll(filepath.Join(projectDir, cudaWheelsDir))
+}
+
+// KeptCUDAWheels reports whether the workspace at projectDir holds a wheel for
+// each of CUDAPackages.
+func KeptCUDAWheels(projectDir string) bool {
+	_, err := cudaWheelSpecs(projectDir)
+	return err == nil
+}
+
+// cudaProbe checks, in the workspace's environment, that the packages named
+// after it load, satisfy the versions the manifest asks for and still offload
+// to the GPU.
+const cudaProbe = `python3 -c '
+import sys, tomllib, importlib.metadata as metadata
+from packaging.specifiers import SpecifierSet
+import sherpa_onnx, llama_cpp
+
+def no(why):
+    print(why)
+    sys.exit(1)
+
+wanted = tomllib.load(open("pixi.toml", "rb")).get("pypi-dependencies", {})
+for name in sys.argv[1:]:
+    spec = wanted.get(name, "*")
+    if isinstance(spec, dict):
+        spec = spec.get("version", "*")
+    version = metadata.version(name).split("+")[0]
+    if spec != "*" and not SpecifierSet(spec).contains(version, prereleases=True):
+        no(f"{name} {version} does not satisfy {spec}")
+if not llama_cpp.llama_supports_gpu_offload():
+    no("llama-cpp-python does not use the GPU")
+'`
+
+// RestoreCUDAPackages hands the wheels an update kept back to pixi and checks
+// them there.
+func RestoreCUDAPackages(projectDir string, env []string) error {
+	specs, err := cudaWheelSpecs(projectDir)
+	if err != nil {
+		return err
+	}
+	if err := RunPixi(projectDir, env, cudaPackagesArgs("add", specs, runtime.GOARCH)...); err != nil {
+		return err
+	}
+	out, err := PixiOutput(projectDir, cudaProbe+" "+strings.Join(CUDAPackages, " "))
+	if err == nil {
+		return nil
+	}
+	if reason := lastLine(out); reason != "" {
+		return errors.New(reason)
+	}
+	return errors.New("they no longer load")
 }
 
 // cudaPackagesArgs is the pixi add or remove of PyPI pkgs for the platform of a

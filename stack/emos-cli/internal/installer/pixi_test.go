@@ -2,6 +2,7 @@ package installer
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -188,7 +189,7 @@ func TestInstallCUDAPackagesBuildsThenHandsTheWheelsToPixi(t *testing.T) {
 		t.Error("the workspace should now report its CUDA packages")
 	}
 
-	// An update puts them aside: the platform's entries go, and the wheels with them.
+	// Removing them takes the platform's entries out, and the wheels with them.
 	os.Remove(record)
 	if err := RemoveCUDAPackages(project, os.Environ()); err != nil {
 		t.Fatalf("RemoveCUDAPackages: %v", err)
@@ -254,5 +255,104 @@ func TestCUDAPackagesArgsNameThePlatformOfTheHost(t *testing.T) {
 	want = []string{"remove", "--pypi", "--platform", "linux-64", "sherpa-onnx", "llama-cpp-python"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("amd64 = %v, want %v", got, want)
+	}
+}
+
+func TestAnUpdateKeepsTheCUDAWheelsAndPutsThemBack(t *testing.T) {
+	project := t.TempDir()
+	record := recordingPixi(t, sherpaWheel, llamaWheel)
+	if err := InstallCUDAPackages(project, "/usr/local/cuda-12.6", os.Environ()); err != nil {
+		t.Fatalf("InstallCUDAPackages: %v", err)
+	}
+	wheels := filepath.Join(project, "cuda_wheels")
+
+	if err := SetAsideCUDAPackages(project, os.Environ()); err != nil {
+		t.Fatalf("SetAsideCUDAPackages: %v", err)
+	}
+	if HasCUDAPackages(project) || !KeptCUDAWheels(project) {
+		t.Fatal("the manifest should let go of the wheels, and the wheels should stay")
+	}
+	// Set aside twice is fine: pixi is not asked to remove what is not there
+	os.Remove(record)
+	if err := SetAsideCUDAPackages(project, os.Environ()); err != nil {
+		t.Fatalf("a second SetAsideCUDAPackages: %v", err)
+	}
+	if got, _ := os.ReadFile(record); len(got) != 0 {
+		t.Errorf("pixi should not have been called, it was called as\n%s", got)
+	}
+
+	if err := RestoreCUDAPackages(project, os.Environ()); err != nil {
+		t.Fatalf("RestoreCUDAPackages: %v", err)
+	}
+	if !HasCUDAPackages(project) {
+		t.Error("the manifest should name the wheels again")
+	}
+	calls, _ := os.ReadFile(record)
+	add := strings.Index(string(calls), "|add ")
+	probe := strings.Index(string(calls), "llama_supports_gpu_offload")
+	if add < 0 || probe < add || !strings.Contains(string(calls), "sherpa-onnx llama-cpp-python|") {
+		t.Errorf("want the add, then the probe of both packages, pixi was called as\n%s", calls)
+	}
+
+	// Wheels that fail the probe are reported, for the caller to remove
+	os.WriteFile(filepath.Join(project, "fail"), []byte("run\n"), 0o644)
+	if err := RestoreCUDAPackages(project, os.Environ()); err == nil || err.Error() != "they no longer load" {
+		t.Errorf("a failed probe must be reported, got %v", err)
+	}
+	os.Remove(filepath.Join(project, "fail"))
+	if err := RemoveCUDAPackages(project, os.Environ()); err != nil {
+		t.Fatalf("RemoveCUDAPackages: %v", err)
+	}
+	if _, err := os.Stat(wheels); !os.IsNotExist(err) || KeptCUDAWheels(project) {
+		t.Error("the wheels should be gone")
+	}
+}
+
+func TestTheCUDAProbeChecksVersionsAndTheGPU(t *testing.T) {
+	if exec.Command("python3", "-c", "import tomllib, packaging").Run() != nil {
+		t.Skip("python3 with tomllib and packaging is not available")
+	}
+	anyVersion := "[pypi-dependencies]\nsherpa-onnx = \"*\"\nllama-cpp-python = { version = \"*\", index = \"https://x\" }\n"
+	cases := []struct {
+		name, manifest string
+		offload, keep  bool
+		reason         string
+	}{
+		{"any version", anyVersion, true, true, ""},
+		{"not named at all", "[dependencies]\nnumpy = \"*\"\n", true, true, ""},
+		{"a minimum the build meets", "[pypi-dependencies]\nsherpa-onnx = \">=1.13\"\n", true, true, ""},
+		{"a minimum past the build", "[pypi-dependencies]\nsherpa-onnx = \">=1.14\"\n", true, false, "sherpa-onnx 1.13.8 does not satisfy >=1.14"},
+		{"a pin in a table", "[pypi-dependencies]\nllama-cpp-python = { version = \"==0.3.40\", index = \"https://x\" }\n", true, false, "llama-cpp-python 0.3.35 does not satisfy ==0.3.40"},
+		{"a build without the GPU", anyVersion, false, false, "llama-cpp-python does not use the GPU"},
+	}
+	for _, c := range cases {
+		project, site := t.TempDir(), t.TempDir()
+		os.WriteFile(filepath.Join(project, "pixi.toml"), []byte(c.manifest), 0o644)
+		offload := "False"
+		if c.offload {
+			offload = "True"
+		}
+		os.WriteFile(filepath.Join(site, "sherpa_onnx.py"), nil, 0o644)
+		os.WriteFile(filepath.Join(site, "llama_cpp.py"), []byte("def llama_supports_gpu_offload(): return "+offload+"\n"), 0o644)
+		for name, version := range map[string]string{"sherpa-onnx": "1.13.8+cuda", "llama-cpp-python": "0.3.35"} {
+			info := filepath.Join(site, strings.ReplaceAll(name, "-", "_")+"-"+version+".dist-info")
+			os.MkdirAll(info, 0o755)
+			os.WriteFile(filepath.Join(info, "METADATA"), []byte("Metadata-Version: 2.1\nName: "+name+"\nVersion: "+version+"\n"), 0o644)
+		}
+		cmd := exec.Command("bash", "-c", cudaProbe+" "+strings.Join(CUDAPackages, " "))
+		cmd.Dir = project
+		cmd.Env = append(os.Environ(), "PYTHONPATH="+site)
+		out, err := cmd.Output()
+		if (err == nil) != c.keep || lastLine(string(out)) != c.reason {
+			t.Errorf("%s: keep=%v reason=%q", c.name, err == nil, lastLine(string(out)))
+		}
+	}
+
+	// Packages that are not there at all end the probe without a reason
+	cmd := exec.Command("bash", "-c", cudaProbe+" "+strings.Join(CUDAPackages, " "))
+	cmd.Dir = t.TempDir()
+	cmd.Env = append(os.Environ(), "PYTHONPATH="+t.TempDir())
+	if out, err := cmd.Output(); err == nil || lastLine(string(out)) != "" {
+		t.Errorf("missing packages: err=%v out=%q", err, out)
 	}
 }

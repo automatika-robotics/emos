@@ -40,7 +40,7 @@ func TestKompassCoreCurrentReadsTheProbeAndTheTags(t *testing.T) {
 	kompassCoreTagsURL = server.URL
 	defer func() { kompassCoreTagsURL = old }()
 
-	if tag, err := LatestKompassCore(context.Background()); err != nil || tag != "0.8.7" {
+	if tag, err := latestKompassCore(context.Background()); err != nil || tag != "0.8.7" {
 		t.Fatalf("latest tag: %q %v", tag, err)
 	}
 	// The module may print while it loads; the version is the last line

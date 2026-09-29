@@ -47,7 +47,7 @@ var updateRebuild bool
 
 func init() {
 	updateCmd.Flags().BoolVar(&updateRebuild, "rebuild", false,
-		"Rebuild what an update skips when it is already current (kompass-core)")
+		"Rebuild what an update keeps when it is still good (kompass-core, CUDA dependency builds)")
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {
@@ -299,13 +299,19 @@ func updatePixi(cfg *config.EMOSConfig) error {
 	fmt.Println("  Updating EMOS pixi workspace...")
 	fmt.Println()
 
-	// The CUDA wheels are built for the versions the release names, so they go
-	// before the pull and are offered again at the end.
-	if installer.HasCUDAPackages(projectDir) {
+	// The CUDA wheels leave the manifest for the pull. They are kept and put
+	// back at the end, unless a rebuild is asked for.
+	hasCUDA := installer.HasCUDAPackages(projectDir)
+	keepCUDA := !updateRebuild && (hasCUDA || installer.KeptCUDAWheels(projectDir))
+	if hasCUDA {
 		ui.Info("Putting the CUDA packages aside for the update...")
-		if err := installer.RemoveCUDAPackages(projectDir, pixiBuildEnv()); err != nil {
-			return err
-		}
+	}
+	setAside := installer.RemoveCUDAPackages
+	if keepCUDA {
+		setAside = installer.SetAsideCUDAPackages
+	}
+	if err := setAside(projectDir, pixiBuildEnv()); err != nil {
+		return err
 	}
 
 	// Preserve user-added pixi dependencies across the git pull: stash the
@@ -370,6 +376,18 @@ func updatePixi(cfg *config.EMOSConfig) error {
 
 	fmt.Println()
 	ui.SuccessBox("EMOS pixi workspace updated successfully!")
+	if keepCUDA {
+		packages := strings.Join(installer.CUDAPackages, " and ")
+		err := installer.RestoreCUDAPackages(projectDir, pixiBuildEnv())
+		if err == nil {
+			ui.Success(packages + " keep their CUDA builds.")
+			return nil
+		}
+		ui.Info("The CUDA builds of " + packages + " cannot be kept: " + err.Error())
+		if err := installer.RemoveCUDAPackages(projectDir, pixiBuildEnv()); err != nil {
+			return err
+		}
+	}
 	offerCUDAPackages(projectDir)
 	return nil
 }

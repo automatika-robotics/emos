@@ -103,6 +103,9 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			defer unlock()
 			if err := plugin.Update(cfg, os.Stdout); err != nil {
 				ui.Warn("Plugin update failed: " + err.Error())
+			} else {
+				fmt.Println()
+				ui.SuccessBox("EMOS plugins are up to date!")
 			}
 		}
 	}

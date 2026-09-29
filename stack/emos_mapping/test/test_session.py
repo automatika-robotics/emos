@@ -9,10 +9,11 @@ from ros_sugar.robot import Mount, RosTopicTransport  # noqa: E402
 from ros_sugar.robot.mapping import NativeMapping  # noqa: E402
 
 from emos_mapping.session import (  # noqa: E402
-    feedback_topic,
+    SESSION_IMU_TOPIC,
     imu_offset,
     main,
     map_directory,
+    mapping_input,
     mount_heights,
 )
 
@@ -34,13 +35,25 @@ class Plugin:
     mounts = []
 
 
-def test_feedback_keys_resolve_to_their_ros_topics():
-    assert feedback_topic(Plugin(), "lidar") == "/livox/lidar"
-    assert feedback_topic(Plugin(), None) is None
+def test_a_feedback_on_ros_is_read_where_it_already_is():
+    assert mapping_input(Plugin(), "lidar", "/unused") == ("/livox/lidar", None)
+    assert mapping_input(Plugin(), None, "/unused") == (None, None)
+
+
+def test_a_feedback_the_plugin_decodes_is_published_for_the_backend():
+    """GLIM is a plain ROS node, so a sensor that only lives on the plugin's
+    feedback bus -- the robot's own IMU -- has to be put on a topic."""
+    plugin = Plugin()
+
+    topic, feedback = mapping_input(plugin, "odom", SESSION_IMU_TOPIC)
+
+    assert topic == SESSION_IMU_TOPIC
+    assert feedback is plugin.feedbacks["odom"]
+
+
+def test_a_key_naming_no_feedback_is_refused():
     with pytest.raises(ValueError, match="no feedback 'imu'"):
-        feedback_topic(Plugin(), "imu")
-    with pytest.raises(TypeError, match="not a ROS topic"):
-        feedback_topic(Plugin(), "odom")
+        mapping_input(Plugin(), "imu", "/unused")
 
 
 def test_mount_heights_come_from_the_plugins_string_framed_mounts():

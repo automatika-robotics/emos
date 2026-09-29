@@ -91,7 +91,6 @@ def write_glim_config(
             "points_topic": points_topic,
             "imu_topic": imu_topic or "",
             "base_frame_id": base_frame or "",
-            # The IMU is the LiDAR's own, so the two frames are one
             "publish_imu2lidar": False,
             "extension_modules": ["librviz_viewer.so"],
         }

@@ -22,19 +22,30 @@ from ros_sugar.robot.mapping import NativeMapping
 from .backend import backend_has_cuda, backend_version, glim_node, write_glim_config
 from .builder import MapBuilder, MapBuilderConfig
 
+# Topics the session publishes a plugin's own sensors on when the plugin
+# decodes them itself, namespaced to mapping.
+SESSION_CLOUD_TOPIC = "/emos_mapping/cloud"
+SESSION_IMU_TOPIC = "/emos_mapping/imu"
 
-def feedback_topic(plugin, key: Optional[str]) -> Optional[str]:
-    """The ROS topic the plugin's feedback key is published on."""
+
+def mapping_input(plugin, key: Optional[str], topic: str):
+    """Where the backend reads a mapping input, and what to publish there.
+
+    A feedback the plugin carries on a ROS topic is read where it already is. A
+    feedback the plugin decodes itself is requested to the plugin host to publish
+    on ``topic``, which is what the second return value is for.
+
+    :return: The topic the backend reads, and the feedback to publish there,
+        or ``None`` when it is on ROS already
+    """
     if key is None:
-        return None
+        return None, None
     feedback = plugin.feedbacks.get(key)
     if feedback is None:
         raise ValueError(f"the plugin has no feedback '{key}'")
-    if not isinstance(feedback.transport, RosTopicTransport):
-        raise TypeError(
-            f"feedback '{key}' is not a ROS topic; native mapping reads the sensors from ROS"
-        )
-    return feedback.transport.topic_name
+    if isinstance(feedback.transport, RosTopicTransport):
+        return feedback.transport.topic_name, None
+    return topic, feedback
 
 
 def mount_heights(plugin) -> Dict[str, float]:
@@ -86,11 +97,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"{args.plugin} does not declare native mapping", file=sys.stderr)
         return 2
     declaration = plugin.MAPPING
-    # get mapping topics
+    # get mapping topics, and the feedback the session has to put on ROS itself
     try:
-        points_topic = feedback_topic(plugin, declaration.cloud)
-        imu_topic = feedback_topic(plugin, declaration.imu)
-    except (ValueError, TypeError) as e:
+        points_topic, publish_cloud = mapping_input(
+            plugin, declaration.cloud, SESSION_CLOUD_TOPIC
+        )
+        imu_topic, publish_imu = mapping_input(
+            plugin, declaration.imu, SESSION_IMU_TOPIC
+        )
+    except ValueError as e:
         print(f"cannot map with {args.plugin}: {e}", file=sys.stderr)
         return 2
 
@@ -138,6 +153,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     # launch
     launcher = Launcher(robot_plugin=plugin)
+    # Request the plugin host to publish topics for feedbacks the plugin decodes
+    for feedback, topic in ((publish_cloud, points_topic), (publish_imu, imu_topic)):
+        if feedback is not None:
+            launcher.publish_plugin_feedback(feedback, topic)
     launcher.add_pkg(
         components=[builder], package_name="emos_mapping", multiprocessing=False
     )

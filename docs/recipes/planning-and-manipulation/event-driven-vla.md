@@ -134,6 +134,13 @@ launcher.bringup()
 
 Open `https://localhost:5001`, accept the certificate once, and enter the same task as before, `Grab orange and place into plate`. The goal can also be sent from a terminal exactly as in the previous recipe.
 
+```{figure} /_static/images/vla_sim_isaac_grasp.jpg
+:alt: Isaac Sim mid-episode, one orange on the plate and the gripper on the next
+:align: center
+
+Mid-episode in Isaac Sim: one orange is on the plate and the gripper closes on the next, while the referee watches the front camera.
+```
+
 <!-- TODO screenshot: the recipe's web UI with the front camera and the referee's verdicts, one of them YES -->
 
 ## Complete code

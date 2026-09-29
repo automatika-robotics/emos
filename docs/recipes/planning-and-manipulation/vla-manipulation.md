@@ -40,7 +40,12 @@ make status        # confirms the topics are flowing
 
 The first Isaac Sim launch compiles shaders and can take ten to twenty minutes with an unresponsive window. Later launches take a minute or two. `make reset`, or `R` in the Isaac window, resets the episode between attempts.
 
-<!-- TODO screenshot: Isaac Sim window with the LeIsaac kitchen scene, the SO101 arm and the oranges on the counter -->
+```{figure} /_static/images/vla_sim_isaac_scene.jpg
+:alt: Isaac Sim with the kitchen scene, the SO101 arm, three oranges and a plate
+:align: center
+
+The kitchen scene at reset: the arm at rest, three oranges on the counter and the plate.
+```
 
 The bridge publishes and consumes these topics:
 
@@ -129,6 +134,10 @@ config = VLAConfig(
 
 The three timing values follow from the simulation. The demonstrations were recorded at 30 frames per second of simulation time, and the bridge steps the simulation at about a third of real time, so `action_sending_rate=10.0` reproduces the dataset cadence. `observation_sending_rate=0.55` gives a full chunk of 16 actions, plus the inference time, room to execute before the next observation replaces it. And `latest_only` executes one self-consistent chunk at a time rather than blending chunks, which matters for this checkpoint because its actions are relative to the state at inference time. Playing actions faster than the dataset cadence, or abandoning chunks early, makes the arm fast and erratic. The repository's README has the formula for a bridge that steps at another rate.
 
+```{tip}
+These values assume the bridge steps at close to 20 Hz, and `make status` shows the rate it actually reaches on `/so101/joint_states`. A CPU governor left on `powersave`, the default on many machines, holds the bridge at around 14 Hz. The actions then play too fast in simulation time and the policy rarely completes the task. `sudo cpupower frequency-set -g performance` brings the rate back up.
+```
+
 ```{warning}
 An incomplete `joint_names_map` is an error at initialization.
 ```
@@ -169,17 +178,38 @@ launcher.add_pkg(components=[vla])
 launcher.bringup()
 ```
 
-Once the log reports that the components started, open `https://localhost:5001`, accept the self-signed certificate once, and enter the task:
+Once the log reports that the components started, open `https://localhost:5001` and accept the self-signed certificate once. The front camera streams in the outputs panel, and the task card holds the VLA's action. **Start** asks for the task:
 
 ```text
 Grab orange and place into plate
 ```
 
-<!-- TODO screenshot: the recipe's web UI with the goal control and the front camera stream while the arm is picking an orange -->
+```{figure} /_static/images/vla_sim_ui_task_form.png
+:alt: The task form of the recipe's web interface with the task string entered
+:align: center
+```
 
 ```{warning}
 The task string matters. VLA policies are sensitive to the instruction they were trained with, so use the dataset's exact phrasing. Reworded instructions degrade the policy.
 ```
+
+While the goal runs, the card shows its state, the time it has taken and the feedback of every step, and the camera shows the arm at work:
+
+```{figure} /_static/images/vla_sim_ui_running.png
+:alt: The recipe's web interface mid-episode, the task running and the arm holding an orange over the plate
+:align: center
+
+Mid-episode: the task is running and the arm carries an orange to the plate.
+```
+
+When the goal ends, the card reports the outcome and the log carries the result:
+
+```{figure} /_static/images/vla_sim_ui_done.jpg
+:alt: The recipe's web interface after the goal, the task completed and the results in the log
+:align: center
+```
+
+The simulation scores the task on its own. When all three oranges are on the plate and the arm is back at rest, it resets the scene at once and publishes `YES` on `/so101/task_success`. The goal in this recipe does not listen to that and ends on its timestep budget, so after a success the arm starts over on the fresh scene until the budget runs out. [Event-Driven VLA](event-driven-vla.md) ends the goal on success instead.
 
 The same goal can be sent from a terminal, since the component is an action server named `<component_name>/manipulate_with_vla`:
 

@@ -44,7 +44,12 @@ launcher.bringup()
 - {material-regular}`hub;1.2em;sd-text-primary` **System graph.** A draggable view of the running recipe: components as nodes, topics as typed edges, events and actions as elements of their own, each with a detail card. [Visualizing the System Graph](../recipes/events-and-resilience/visualizing-system-graph.md) is a hands-on tour.
 - {material-regular}`devices;1.2em;sd-text-primary` **Any screen.** The layout adapts from a desktop to a phone, and its assets are served from the robot, so it works with no internet.
 
-<!-- TODO screenshot: recipe web UI with inputs, outputs and a task card, replacing the GIFs from the previous release -->
+```{figure} /_static/images/vla_sim_ui_ready.png
+:alt: A recipe's web interface with the log, a camera output and a task card
+:align: center
+
+The interface of the [VLA manipulation recipe](../recipes/planning-and-manipulation/vla-manipulation.md): the log, the camera it declared as an output, and the task card of its action server.
+```
 
 ---
 

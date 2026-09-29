@@ -249,8 +249,9 @@ func VerifyNativeInstall(rosSetup string) error {
 	return nil
 }
 
-// UpdateNative pulls latest sources, rebuilds, and re-installs into the ROS 2 installation.
-func UpdateNative(wsPath, distro string) error {
+// UpdateNative pulls latest sources, rebuilds, and re-installs into the ROS 2
+// installation. kompass-core is left alone when it is current, unless rebuild.
+func UpdateNative(wsPath, distro string, rebuild bool) error {
 	rosPath := filepath.Join("/opt/ros", distro)
 	rosSetup := filepath.Join(rosPath, "setup.bash")
 	srcDir := filepath.Join(wsPath, "src")
@@ -278,16 +279,27 @@ func UpdateNative(wsPath, distro string) error {
 		}
 	}
 
-	// Update kompass-core via GPU install script (download to file, not curl|bash)
-	ui.Info("Updating kompass-core...")
-	installGPUCmd := exec.Command("bash", "-c",
-		`tmpf=$(mktemp /tmp/install_gpu_XXXXXX.sh) && `+
-			`curl -fsSL https://raw.githubusercontent.com/automatika-robotics/kompass-core/main/build_dependencies/install_gpu.sh -o "$tmpf" && `+
-			`chmod +x "$tmpf" && bash "$tmpf" && rm -f "$tmpf"`)
-	installGPUCmd.Stdout = os.Stdout
-	installGPUCmd.Stderr = os.Stderr
-	if err := installGPUCmd.Run(); err != nil {
-		ui.Warn("kompass-core update failed: " + err.Error())
+	current := false
+	if !rebuild {
+		var note string
+		current, note = KompassCoreCurrent(func(script string) (string, error) {
+			out, err := exec.Command("bash", "-c", "source "+rosSetup+" && "+script).Output()
+			return string(out), err
+		})
+		ui.Info(note)
+	}
+	if !current {
+		// Update kompass-core via GPU install script (download to file)
+		ui.Info("Updating kompass-core...")
+		installGPUCmd := exec.Command("bash", "-c",
+			`tmpf=$(mktemp /tmp/install_gpu_XXXXXX.sh) && `+
+				`curl -fsSL https://raw.githubusercontent.com/automatika-robotics/kompass-core/main/build_dependencies/install_gpu.sh -o "$tmpf" && `+
+				`chmod +x "$tmpf" && bash "$tmpf" && rm -f "$tmpf"`)
+		installGPUCmd.Stdout = os.Stdout
+		installGPUCmd.Stderr = os.Stderr
+		if err := installGPUCmd.Run(); err != nil {
+			ui.Warn("kompass-core update failed: " + err.Error())
+		}
 	}
 
 	// Ensure rosdep is initialized and up to date

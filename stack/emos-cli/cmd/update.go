@@ -42,6 +42,14 @@ var updateCmd = &cobra.Command{
 	RunE:  runUpdate,
 }
 
+// updateRebuild makes an update build what it would otherwise skip as current.
+var updateRebuild bool
+
+func init() {
+	updateCmd.Flags().BoolVar(&updateRebuild, "rebuild", false,
+		"Rebuild what an update skips when it is already current (kompass-core)")
+}
+
 func runUpdate(cmd *cobra.Command, args []string) error {
 	banner()
 
@@ -343,9 +351,20 @@ func updatePixi(cfg *config.EMOSConfig) error {
 		return err
 	}
 
-	// Rebuild
+	// Rebuild. Environment is settled by now, so a kompass-core that still
+	// loads and is the latest stays as it is.
+	env := pixiBuildEnv()
+	if !updateRebuild {
+		current, note := installer.KompassCoreCurrent(func(script string) (string, error) {
+			return installer.PixiOutput(projectDir, script)
+		})
+		ui.Info(note)
+		if current {
+			env = append(env, "EMOS_SKIP_KOMPASS_CORE=1")
+		}
+	}
 	ui.Info("Rebuilding EMOS packages...")
-	if err := installer.RunPixi(projectDir, pixiBuildEnv(), "run", "setup"); err != nil {
+	if err := installer.RunPixi(projectDir, env, "run", "setup"); err != nil {
 		return err
 	}
 
@@ -388,7 +407,7 @@ func updateNative(cfg *config.EMOSConfig) error {
 	fmt.Println("  Updating EMOS native workspace...")
 	fmt.Println()
 
-	if err := installer.UpdateNative(wsPath, cfg.ROSDistro); err != nil {
+	if err := installer.UpdateNative(wsPath, cfg.ROSDistro, updateRebuild); err != nil {
 		return err
 	}
 

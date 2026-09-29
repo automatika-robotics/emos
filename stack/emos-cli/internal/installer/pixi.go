@@ -72,6 +72,19 @@ func RunPixi(projectDir string, env []string, args ...string) error {
 	return nil
 }
 
+// PixiOutput runs a shell line in the workspace's environment and returns what
+// it printed.
+func PixiOutput(projectDir, shell string) (string, error) {
+	pixiBin, err := ResolvePixi()
+	if err != nil {
+		return "", err
+	}
+	cmd := exec.Command(pixiBin, "run", "bash", "-c", shell)
+	cmd.Dir = projectDir
+	out, err := cmd.Output()
+	return string(out), err
+}
+
 // mappingBackendTask is the pixi task that builds the native mapping backend.
 const mappingBackendTask = "install-mapping-backend"
 

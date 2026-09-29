@@ -40,6 +40,12 @@ env_pkg_version() {
     ls "$PIXI_PREFIX/conda-meta" 2>/dev/null | sed -n "s/^$1-\([0-9][0-9.]*\)-[^-]*\.json$/\1/p" | sed -n 1p
 }
 
+# Set by 'emos update' when the installed kompass-core is current
+if [[ "${EMOS_SKIP_KOMPASS_CORE:-}" == "1" ]]; then
+    log INFO "kompass-core is current, not rebuilding it or AdaptiveCpp."
+    exit 0
+fi
+
 SUDO=$(is_in_container && echo "" || echo "sudo")
 JOBS="${EMOS_BUILD_JOBS:-$(nproc)}" # parallel compile jobs, all cores unless capped
 

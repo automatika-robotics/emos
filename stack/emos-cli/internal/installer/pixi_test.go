@@ -356,3 +356,41 @@ func TestTheCUDAProbeChecksVersionsAndTheGPU(t *testing.T) {
 		t.Errorf("missing packages: err=%v out=%q", err, out)
 	}
 }
+
+func TestWithoutSourcedROSDropsOnlyWhatTheSetupFileAdded(t *testing.T) {
+	env := []string{
+		"HOME=/home/u",
+		"AMENT_PREFIX_PATH=/opt/ros/jazzy:/home/u/ros2_ws/install",
+		"COLCON_PREFIX_PATH=/home/u/ros2_ws/install",
+		"PATH=/home/u/ros2_ws/install/bin:/opt/ros/jazzy/bin:/usr/local/cuda/bin:/usr/bin",
+		"LD_LIBRARY_PATH=/opt/ros/jazzy/lib:/opt/ros/jazzy/opt/gz_sim_vendor/lib:/usr/local/cuda/lib64:/home/u/ros2_ws/install/lib",
+		"PYTHONPATH=/opt/ros/jazzy/lib/python3.12/site-packages:/home/u/tools",
+		"CMAKE_PREFIX_PATH=/opt/ros/jazzy",
+		"ROS_DISTRO=jazzy",
+		"ROS_VERSION=2",
+		"ROS_PYTHON_VERSION=3",
+		"ROS_DOMAIN_ID=5",
+		"ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET",
+		"RMW_IMPLEMENTATION=rmw_cyclonedds_cpp",
+		"HIKMICRO_PASS=secret",
+	}
+	want := []string{
+		"HOME=/home/u",
+		"PATH=/usr/local/cuda/bin:/usr/bin",
+		"LD_LIBRARY_PATH=/usr/local/cuda/lib64",
+		"PYTHONPATH=/home/u/tools",
+		"ROS_DOMAIN_ID=5",
+		"ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET",
+		"RMW_IMPLEMENTATION=rmw_cyclonedds_cpp",
+		"HIKMICRO_PASS=secret",
+	}
+	if got := WithoutSourcedROS(env); !reflect.DeepEqual(got, want) {
+		t.Errorf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+
+	// A shell that never sourced ROS is passed through as it is, /opt/ros aside.
+	plain := []string{"PATH=/usr/bin:/opt/ros/humble/bin", "LD_LIBRARY_PATH=/usr/local/cuda/lib64", "ROS_DOMAIN_ID=3"}
+	if got := WithoutSourcedROS(plain); !reflect.DeepEqual(got, []string{"PATH=/usr/bin", "LD_LIBRARY_PATH=/usr/local/cuda/lib64", "ROS_DOMAIN_ID=3"}) {
+		t.Errorf("plain shell: got %v", got)
+	}
+}

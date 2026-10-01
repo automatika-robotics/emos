@@ -55,7 +55,7 @@ func (s *PixiStrategy) Command(shell string) *exec.Cmd {
 		filepath.Join(s.projectDir, "pixi.toml"),
 		"bash", "-c", s.sourceCmd()+" && "+shell)
 	cmd.Dir = s.projectDir
-	cmd.Env = append(os.Environ(), s.env...)
+	cmd.Env = append(installer.WithoutSourcedROS(os.Environ()), s.env...)
 	return cmd
 }
 

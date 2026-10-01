@@ -71,7 +71,7 @@ func pixiStatus(cfg *config.EMOSConfig) {
 	}
 
 	// check for pixi binary (PATH, then ~/.pixi/bin, then /usr/local/bin)
-	pixiBin, pixiErr := installer.ResolvePixi()
+	_, pixiErr := installer.ResolvePixi()
 	if pixiErr != nil {
 		ui.Error("pixi: Not found")
 	} else {
@@ -94,10 +94,7 @@ func pixiStatus(cfg *config.EMOSConfig) {
 
 	setupSh := filepath.Join(projectDir, "install", "setup.sh")
 	statusPackages(func(script string) (string, error) {
-		cmd := exec.Command(pixiBin, "run", "--manifest-path", pixiToml, "bash", "-c", "source "+setupSh+" && "+script)
-		cmd.Dir = projectDir
-		out, err := cmd.Output()
-		return string(out), err
+		return installer.PixiOutput(projectDir, "source "+setupSh+" && "+script)
 	}, sourceCommits(cfg))
 }
 

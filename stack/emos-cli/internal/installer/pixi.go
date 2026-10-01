@@ -51,6 +51,53 @@ func PixiAddArgs(manifest string, pkgs []string, goarch string) []string {
 	return append(args, pkgs...)
 }
 
+// WithoutSourcedROS returns env without what a sourced ROS workspace added.
+func WithoutSourcedROS(env []string) []string {
+	prefixes := []string{"/opt/ros"}
+	for _, kv := range env {
+		if v, ok := strings.CutPrefix(kv, "AMENT_PREFIX_PATH="); ok {
+			prefixes = append(prefixes, strings.Split(v, ":")...)
+		}
+	}
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		name, value, _ := strings.Cut(kv, "=")
+		switch name {
+		case "AMENT_PREFIX_PATH", "COLCON_PREFIX_PATH", "ROS_DISTRO", "ROS_VERSION", "ROS_PYTHON_VERSION":
+			continue
+		case "PATH", "LD_LIBRARY_PATH", "PYTHONPATH", "CMAKE_PREFIX_PATH", "PKG_CONFIG_PATH", "GZ_CONFIG_PATH":
+			if value = withoutPrefixes(value, prefixes); value == "" {
+				continue
+			}
+			kv = name + "=" + value
+		}
+		out = append(out, kv)
+	}
+	return out
+}
+
+// withoutPrefixes drops the entries of a colon-separated list that lie under
+// one of prefixes.
+func withoutPrefixes(list string, prefixes []string) string {
+	var kept []string
+	for _, entry := range strings.Split(list, ":") {
+		if entry != "" && !underAny(entry, prefixes) {
+			kept = append(kept, entry)
+		}
+	}
+	return strings.Join(kept, ":")
+}
+
+func underAny(path string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		prefix = strings.TrimRight(prefix, "/")
+		if prefix != "" && (path == prefix || strings.HasPrefix(path, prefix+"/")) {
+			return true
+		}
+	}
+	return false
+}
+
 // RunPixi runs pixi with args in the workspace at projectDir, with the output on
 // the terminal.
 func RunPixi(projectDir string, env []string, args ...string) error {
@@ -60,7 +107,7 @@ func RunPixi(projectDir string, env []string, args ...string) error {
 	}
 	cmd := exec.Command(pixiBin, args...)
 	cmd.Dir = projectDir
-	cmd.Env = env
+	cmd.Env = WithoutSourcedROS(env)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -82,6 +129,7 @@ func PixiOutput(projectDir, shell string) (string, error) {
 	}
 	cmd := exec.Command(pixiBin, "run", "bash", "-c", shell)
 	cmd.Dir = projectDir
+	cmd.Env = WithoutSourcedROS(os.Environ())
 	out, err := cmd.Output()
 	return string(out), err
 }

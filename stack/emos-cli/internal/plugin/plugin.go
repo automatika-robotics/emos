@@ -435,7 +435,7 @@ func build(cfg *config.EMOSConfig, out io.Writer) error {
 		shell := fmt.Sprintf("source %s && cd %s && %s",
 			quote(filepath.Join(cfg.PixiProjectDir, "install", "setup.sh")),
 			quote(config.WorkspaceDir), colconBuild)
-		return runStreaming(pixiBin, pixiRunArgs(cfg, shell), "", out)
+		return runStreaming(pixiBin, pixiRunArgs(cfg, shell), "", out, installer.WithoutSourcedROS(os.Environ())...)
 
 	case config.ModeOSSContainer:
 		// The image entrypoint sources the ROS stack; the overlay lands in the
@@ -470,7 +470,7 @@ func inspect(cfg *config.EMOSConfig, entryPoint string) ([]byte, error) {
 		}
 		shell := fmt.Sprintf("source %s && source %s && %s",
 			quote(filepath.Join(cfg.PixiProjectDir, "install", "setup.sh")), quote(overlaySh), py)
-		describe, err = captureStdout(pixiBin, pixiRunArgs(cfg, shell), "")
+		describe, err = captureStdout(pixiBin, pixiRunArgs(cfg, shell), "", installer.WithoutSourcedROS(os.Environ())...)
 
 	case config.ModeOSSContainer:
 		shell := "source /emos/workspace/install/setup.bash && " + py
@@ -511,11 +511,15 @@ func pixiRunArgs(cfg *config.EMOSConfig, shell string) []string {
 	}
 }
 
-// runStreaming runs a command, streaming combined output to out.
-func runStreaming(name string, args []string, dir string, out io.Writer) error {
+// runStreaming runs a command, streaming combined output to out. An env
+// replaces the inherited environment.
+func runStreaming(name string, args []string, dir string, out io.Writer, env ...string) error {
 	cmd := exec.Command(name, args...)
 	if dir != "" {
 		cmd.Dir = dir
+	}
+	if env != nil {
+		cmd.Env = env
 	}
 	cmd.Stdout = out
 	cmd.Stderr = out
@@ -523,11 +527,14 @@ func runStreaming(name string, args []string, dir string, out io.Writer) error {
 }
 
 // captureStdout runs a command and returns trimmed stdout; stderr is folded
-// into the error.
-func captureStdout(name string, args []string, dir string) ([]byte, error) {
+// into the error. An env replaces the inherited environment.
+func captureStdout(name string, args []string, dir string, env ...string) ([]byte, error) {
 	cmd := exec.Command(name, args...)
 	if dir != "" {
 		cmd.Dir = dir
+	}
+	if env != nil {
+		cmd.Env = env
 	}
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout

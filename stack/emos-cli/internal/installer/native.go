@@ -45,6 +45,27 @@ func DetectROS() []ROSInstallation {
 	return installs
 }
 
+// StackPackages are the ROS packages colcon builds from the stack.
+var StackPackages = []string{
+	"automatika_ros_sugar",
+	"automatika_embodied_agents",
+	"kompass",
+	"kompass_interfaces",
+	"emos_mapping",
+}
+
+// CleanStackBuild drops the stack packages' build trees in the workspace at
+// wsDir, so the next colcon build starts from scratch. install/ stays, because
+// the mapping backend lives there.
+func CleanStackBuild(wsDir string) error {
+	for _, pkg := range StackPackages {
+		if err := os.RemoveAll(filepath.Join(wsDir, "build", pkg)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // InstallNative builds the EMOS packages and installs them into the ROS 2 installation.
 func InstallNative(wsPath, distro string) error {
 	rosPath := filepath.Join("/opt/ros", distro)
@@ -165,7 +186,7 @@ func InstallNative(wsPath, distro string) error {
 	}
 
 	// -- Build EMOS packages --
-	emosPkgs := "automatika_ros_sugar automatika_embodied_agents kompass kompass_interfaces emos_mapping"
+	emosPkgs := strings.Join(StackPackages, " ")
 	ui.Info("Building EMOS packages (this may take a while)...")
 	buildCmd := fmt.Sprintf(
 		"unset VIRTUAL_ENV && source %s && cd %s && colcon build --merge-install --packages-select %s --cmake-args -DCMAKE_BUILD_TYPE=Release",
@@ -325,8 +346,11 @@ func UpdateNative(wsPath, distro string, rebuild bool) error {
 	}
 
 	// -- Rebuild EMOS packages --
-	emosPkgs := "automatika_ros_sugar automatika_embodied_agents kompass kompass_interfaces emos_mapping"
+	emosPkgs := strings.Join(StackPackages, " ")
 	ui.Info("Rebuilding EMOS packages...")
+	if err := CleanStackBuild(wsPath); err != nil {
+		return err
+	}
 	buildCmd := fmt.Sprintf(
 		"unset VIRTUAL_ENV && source %s && cd %s && colcon build --merge-install --packages-select %s --cmake-args -DCMAKE_BUILD_TYPE=Release",
 		rosSetup, wsPath, emosPkgs)

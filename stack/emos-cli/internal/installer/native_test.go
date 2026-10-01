@@ -1,6 +1,7 @@
 package installer
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -41,5 +42,30 @@ func TestSyncWorkspaceMovesBetweenATagAndABranch(t *testing.T) {
 	}
 	if got := git(t, ws, "rev-parse", "HEAD"); got != tip {
 		t.Errorf("after main HEAD = %s, want %s", got, tip)
+	}
+}
+
+func TestCleanStackBuildLeavesEverythingElse(t *testing.T) {
+	ws := t.TempDir()
+	for _, dir := range []string{"build/kompass_interfaces", "build/kompass", "build/glim_ros", "install/lib", "mapping_backend/build"} {
+		if err := os.MkdirAll(filepath.Join(ws, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := CleanStackBuild(ws); err != nil {
+		t.Fatal(err)
+	}
+	for _, gone := range []string{"build/kompass_interfaces", "build/kompass"} {
+		if _, err := os.Stat(filepath.Join(ws, gone)); !os.IsNotExist(err) {
+			t.Errorf("%s should be gone", gone)
+		}
+	}
+	for _, kept := range []string{"build/glim_ros", "install/lib", "mapping_backend/build"} {
+		if _, err := os.Stat(filepath.Join(ws, kept)); err != nil {
+			t.Errorf("%s should stay", kept)
+		}
+	}
+	if err := CleanStackBuild(filepath.Join(ws, "never-built")); err != nil {
+		t.Errorf("a workspace without build trees is fine: %v", err)
 	}
 }

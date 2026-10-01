@@ -373,6 +373,9 @@ func updatePixi(cfg *config.EMOSConfig) error {
 		}
 	}
 	ui.Info("Rebuilding EMOS packages...")
+	if err := installer.CleanStackBuild(projectDir); err != nil {
+		return err
+	}
 	if err := installer.RunPixi(projectDir, env, "run", "setup"); err != nil {
 		return err
 	}

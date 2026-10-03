@@ -14,6 +14,11 @@
     letter-spacing: 0.02em !important;
 }
 
+/* sphinxcontrib-mermaid Size diagram to its content. */
+.mermaid-container > pre > svg {
+    height: auto !important;
+}
+
 /* === Theme Colors === */
 :root {
     --automatika-primary: #E83F3F;

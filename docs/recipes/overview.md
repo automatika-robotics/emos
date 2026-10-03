@@ -8,7 +8,7 @@ A Recipe is not a "script" in the traditional sense. It is a complete applicatio
 
 ### Write Once, Run Anywhere
 
-The core promise of EMOS Recipes is hardware independence. A "Security Patrol" recipe written for a wheeled AMR runs identically on a quadruped -- EMOS handles the kinematic translation and action commands beneath the surface. This decoupling of the robot's **Mind** from its **Body** means that:
+The core promise of EMOS Recipes is hardware independence. A "Security Patrol" recipe written for a wheeled AMR runs identically on a quadruped -- the robot's [plugin](../getting-started/plugins.md) handles the kinematic translation and action commands beneath the surface. This decoupling of the robot's **Mind** from its **Body** means that:
 
 - The same Recipe can be deployed across an entire heterogeneous fleet.
 - Recipes can be shared, versioned, and composed just like software packages.
@@ -20,11 +20,11 @@ The tutorials in this section follow a graduated structure, building from simple
 
 - {material-regular}`psychology;1.2em;sd-text-primary` **[Cognition Recipes](foundation/index.md)** -- Build intelligent agents from the ground up using [EmbodiedAgents](https://github.com/automatika-robotics/embodied-agents): conversational agents, prompt engineering, graph-backed spatio-temporal memory, memory-aware navigation, tool calling, semantic routing, and a complete end-to-end agent.
 
-- {material-regular}`precision_manufacturing;1.2em;sd-text-primary` **[Multimodal Planning & Manipulation](planning-and-manipulation/index.md)** -- The [Cortex](../intelligence/cortex.md) agentic harness (drop one component into your recipe and it turns the rest into a self-directing agent), Cortex paired with Memory, Cortex driving the full stack on a mobile robot, plus VLM-based planning and VLA-based end-to-end manipulation.
+- {material-regular}`precision_manufacturing;1.2em;sd-text-primary` **[Multimodal Planning & Manipulation](planning-and-manipulation/index.md)** -- The [Cortex](../intelligence/cortex.md) agentic harness (drop one component into your recipe and it turns the rest into a self-directing agent), Cortex paired with Memory, Cortex driving the full stack on a mobile robot, VLM-based planning, VLA-based end-to-end manipulation in simulation, and classical manipulation with MoveIt, planning around what the camera sees in 3D.
 
-- {material-regular}`route;1.2em;sd-text-primary` **[Navigation](navigation/index.md)** -- Set up and use [Kompass](https://github.com/automatika-robotics/kompass), the EMOS navigation engine: simulation quick starts, point navigation, path recording and replay, automated motion testing, and vision-based target tracking with RGB and depth cameras.
+- {material-regular}`route;1.2em;sd-text-primary` **[Navigation](navigation/index.md)** -- Set up and use [Kompass](https://github.com/automatika-robotics/kompass), the EMOS navigation engine: simulation quick starts, point navigation, the same stack on a real robot through its plugin, multi-waypoint missions, path recording and replay, automated motion testing, and vision-based target tracking with RGB and depth cameras.
 
-- {material-regular}`healing;1.2em;sd-text-primary` **[Adaptivity & Resilience](events-and-resilience/index.md)** -- Make your agents robust and adaptive using multiprocessing with process-level recovery, runtime fallbacks, event-driven cognition, the System Graph view for visualising the running graph, cross-component healing, composed logic gates, and context-aware dynamic actions.
+- {material-regular}`healing;1.2em;sd-text-primary` **[Adaptivity & Resilience](events-and-resilience/index.md)** -- Make your agents robust and adaptive using multiprocessing with process-level recovery, runtime fallbacks, event-driven cognition, the System Graph view for visualising the running graph, cross-component healing, composed logic gates, context-aware dynamic actions, and motion detection as an event source.
 
 ## Recipe Examples
 

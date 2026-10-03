@@ -89,12 +89,7 @@ The three layers form a vertical stack. Sugarcoat provides the execution primiti
 llm.on_algorithm_fail(action=switch_to_backup, max_retries=3)
 
 # Emergency stop? Restart the planner and back away.
-events_actions = {
-    event_emergency_stop: [
-        ComponentActions.restart(component=planner),
-        unblock_action,
-    ],
-}
+launcher.on(event_emergency_stop, [restart(component=planner), unblock_action])
 ```
 
 **GPU-accelerated navigation.** Kompass moves heavy geometric planning to the GPU, achieving up to **3,106x speedups** over CPU-based approaches. It is the first navigation framework with cross-vendor GPU support via SYCL.
@@ -123,34 +118,40 @@ cd emos/stack/emos-cli
 make build && sudo make install
 ```
 
-Then choose your deployment mode:
+Then choose your install mode:
 
 ```bash
-# Container mode (no ROS required, runs in Docker)
-emos install --mode container
+# pixi mode: ROS 2 and the whole stack in your home directory, no root, no Docker
+emos install --mode pixi
 
-# Native mode (requires existing ROS 2 installation)
+# Native mode: builds on the ROS 2 you already have
 emos install --mode native
+
+# Container mode: runs the public image in Docker
+emos install --mode container
 
 # Or run without arguments for an interactive menu
 emos install
 ```
 
-**Container mode** pulls the public EMOS image from GHCR and runs it in Docker. Sensor drivers must be running externally.
+**pixi mode** is the default. It installs ROS 2 Jazzy and every EMOS package into an isolated environment under your home directory, on any Linux distribution, and offers GPU builds where a CUDA toolkit is found.
 
-**Native mode** detects your ROS 2 installation, fetches the EMOS source, installs all dependencies (including GPU-accelerated kompass-core), and builds a workspace at `~/emos/ros_ws`.
+**Native mode** detects your ROS 2 installation (Humble, Jazzy or Kilted), fetches the EMOS source, installs the dependencies including GPU-accelerated kompass-core, and builds a workspace.
 
-### pixi (Experimental)
+**Container mode** pulls the public EMOS image and runs recipes inside it. Plugins that need sensor drivers, and mapping, want one of the other two modes.
 
-Install ROS2 and all EMOS dependencies in userspace with no root and no Docker, on any Linux distro:
+`emos update` keeps any of them current, and a nightly pre-release is available on the dev channel. See the [installation docs](https://emos.automatikarobotics.com/getting-started/installation.html) for details.
+
+### Robot plugins and maps
+
+A recipe talks to the robot through a plugin, which adapts the robot's own interfaces, its odometry, sensors, commands, actions and events, to the standard ones recipes use. Plugins come from a catalog and install in one command, and the same command adds sensors that are not part of the robot:
 
 ```bash
-curl -fsSL https://pixi.sh/install.sh | bash
-git clone --recurse-submodules https://github.com/automatika-robotics/emos.git
-cd emos && pixi install && pixi run setup
+emos plugin install emos-plugin-lite3
+emos plugin install emos-plugin-hikvision
 ```
 
-Then enter the environment with `pixi shell` and `source install/setup.sh`. See the [installation docs](https://emos.automatikarobotics.com/getting-started/installation.html) for details.
+Where a robot ships no mapping software, `emos map new` maps the site with the robot's own LiDAR, and `emos map use` makes the result the map recipes navigate on. See [Plugins](https://emos.automatikarobotics.com/getting-started/plugins.html) and [Mapping](https://emos.automatikarobotics.com/getting-started/mapping.html).
 
 ### Model Serving
 
@@ -160,7 +161,7 @@ See the [CLI documentation](stack/emos-cli/README.md) for the full command refer
 
 ## Dashboard
 
-`emos serve` starts a zero-touch web console that lets you browse, install, and run recipes from a browser, with live logs streamed over SSE. mDNS publishes the device as `<robot-name>.local` so you can reach it from any laptop or phone on the same network. Pairing is one-time with a six-digit code; access is revocable.
+`emos serve` starts a web console that lets you browse, install and run recipes, install plugins and manage maps from a browser, with live logs. It is served over HTTPS, mDNS publishes the device as `<robot-name>.local` so you can reach it from any laptop or phone on the same network, and pairing is one-time with a six-digit code; access is revocable.
 
 <p align="center">
   <img alt="EMOS Dashboard" src="docs/_static/images/dashboard_overview.png" width="80%">
@@ -193,7 +194,7 @@ controller.inputs(
 controller.algorithm = "VisionRGBDFollower"
 ```
 
-The [documentation](https://emos.automatikarobotics.com/recipes/overview.html) includes 16 recipes covering conversational agents, prompt engineering, semantic mapping, tool calling, VLA manipulation, point navigation, vision tracking, multiprocessing, runtime fallbacks, and event-driven cognition.
+The [documentation](https://emos.automatikarobotics.com/recipes/overview.html) includes more than thirty tutorials covering conversational agents, local models, spatio-temporal memory, tool calling, Cortex, VLA and MoveIt manipulation, point navigation and multi-waypoint missions, a real robot through its plugin, vision tracking, multiprocessing, runtime fallbacks, motion detection and event-driven cognition.
 
 ## AI-Assisted Recipe Development
 

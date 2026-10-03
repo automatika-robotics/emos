@@ -1,8 +1,10 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -20,7 +22,7 @@ func withTempConfig(t *testing.T) string {
 	ConfigDir = filepath.Join(tmp, ".config", "emos")
 	RecipesDir = filepath.Join(tmp, "emos", "recipes")
 	LogsDir = filepath.Join(tmp, "emos", "logs")
-	LicenseFile = filepath.Join(ConfigDir, "license.key")
+	LicenseFile = filepath.Join(ConfigDir, "license.json")
 	ConfigFile = filepath.Join(ConfigDir, "config.json")
 
 	t.Cleanup(func() {
@@ -34,11 +36,10 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	withTempConfig(t)
 
 	want := &EMOSConfig{
-		Mode:       ModeNative,
-		Name:       "epic-otter",
-		Port:       9000,
-		LicenseKey: "lic-123",
-		ROSDistro:  "jazzy",
+		Mode:      ModeNative,
+		Name:      "epic-otter",
+		Port:      9000,
+		ROSDistro: "jazzy",
 		Auth: AuthState{
 			PairingCodeHash: "abc",
 			PairingCreated:  time.Now().UTC().Truncate(time.Second),
@@ -55,7 +56,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		t.Fatalf("LoadConfig: got nil")
 	}
 	if got.Mode != want.Mode || got.Name != want.Name || got.Port != want.Port ||
-		got.LicenseKey != want.LicenseKey || got.ROSDistro != want.ROSDistro {
+		got.ROSDistro != want.ROSDistro {
 		t.Fatalf("scalar fields mismatch: got=%+v want=%+v", got, want)
 	}
 	if got.Auth.PairingCodeHash != want.Auth.PairingCodeHash {
@@ -82,29 +83,63 @@ func TestSaveConfigUsesRestrictivePermissions(t *testing.T) {
 	}
 }
 
-func TestLoadConfigLegacyLicenseMigration(t *testing.T) {
+func TestSaveConfigLeavesNoTempFiles(t *testing.T) {
 	withTempConfig(t)
+	for i := 0; i < 3; i++ {
+		if err := SaveConfig(&EMOSConfig{Mode: ModeNative, Port: i}); err != nil {
+			t.Fatalf("SaveConfig: %v", err)
+		}
+	}
+	entries, err := os.ReadDir(ConfigDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Name() != "config.json" {
+			t.Errorf("unexpected file left behind: %s", e.Name())
+		}
+	}
+}
 
-	if err := os.MkdirAll(ConfigDir, 0o700); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
+func TestUpdateConfigKeepsWhatOthersWrote(t *testing.T) {
+	withTempConfig(t)
+	if err := SaveConfig(&EMOSConfig{Mode: ModePixi}); err != nil {
+		t.Fatal(err)
 	}
-	if err := os.WriteFile(LicenseFile, []byte("legacy-key"), 0o600); err != nil {
-		t.Fatalf("WriteFile: %v", err)
+	// A pairing lands on disk while a long plugin job still holds an old copy.
+	stale := LoadConfig()
+	if err := UpdateConfig(func(c *EMOSConfig) { c.Auth.PairingCodeHash = "paired" }); err != nil {
+		t.Fatal(err)
 	}
+	stale.Plugin = &PluginInfo{Slug: "m20_plugin"}
+	if err := UpdateConfig(func(c *EMOSConfig) { c.Plugin = stale.Plugin }); err != nil {
+		t.Fatal(err)
+	}
+	got := LoadConfig()
+	if got.Auth.PairingCodeHash != "paired" || got.Plugin == nil || got.Mode != ModePixi {
+		t.Errorf("an update lost another writer's change: %+v", got)
+	}
+}
 
-	cfg := LoadConfig()
-	if cfg == nil {
-		t.Fatalf("LoadConfig: nil after legacy license migration")
+func TestUpdateConfigSerialisesConcurrentWriters(t *testing.T) {
+	withTempConfig(t)
+	const writers = 20
+	var wg sync.WaitGroup
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			err := UpdateConfig(func(c *EMOSConfig) {
+				c.UpsertSensor(PluginInfo{Slug: fmt.Sprintf("sensor_%d", i)})
+			})
+			if err != nil {
+				t.Error(err)
+			}
+		}(i)
 	}
-	if cfg.Mode != ModeLicensed {
-		t.Fatalf("Mode = %q, want %q", cfg.Mode, ModeLicensed)
-	}
-	if cfg.LicenseKey != "legacy-key" {
-		t.Fatalf("LicenseKey = %q, want %q", cfg.LicenseKey, "legacy-key")
-	}
-	// Migration must persist a config.json so subsequent loads short-circuit.
-	if _, err := os.Stat(ConfigFile); err != nil {
-		t.Fatalf("expected config.json to be written by migration: %v", err)
+	wg.Wait()
+	if got := len(LoadConfig().SensorPlugins); got != writers {
+		t.Errorf("%d of %d concurrent updates survived", got, writers)
 	}
 }
 
@@ -210,5 +245,44 @@ func TestPairedDeviceCount(t *testing.T) {
 	cfg.Auth.Tokens = []AuthToken{{Hash: "a"}, {Hash: "b"}}
 	if got := cfg.PairedDeviceCount(); got != 2 {
 		t.Fatalf("PairedDeviceCount = %d, want 2", got)
+	}
+}
+
+func TestChannelFollowsTheVersion(t *testing.T) {
+	orig := Version
+	t.Cleanup(func() { Version = orig })
+	for version, want := range map[string]string{
+		"0.8.0": "stable", "dev": "stable", "0.8.0-dev.20260925": "dev", "0.8.1-dev.20261001.2": "dev",
+	} {
+		Version = version
+		if got := Channel(); got != want {
+			t.Errorf("Channel() with version %q = %q, want %q", version, got, want)
+		}
+	}
+}
+
+func TestPublicImageTagFollowsTheChannel(t *testing.T) {
+	orig := Version
+	t.Cleanup(func() { Version = orig })
+	Version = "0.8.0"
+	if got := PublicImageTag("jazzy"); got != PublicImage+":jazzy-latest" {
+		t.Errorf("stable image = %q", got)
+	}
+	Version = "0.8.0-dev.20260925"
+	if got := PublicImageTag("jazzy"); got != PublicImage+":jazzy-dev" {
+		t.Errorf("dev image = %q", got)
+	}
+}
+
+func TestWorkspaceRefIsTheSourceRefOrMain(t *testing.T) {
+	orig := SourceRef
+	t.Cleanup(func() { SourceRef = orig })
+	SourceRef = ""
+	if got := WorkspaceRef(); got != "main" {
+		t.Errorf("WorkspaceRef() without a source ref = %q", got)
+	}
+	SourceRef = "v0.8.0-dev.20260925"
+	if got := WorkspaceRef(); got != "v0.8.0-dev.20260925" {
+		t.Errorf("WorkspaceRef() with a source ref = %q", got)
 	}
 }

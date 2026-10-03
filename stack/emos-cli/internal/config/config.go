@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/automatika-robotics/emos-cli/internal/identity"
@@ -13,37 +15,150 @@ import (
 // The "dev" fallback only appears when built with plain `go build`
 var Version = "dev"
 
+// SourceRef is the branch or tag of the EMOS repository an install clones. A
+// nightly build sets it to its own tag at link time, a development build to
+// its branch, so each installs the code it was built from. Empty means main.
+var SourceRef = ""
+
+// Channel is the release channel this binary follows: "dev" for a nightly
+// build else "stable".
+func Channel() string {
+	if strings.Contains(Version, "-dev.") {
+		return "dev"
+	}
+	return "stable"
+}
+
+// WorkspaceRef is the ref of the EMOS repository an install follows.
+func WorkspaceRef() string {
+	if SourceRef != "" {
+		return SourceRef
+	}
+	return "main"
+}
+
 type InstallMode string
 
 const (
 	ModeOSSContainer InstallMode = "oss-container"
-	ModeLicensed     InstallMode = "licensed"
 	ModeNative       InstallMode = "native"
 	ModePixi         InstallMode = "pixi"
 )
 
 type EMOSConfig struct {
-	Mode           InstallMode `json:"mode"`
-	Name           string      `json:"name,omitempty"` // human-friendly device name (e.g. "epic-otter")
-	Port           int         `json:"port,omitempty"` // dashboard bind port; 0 means DefaultDashboardPort
-	LicenseKey     string      `json:"license_key,omitempty"`
-	ROSDistro      string      `json:"ros_distro"`
-	ImageTag       string      `json:"image_tag,omitempty"`
-	WorkspacePath  string      `json:"workspace_path,omitempty"`
-	PixiProjectDir string      `json:"pixi_project_dir,omitempty"`
-	Plugin         *PluginInfo `json:"plugin,omitempty"`
-	Auth           AuthState   `json:"auth"`
+	Mode           InstallMode  `json:"mode"`
+	Name           string       `json:"name,omitempty"` // human-friendly device name (e.g. "epic-otter")
+	Port           int          `json:"port,omitempty"` // dashboard bind port; 0 means DefaultDashboardPort
+	ROSDistro      string       `json:"ros_distro"`
+	ImageTag       string       `json:"image_tag,omitempty"`
+	WorkspacePath  string       `json:"workspace_path,omitempty"`
+	PixiProjectDir string       `json:"pixi_project_dir,omitempty"`
+	Plugin         *PluginInfo  `json:"plugin,omitempty"`         // the robot plugin (0 or 1)
+	SensorPlugins  []PluginInfo `json:"sensor_plugins,omitempty"` // additive sensor plugins (0..N)
+	Auth           AuthState    `json:"auth"`
 }
 
-// PluginInfo records the single active robot plugin (a robot runs one plugin
-// at a time).
+// Plugin roles, as reported by a plugin's describe().role.
+const (
+	RoleRobot  = "robot"
+	RoleSensor = "sensor"
+)
+
+// PluginInfo records an installed plugin. A robot runs one robot plugin (in
+// EMOSConfig.Plugin) plus any number of sensor plugins mounted alongside it
+// (in EMOSConfig.SensorPlugins).
 type PluginInfo struct {
-	Slug        string    `json:"slug"`
-	EntryPoint  string    `json:"entry_point"` // module:ClassName
-	Repo        string    `json:"repo"`
-	Ref         string    `json:"ref,omitempty"`       // empty = tracks the default branch
-	ImageURL    string    `json:"image_url,omitempty"` // portal-served robot picture, if any
-	InstalledAt time.Time `json:"installed_at,omitempty"`
+	Slug        string          `json:"slug"`
+	EntryPoint  string          `json:"entry_point"`    // module:ClassName
+	Role        string          `json:"role,omitempty"` // "robot" | "sensor" (from describe().role)
+	Repo        string          `json:"repo"`
+	Ref         string          `json:"ref,omitempty"`       // empty = tracks the default branch
+	ImageURL    string          `json:"image_url,omitempty"` // portal-served hardware picture, if any
+	Sources     []string        `json:"sources,omitempty"`   // workspace packages cloned from the manifest's sources
+	Describe    json.RawMessage `json:"describe,omitempty"`  // cached inspect() output
+	InstalledAt time.Time       `json:"installed_at,omitempty"`
+}
+
+// DisplayName is the name the plugin gives its hardware, or its slug.
+func (p PluginInfo) DisplayName() string {
+	var d struct {
+		Metadata struct {
+			Name string `json:"name"`
+		} `json:"metadata"`
+	}
+	if json.Unmarshal(p.Describe, &d) == nil && d.Metadata.Name != "" {
+		return d.Metadata.Name
+	}
+	return p.Slug
+}
+
+// PluginLabel names a plugin for the operator by its hardware when it is
+// installed and by its slug otherwise.
+func (c *EMOSConfig) PluginLabel(slug string) string {
+	if p := c.FindPlugin(slug); p != nil {
+		return p.DisplayName()
+	}
+	return slug
+}
+
+// Plugins returns every installed plugin: the robot (if any) then the sensors.
+func (c *EMOSConfig) Plugins() []PluginInfo {
+	var all []PluginInfo
+	if c == nil {
+		return all
+	}
+	if c.Plugin != nil {
+		all = append(all, *c.Plugin)
+	}
+	return append(all, c.SensorPlugins...)
+}
+
+// FindPlugin returns the installed plugin (robot or sensor) with the given
+// slug, or nil.
+func (c *EMOSConfig) FindPlugin(slug string) *PluginInfo {
+	if c == nil {
+		return nil
+	}
+	if c.Plugin != nil && c.Plugin.Slug == slug {
+		return c.Plugin
+	}
+	for i := range c.SensorPlugins {
+		if c.SensorPlugins[i].Slug == slug {
+			return &c.SensorPlugins[i]
+		}
+	}
+	return nil
+}
+
+// UpsertSensor adds a sensor plugin, replacing any existing entry with the same
+// slug.
+func (c *EMOSConfig) UpsertSensor(pi PluginInfo) {
+	for i := range c.SensorPlugins {
+		if c.SensorPlugins[i].Slug == pi.Slug {
+			c.SensorPlugins[i] = pi
+			return
+		}
+	}
+	c.SensorPlugins = append(c.SensorPlugins, pi)
+}
+
+// RemovePlugin drops the installed plugin with the given slug from whichever
+// slot holds it (the robot or the sensor list). Returns true if one was found.
+func (c *EMOSConfig) RemovePlugin(slug string) bool {
+	if c == nil {
+		return false
+	}
+	if c.Plugin != nil && c.Plugin.Slug == slug {
+		c.Plugin = nil
+		return true
+	}
+	for i := range c.SensorPlugins {
+		if c.SensorPlugins[i].Slug == slug {
+			c.SensorPlugins = append(c.SensorPlugins[:i], c.SensorPlugins[i+1:]...)
+			return true
+		}
+	}
+	return false
 }
 
 // DefaultDashboardPort is the bind port used when EMOSConfig.Port is unset.
@@ -102,29 +217,37 @@ func (c *EMOSConfig) IsInstalled() bool {
 
 const (
 	ContainerName        = "emos"
-	ServiceName          = "emos.service"           // container auto-restart unit
 	DashboardServiceName = "emos-dashboard.service" // `emos serve` daemon unit
 	GitHubOrg            = "automatika-robotics"
 	GitHubRepo           = "emos"
 	PublicImage          = "ghcr.io/automatika-robotics/emos"
 
 	// API endpoints
-	APIBaseURL          = "https://support-api.automatikarobotics.com/api"
-	CredentialsEndpoint = APIBaseURL + "/registrations/credentials"
-	RecipesEndpoint     = APIBaseURL + "/recipes"
-	PluginsEndpoint     = APIBaseURL + "/plugins"
+	APIBaseURL      = "https://support-api.automatikarobotics.com/api"
+	VerifyEndpoint  = APIBaseURL + "/registrations/verify"
+	RecipesEndpoint = APIBaseURL + "/recipes"
+	PluginsEndpoint = APIBaseURL + "/plugins"
+
+	// SupportURL is the support portal, where a licence is activated and where
+	// its holder gets help.
+	SupportURL = "https://support.automatikarobotics.com"
+
+	// SalesEmail is where a licence is asked for.
+	SalesEmail = "contact@automatikarobotics.com"
 )
 
 var (
-	HomeDir            string
-	ConfigDir          string
-	RecipesDir         string
-	LogsDir            string
-	LicenseFile        string
-	ConfigFile         string
-	PixiDir            string // Pixi installation location
-	WorkspaceDir       string // ~/emos/workspace: plugin source
-	PluginDescribeFile string // cached inspect output of the active plugin
+	HomeDir        string
+	ConfigDir      string
+	RecipesDir     string
+	LogsDir        string
+	LicenseFile    string
+	ConfigFile     string
+	PixiDir        string // Pixi installation location
+	WorkspaceDir   string // ~/emos/workspace: plugin source
+	MapsDir        string // ~/emos/maps: maps EMOS itself built
+	MapArchivesDir string // ~/emos/map-archives: exported map packages
+	UISecurityDir  string // ~/emos/.ui-security: UI API keys and certificate
 )
 
 func Init() {
@@ -132,11 +255,15 @@ func Init() {
 	ConfigDir = filepath.Join(HomeDir, ".config", "emos")
 	RecipesDir = filepath.Join(HomeDir, "emos", "recipes")
 	LogsDir = filepath.Join(HomeDir, "emos", "logs")
-	LicenseFile = filepath.Join(ConfigDir, "license.key")
+	LicenseFile = filepath.Join(ConfigDir, "license.json")
 	ConfigFile = filepath.Join(ConfigDir, "config.json")
 	PixiDir = pixiDataDir()
 	WorkspaceDir = filepath.Join(HomeDir, "emos", "workspace")
-	PluginDescribeFile = filepath.Join(ConfigDir, "plugin-describe.json")
+	MapsDir = filepath.Join(HomeDir, "emos", "maps")
+	// Deliberately not inside MapsDir: that store is listed as map directories,
+	// so a subdirectory of archives would show up as a map.
+	MapArchivesDir = filepath.Join(HomeDir, "emos", "map-archives")
+	UISecurityDir = filepath.Join(HomeDir, "emos", ".ui-security")
 }
 
 // PluginSrcDir is where robot-plugin sources are cloned (one subdir per
@@ -155,47 +282,84 @@ func pixiDataDir() string {
 	return filepath.Join(HomeDir, ".local", "share", "emos")
 }
 
-// PublicImageTag returns the full public image reference for a given ROS distro.
+// PublicImageTag returns the full public image reference for a given ROS
+// distro.
 func PublicImageTag(distro string) string {
+	if Channel() == "dev" {
+		return PublicImage + ":" + distro + "-dev"
+	}
 	return PublicImage + ":" + distro + "-latest"
 }
 
-// LoadConfig loads the persistent EMOS config. If config.json is missing but
-// license.key exists, it infers licensed mode and migrates.
+// LoadConfig loads the persistent EMOS config, or nil when there is none.
 func LoadConfig() *EMOSConfig {
 	data, err := os.ReadFile(ConfigFile)
-	if err == nil {
-		var cfg EMOSConfig
-		if json.Unmarshal(data, &cfg) == nil {
-			return &cfg
-		}
+	if err != nil {
+		return nil
 	}
-
-	// Backward compat: if license.key exists, infer licensed mode
-	if keyBytes, err := os.ReadFile(LicenseFile); err == nil && len(keyBytes) > 0 {
-		cfg := &EMOSConfig{
-			Mode:       ModeLicensed,
-			LicenseKey: string(keyBytes),
-			ROSDistro:  "jazzy",
-		}
-		SaveConfig(cfg)
-		return cfg
+	var cfg EMOSConfig
+	if json.Unmarshal(data, &cfg) != nil {
+		return nil
 	}
-
-	return nil
+	return &cfg
 }
 
 // SaveConfig persists the EMOS config to disk. Mode 0600 because the file
-// holds license keys and hashed auth tokens.
+// holds hashed auth tokens.
+//
+// The file is replaced by rename, so a reader never sees it half-written.
 func SaveConfig(cfg *EMOSConfig) error {
-	if err := os.MkdirAll(ConfigDir, 0700); err != nil {
-		return err
-	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(ConfigFile, data, 0600)
+	return writeAtomic(ConfigFile, data)
+}
+
+// writeAtomic replaces path, a file in ConfigDir, with data. Mode 0600.
+func writeAtomic(path string, data []byte) error {
+	if err := os.MkdirAll(ConfigDir, 0700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(ConfigDir, filepath.Base(path)+"-*") // created 0600
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name()) // a no-op once renamed
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
+}
+
+// UpdateConfig applies change to the config as it is on disk now and saves it.
+//
+// Use it for any change made after a long-running operation. The CLI and the
+// dashboard write different fields of the same file, so saving a copy loaded
+// minutes earlier would undo whatever the other wrote in between. A lock held
+// across load and save keeps two updates from interleaving.
+func UpdateConfig(change func(*EMOSConfig)) error {
+	if err := os.MkdirAll(ConfigDir, 0700); err != nil {
+		return err
+	}
+	lock, err := os.OpenFile(filepath.Join(ConfigDir, "config.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return err
+	}
+	defer lock.Close() // releases the lock
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return err
+	}
+	cfg := LoadConfig()
+	if cfg == nil {
+		cfg = &EMOSConfig{}
+	}
+	change(cfg)
+	return SaveConfig(cfg)
 }
 
 // ResolveDeviceName loads the config (creating an empty one if needed),
@@ -213,7 +377,12 @@ func ResolveDeviceName() (string, error) {
 	if cfg.Name != "" {
 		return cfg.Name, nil
 	}
-	cfg.Name = identity.Compute(cfg.LicenseKey)
+	// A licence outlives an uninstall, so a name seeded by its key does too
+	var key string
+	if lic := LoadLicense(); lic != nil {
+		key = lic.Key
+	}
+	cfg.Name = identity.Compute(key)
 	if err := SaveConfig(cfg); err != nil {
 		return cfg.Name, err
 	}
@@ -244,6 +413,17 @@ func RepoURL() string {
 	return "https://github.com/" + GitHubOrg + "/" + GitHubRepo + ".git"
 }
 
-func ReleasesURL() string {
-	return "https://api.github.com/repos/" + GitHubOrg + "/" + GitHubRepo + "/releases/latest"
+// ReleasesURL is GitHub's latest release, which is never a pre-release.
+func LatestReleaseURL() string {
+	return ReleaseListURL() + "/latest"
+}
+
+// ReleaseListURL lists the newest releases, pre-releases included.
+func ReleaseListURL() string {
+	return "https://api.github.com/repos/" + GitHubOrg + "/" + GitHubRepo + "/releases"
+}
+
+// ReleaseTagURL is the release of one version, with its assets.
+func ReleaseTagURL(version string) string {
+	return ReleaseListURL() + "/tags/v" + version
 }

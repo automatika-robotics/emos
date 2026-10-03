@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/automatika-robotics/emos-cli/internal/api"
 	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/ui"
 	"github.com/spf13/cobra"
@@ -23,6 +24,7 @@ func runLs(cmd *cobra.Command, args []string) error {
 		ui.Faint("No recipes found in " + config.RecipesDir)
 		return nil
 	}
+	cfg := config.LoadConfig()
 
 	var rows [][]string
 	for _, entry := range entries {
@@ -30,19 +32,25 @@ func runLs(cmd *cobra.Command, args []string) error {
 			continue
 		}
 		name := entry.Name()
-		description := "-"
+		description, version := "-", "-"
 
 		manifestPath := filepath.Join(config.RecipesDir, name, "manifest.json")
 		if data, err := os.ReadFile(manifestPath); err == nil {
 			var manifest struct {
-				Name string `json:"name"`
+				Name    string            `json:"name"`
+				Variant api.RecipeVariant `json:"variant"`
 			}
-			if json.Unmarshal(data, &manifest) == nil && manifest.Name != "" {
-				description = manifest.Name
+			if json.Unmarshal(data, &manifest) == nil {
+				if manifest.Name != "" {
+					description = manifest.Name
+				}
+				if manifest.Variant.ID != "" {
+					version = api.VariantLabel(manifest.Variant, cfg)
+				}
 			}
 		}
 
-		rows = append(rows, []string{name, description})
+		rows = append(rows, []string{name, description, version})
 	}
 
 	if len(rows) == 0 {
@@ -51,6 +59,6 @@ func runLs(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println()
-	ui.PrintTable([]string{"NAME", "DESCRIPTION"}, rows)
+	ui.PrintTable([]string{"NAME", "DESCRIPTION", "VERSION"}, rows)
 	return nil
 }

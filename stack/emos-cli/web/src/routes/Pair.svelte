@@ -76,7 +76,7 @@
 <div class="min-h-screen flex items-center justify-center px-4 sm:px-6 py-12">
   <div class="surface w-full max-w-md p-6 sm:p-8 animate-rise">
     <div class="flex items-center gap-3 mb-6">
-      <Logo size={36} />
+      <Logo height={36} />
       <div>
         <div class="text-base font-semibold tracking-tight">Pair this browser</div>
         <div class="text-xs text-emos-text-3">One-time setup for this device</div>

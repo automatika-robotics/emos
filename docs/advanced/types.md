@@ -14,6 +14,7 @@ When defining a [Topic](../concepts/topics.md), you pass the message type as a s
 | **Float32MultiArray** | std_msgs | Array of single-precision floats |
 | **Float64** | std_msgs | Double-precision float |
 | **Float64MultiArray** | std_msgs | Array of double-precision floats |
+| **Audio** | std_msgs | Raw audio bytes, carried as a `ByteMultiArray` |
 
 ## Geometry Messages
 
@@ -32,11 +33,13 @@ When defining a [Topic](../concepts/topics.md), you pass the message type as a s
 |:---|:---|:---|
 | **Image** | sensor_msgs | Raw image data |
 | **CompressedImage** | sensor_msgs | Compressed image (JPEG, PNG) |
-| **Audio** | sensor_msgs | Audio stream data |
 | **LaserScan** | sensor_msgs | 2D lidar scan |
 | **PointCloud2** | sensor_msgs | 3D point cloud |
 | **CameraInfo** | sensor_msgs | Camera calibration and metadata |
 | **JointState** | sensor_msgs | Instantaneous joint position, velocity, and effort |
+| **Imu** | sensor_msgs | Inertial measurement: orientation, angular velocity, linear acceleration |
+| **Range** | sensor_msgs | A single-beam range sensor such as an ultrasound or infrared sensor |
+| **NavSatFix** | sensor_msgs | A satellite navigation fix |
 
 ## Navigation Messages
 
@@ -60,6 +63,9 @@ These types are defined by EmbodiedAgents for AI component communication.
 | **PointsOfInterest** | automatika_embodied_agents | Specific 2D coordinates of interest within an image |
 | **Trackings** | automatika_embodied_agents | Object tracking data including IDs, labels, and trajectories |
 | **TrackingsMultiSource** | automatika_embodied_agents | Object tracking data from multiple sources |
+| **Detections3D** | automatika_embodied_agents | Metric 3D boxes with labels, scores and depth validity, in a named frame |
+| **VisionLanguageAction** (action) | automatika_embodied_agents | A task instruction for the VLA and Cortex action servers |
+| **MoveManipulator** (action) | automatika_embodied_agents | A motion goal for the MoveIt component: pose, joints, named, Cartesian, pick or place |
 
 ## Navigation-Specific Messages
 
@@ -68,6 +74,8 @@ These types are defined by Kompass for navigation component communication.
 | Message | ROS 2 Package | Description |
 |:---|:---|:---|
 | **TwistArray** | kompass_interfaces | Array of velocity commands for trajectory candidates |
+| **MissionStatus** | kompass_interfaces | Progress and state of a multi-waypoint mission |
+| **MultiGoalPlanPath** (action) | kompass_interfaces | A mission: waypoints with dwell, condition and timeout policy |
 
 ## Hardware Interface Messages
 

@@ -8,9 +8,13 @@ platforms = ["linux-64", "linux-aarch64"]
 [activation.env]
 SKBUILD_STRICT_CONFIG = "false"
 
-# Let the pyaudio aarch64 source build find the multiarch glibc headers.
+# Preloads OpenMP on Ubuntu 20.04 aarch64.
+[target.linux-aarch64.activation]
+scripts = ["stack/emos-cli/scripts/pixi_activate_aarch64.sh"]
+
+# Pyaudio gets built from src on aarch64
 [target.linux-aarch64.activation.env]
-CFLAGS = "-I/usr/include/aarch64-linux-gnu"
+CFLAGS = "-idirafter /usr/include" # Make GCC drop -I/usr/include of the pyaudio source build, keeping the environment's glibc headers first
 
 # --- Conda Dependencies ---
 [dependencies]
@@ -49,28 +53,24 @@ ros-jazzy-builtin-interfaces = "*"
 ros-jazzy-action-msgs = "*"
 ros-jazzy-rpyutils = "*"
 
-# ROS 2 Jazzy — localization (pre-built, replaces colcon Stage 1)
-ros-jazzy-robot-localization = "*"
-ros-jazzy-geographic-msgs = "*"
-ros-jazzy-angles = "*"
-
 # ROS 2 Jazzy — kinematics (for kompass)
 ros-jazzy-python-orocos-kdl-vendor = "*"
+
+# ROS 2 Jazzy — manipulation (for the MoveIt component of embodied-agents)
+ros-jazzy-moveit-msgs = "*"
+ros-jazzy-control-msgs = "*"
 
 # System libraries
 portaudio = "*"
 jq = "*"
-geographiclib = "*"
 
-# kompass-core build dependencies
+# kompass-core and GTSAM build dependencies.
 ompl = "*"
 fcl = "*"
 eigen = ">=3.4,<4"
+libboost-devel = "*"
 
-[target.linux-64.dependencies]
-pyaudio = "*"
-
-# Python packages (from conda-forge)
+# Python packages (conda-forge). Cross-platform.
 numpy = "*"
 opencv = "*"
 attrs = ">=23.2.0"
@@ -85,34 +85,29 @@ pyyaml = "*"
 toml = "*"
 websockets = "*"
 redis-py = "*"
-python-fasthtml = "*"
+python-fasthtml = ">=0.12,<0.15"
 grpcio = "*"
 protobuf = "*"
 huggingface_hub = "*"
 
-# --- PyPI Dependencies (not on conda-forge or missing for aarch64) ---
+# --- PyPI Dependencies (not on conda-forge) ---
 [pypi-dependencies]
-monsterui = "*"
+monsterui = ">=1.0,<1.1"
 sherpa-onnx = "*"
 ollama = "*"
 soundfile = "*"
-llama-cpp-python = "*"
+# Install llama-cpp-python from its own index (pypi only has src for aarch64)
+llama-cpp-python = { version = "*", index = "https://abetlen.github.io/llama-cpp-python/whl/cpu" }
 onnxruntime = "*"
 
+# --- PyAudio (conda-forge has it for x86 only) ---
+# conda package on x86
+[target.linux-64.dependencies]
+pyaudio = "*"
+
+# built from src on aarch64, with the CFLAGS set above
 [target.linux-aarch64.pypi-dependencies]
 PyAudio = "*"
-
-# --- GPU Feature (optional) ---
-[feature.gpu.system-requirements]
-cuda = "12"
-
-[feature.gpu.dependencies]
-cuda-version = "12.*"
-
-# --- Environments ---
-[environments]
-default = { solve-group = "default" }
-gpu = { features = ["gpu"], solve-group = "default" }
 
 # --- Tasks ---
 [tasks]
@@ -120,12 +115,23 @@ gpu = { features = ["gpu"], solve-group = "default" }
 # Uses apt for LLVM/Clang only; OMPL and FCL come from pixi (conda-forge).
 install-kompass-core = "bash stack/emos-cli/scripts/install_kompass_core_pixi.sh"
 
-# Build EMOS ROS packages (sugarcoat, kompass, embodied-agents, kompass_interfaces)
-build = """colcon build \
+# Build the native mapping backend (GTSAM, gtsam_points, GLIM, glim_ros2) from source.
+# On demand, through 'emos map setup'.
+install-mapping-backend = "bash stack/emos-cli/scripts/install_mapping_backend_pixi.sh"
+
+# Build sherpa-onnx and llama-cpp-python with CUDA, from source.
+# Offered when CUDA is found during setup.
+install-cuda-packages = "bash stack/emos-cli/scripts/install_cuda_packages_pixi.sh"
+
+# Build EMOS ROS packages (sugarcoat, kompass, embodied-agents, kompass_interfaces, emos_mapping)
+# With EMOS_BUILD_JOBS set, one package at a time with that many compile jobs.
+build = """bash -c '
+if [ -n "$EMOS_BUILD_JOBS" ]; then export MAKEFLAGS="-j$EMOS_BUILD_JOBS"; sequential="--executor sequential"; fi
+colcon build $sequential \
   --merge-install \
   --symlink-install \
-  --base-paths stack/sugarcoat stack/kompass stack/embodied-agents \
-  --cmake-args -DCMAKE_BUILD_TYPE=Release"""
+  --base-paths stack/sugarcoat stack/kompass stack/embodied-agents stack/emos_mapping \
+  --cmake-args -DCMAKE_BUILD_TYPE=Release'"""
 
 # Register pixi installation with EMOS CLI config.
 register = """python3 -c "

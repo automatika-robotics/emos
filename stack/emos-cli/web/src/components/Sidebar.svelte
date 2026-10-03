@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { link, path } from '$lib/router';
-  import { LayoutDashboard, BookMarked, Plug, Activity, Cpu, BookOpen, ExternalLink } from 'lucide-svelte';
+  import { link, path as route } from '$lib/router';
+  import { LayoutDashboard, BookMarked, Plug, Activity, Cpu, BookOpen, ExternalLink, LifeBuoy, BadgeCheck } from 'lucide-svelte';
   import Logo from './Logo.svelte';
-  import { useInfo } from '$lib/queries';
+  import { useInfo, useLicense } from '$lib/queries';
 
   const info = useInfo();
+  const license = useLicense();
 
   const items = [
     { href: '/', label: 'Console', icon: LayoutDashboard },
@@ -15,8 +16,8 @@
   ];
 
   function isActive(href: string): boolean {
-    if (href === '/') return $path === '/' || $path === '';
-    return $path.startsWith(href);
+    if (href === '/') return $route === '/' || $route === '';
+    return $route.startsWith(href);
   }
 </script>
 
@@ -25,7 +26,8 @@
     <!-- The EMOS wordmark IS the logo + text. No separate label needed. -->
     <Logo height={22} />
     <span class="text-xs text-emos-text-3 ml-auto pr-1">
-      {$info.data?.version ? `v${$info.data.version}` : ''}
+      {$info.data?.version ? `v${$info.data.version}` : ''}{#if $info.data?.channel === 'dev'}
+        <span class="pill text-[0.65rem] ml-1" title="Nightly builds of unreleased EMOS">dev</span>{/if}
     </span>
   </div>
 
@@ -44,8 +46,20 @@
     {/each}
   </nav>
 
-  <!-- Footer: docs + community -->
+  <!-- Footer: support or a way to a license, docs, community -->
   <div class="mt-auto pt-3 border-t border-emos-line/40 flex flex-col gap-1">
+    {#if $license.data?.licensed}
+      <a href={$license.data.support_url} target="_blank" rel="noreferrer" title="Get support" class="footer-link">
+        <LifeBuoy size={14} class="opacity-80" />
+        <span class="hidden md:inline">Support</span>
+        <ExternalLink size={10} class="hidden md:inline ml-auto opacity-50" />
+      </a>
+    {:else if $license.data}
+      <a use:link href="/system" title="Get a license" class="footer-link">
+        <BadgeCheck size={14} class="opacity-80" />
+        <span class="hidden md:inline">Get a license</span>
+      </a>
+    {/if}
     <a
       href="https://emos.automatikarobotics.com"
       target="_blank"

@@ -40,7 +40,7 @@ Save the IP of the machine running `roboml` as we will use it later in our model
 
 ## Step 1: Vision Model Client
 
-First, we need to import the `VisionModel` class that defines the model used later in the component, and a model client to communicate with the model which can be running on the same hardware or in the cloud. Here we will use a `RESPModelClient` from RoboML as we activated the RESP based model server in RoboML.
+First, we need to import the `VisionModel` class that defines the model used later in the component, and a model client to communicate with the model which can be running on the same hardware or in the cloud. Here we will use a `RoboMLRESPClient` from RoboML as we activated the RESP based model server in RoboML.
 
 ```python
 from agents.models import VisionModel
@@ -53,6 +53,7 @@ Now let's configure the model we want to use for detections/tracking and the mod
 object_detection = VisionModel(
     name="object_detection",
     checkpoint="PekingU/rtdetr_r50vd_coco_o365",
+    setup_trackers=True,  # the Trackings output needs the tracker set up on the model
 )
 roboml_detection = RoboMLRESPClient(object_detection, host='127.0.0.1', logging_level="warn")
   # 127.0.0.1 should be replaced by the IP of the machine running roboml.
@@ -113,7 +114,7 @@ We can select the robot motion model, control limits and other geometry paramete
 from kompass.robot import (
     AngularCtrlLimits,
     LinearCtrlLimits,
-    RobotGeometry,
+    RobotGeometryType,
     RobotType,
     RobotConfig,
 )
@@ -122,11 +123,11 @@ import numpy as np
 # Setup your robot configuration
 my_robot = RobotConfig(
     model_type=RobotType.DIFFERENTIAL_DRIVE,
-    geometry_type=RobotGeometry.Type.CYLINDER,
+    geometry_type=RobotGeometryType.CYLINDER,
     geometry_params=np.array([0.1, 0.3]),
     ctrl_vx_limits=LinearCtrlLimits(max_vel=0.4, max_acc=1.5, max_decel=2.5),
     ctrl_omega_limits=AngularCtrlLimits(
-        max_vel=0.2, max_acc=2.0, max_decel=2.0, max_steer=np.pi / 3
+        max_omega=0.2, max_acc=2.0, max_decel=2.0, max_ang=np.pi / 3
     ),
 )
 ```
@@ -155,7 +156,7 @@ controller = Controller(component_name="my_controller", config=config)
 controller.algorithm = ControllersID.VISION_IMG
 
 # Set the vision tracking input to either the detections or trackings topic
-controller.inputs(vision_tracking=detections_topic)
+controller.inputs(vision_detections=detections_topic)
 
 # Set the vision follower configuration
 vision_follower_config = VisionRGBFollowerConfig(
@@ -187,6 +188,7 @@ launcher = Launcher()
 # setup agents as a package in the launcher and add the vision component
 launcher.add_pkg(
     components=[vision],
+    package_name="kompass",
     package_name="automatika_embodied_agents",
     multiprocessing=True,
     ros_log_level="warn",
@@ -195,6 +197,7 @@ launcher.add_pkg(
 # setup the navigation components in the launcher
 launcher.add_pkg(
     components=[controller, driver],
+    package_name="kompass",
     package_name="kompass",
     multiprocessing=True,
 )
@@ -224,7 +227,7 @@ from kompass.components import Controller, ControllerConfig, DriveManager
 from kompass.robot import (
     AngularCtrlLimits,
     LinearCtrlLimits,
-    RobotGeometry,
+    RobotGeometryType,
     RobotType,
     RobotConfig,
 )
@@ -241,6 +244,7 @@ trackings_topic = Topic(name="trackings", msg_type="Trackings")
 object_detection = VisionModel(
     name="object_detection",
     checkpoint="PekingU/rtdetr_r50vd_coco_o365",
+    setup_trackers=True,  # the Trackings output needs the tracker set up on the model
 )
 roboml_detection = RoboMLRESPClient(object_detection, host='127.0.0.1', logging_level="warn")
 
@@ -260,11 +264,11 @@ vision = Vision(
 # Setup your robot configuration
 my_robot = RobotConfig(
     model_type=RobotType.DIFFERENTIAL_DRIVE,
-    geometry_type=RobotGeometry.Type.CYLINDER,
+    geometry_type=RobotGeometryType.CYLINDER,
     geometry_params=np.array([0.1, 0.3]),
     ctrl_vx_limits=LinearCtrlLimits(max_vel=0.4, max_acc=1.5, max_decel=2.5),
     ctrl_omega_limits=AngularCtrlLimits(
-        max_vel=0.2, max_acc=2.0, max_decel=2.0, max_steer=np.pi / 3
+        max_omega=0.2, max_acc=2.0, max_decel=2.0, max_ang=np.pi / 3
     ),
 )
 
@@ -276,7 +280,7 @@ config = ControllerConfig(
 # Init the controller and pick the RGB-only vision follower
 controller = Controller(component_name="my_controller", config=config)
 controller.algorithm = ControllersID.VISION_IMG
-controller.inputs(vision_tracking=detections_topic)
+controller.inputs(vision_detections=detections_topic)
 
 # Set the vision follower configuration
 vision_follower_config = VisionRGBFollowerConfig(
@@ -290,12 +294,14 @@ driver = DriveManager(component_name="my_driver")
 launcher = Launcher()
 launcher.add_pkg(
     components=[vision],
+    package_name="kompass",
     package_name="automatika_embodied_agents",
     multiprocessing=True,
     ros_log_level="warn",
 )
 launcher.add_pkg(
     components=[controller, driver],
+    package_name="kompass",
     package_name="kompass",
     multiprocessing=True,
 )
@@ -335,6 +341,6 @@ ros2 action send_goal /my_controller/track_vision_target kompass_interfaces/acti
 ---
 
 ```{tip}
-**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+**Promote this recipe to production.** While you are shaping it, run the script directly with `python recipe.py`. Once it is solid, drop it at `~/emos/recipes/<name>/recipe.py` and start it with `emos run <name>`, or from the dashboard. Either way every run is logged under `~/emos/logs`, and an operator gets a card to launch it from a browser. [Running Recipes](../../getting-started/running-recipes.md) covers the two ways of running a recipe and what differs per install mode.
 ```
 

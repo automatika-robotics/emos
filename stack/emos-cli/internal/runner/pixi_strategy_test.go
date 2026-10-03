@@ -56,7 +56,7 @@ func TestEnsurePixi_CachesResult(t *testing.T) {
 		"HOME": tmp,
 	})
 
-	s := NewPixiStrategy(tmp)
+	s := NewPixiStrategy(tmp, nil)
 	if err := s.ensurePixi(); err != nil {
 		t.Fatalf("first ensurePixi: %v", err)
 	}

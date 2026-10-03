@@ -24,7 +24,7 @@ var (
 	serveAddr        string
 	serveDisableMDNS bool
 	serveDisableAuth bool
-	serveEnableTLS   bool
+	serveDisableTLS  bool
 	serveQRCodeOnly  bool
 	serveVerbose     bool
 )
@@ -34,10 +34,11 @@ var serveCmd = &cobra.Command{
 	Short: "Run the EMOS dashboard (REST API + web UI)",
 	Long: `Starts the EMOS onboarding dashboard on the local network.
 
-The dashboard is reachable via mDNS (http://emos.local) or at the device's
-IP address; the configured port is printed at startup. On first launch, a
-six-digit pairing code is printed to the terminal — use it once in the
-browser to issue a long-lived token.`,
+The dashboard is served over HTTPS with the robot's own certificate, and is
+reachable via mDNS (https://emos.local) or at the device's IP address; the
+configured port is printed at startup. On first launch, a six-digit pairing
+code is printed to the terminal — use it once in the browser to issue a
+long-lived token.`,
 	Run: runServe,
 }
 
@@ -48,7 +49,9 @@ func init() {
 	serveCmd.Flags().StringVar(&serveAddr, "addr", "", "address to bind (host:port); defaults to the configured port")
 	serveCmd.Flags().BoolVar(&serveDisableMDNS, "no-mdns", false, "skip mDNS announcement")
 	serveCmd.Flags().BoolVar(&serveDisableAuth, "no-auth", false, "DEV ONLY: accept unauthenticated requests")
-	serveCmd.Flags().BoolVar(&serveEnableTLS, "tls", false, "serve over HTTPS using a self-signed certificate")
+	serveCmd.Flags().BoolVar(&serveDisableTLS, "no-tls", false, "DEV ONLY: serve over plain HTTP instead of HTTPS")
+	serveCmd.Flags().Bool("tls", true, "")
+	serveCmd.Flags().MarkDeprecated("tls", "HTTPS is the default")
 	serveCmd.Flags().BoolVar(&serveQRCodeOnly, "qr", false, "print a QR code with the dashboard URL and exit")
 	serveCmd.Flags().BoolVarP(&serveVerbose, "verbose", "v", false, "log every HTTP request (default: only mutations and errors)")
 	rootCmd.AddCommand(serveCmd)
@@ -80,7 +83,7 @@ func bindIsLoopback(addr string) bool {
 }
 
 func runServe(cmd *cobra.Command, args []string) {
-	ui.Banner(config.Version)
+	banner()
 
 	addr := resolveBindAddr()
 
@@ -93,9 +96,9 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 
 	if serveQRCodeOnly {
-		scheme := "http"
-		if serveEnableTLS {
-			scheme = "https"
+		scheme := "https"
+		if serveDisableTLS {
+			scheme = "http"
 		}
 		if u := qrURL(addr, scheme); u != "" {
 			printQR(u + "/")
@@ -126,7 +129,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		DeviceName:  deviceName,
 		DisableMDNS: serveDisableMDNS,
 		DisableAuth: serveDisableAuth,
-		EnableTLS:   serveEnableTLS,
+		DisableTLS:  serveDisableTLS,
 		UI:          webui.FS(),
 		Logger:      logger,
 	})
@@ -173,10 +176,10 @@ func dashboardURLs(addr, deviceName, scheme string) []string {
 }
 
 // PrintDashboardAccessSummary is the single human readable success block
-// for the dashboard. Defaults to HTTP
+// for the dashboard service, which serves HTTPS.
 func PrintDashboardAccessSummary(addr, origin, freshCode string) {
 	deviceName, _ := config.ResolveDeviceName()
-	scheme := "http"
+	scheme := "https"
 	urls := dashboardURLs(addr, deviceName, scheme)
 	scanURL := qrURL(addr, scheme)
 

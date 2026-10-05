@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
@@ -62,13 +61,7 @@ func (s *ContainerStrategy) RecipesDir() string { return recipesRoot }
 // StartRecipe runs the recipe through a docker exec on the host, which is
 // what writes its output, so the log lands on the host.
 func (s *ContainerStrategy) StartRecipe(recipeName string, out io.Writer) (*RunHandle, error) {
-	h, err := startRecipe(s, recipeName, out)
-	if err != nil {
-		return nil, err
-	}
-	h.container = config.ContainerName
-	h.killTarget = filepath.Join(recipesRoot, recipeName, "recipe.py")
-	return h, nil
+	return startRecipe(s, recipeName, out)
 }
 
 func (s *ContainerStrategy) Cleanup() error {

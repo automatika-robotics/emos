@@ -87,10 +87,7 @@ func (s *Session) Start(stage, shell string, out io.Writer) (*RunHandle, error) 
 	if err := s.checkpoint(stage); err != nil {
 		return nil, err
 	}
-	cmd := s.strategy.Command("exec " + shell)
-	cmd.Stdout = out
-	cmd.Stderr = out
-	return StartProcess(cmd)
+	return start(s.strategy, "exec "+shell, out)
 }
 
 // Close stops the Zenoh router the run started, then cleans up the strategy.

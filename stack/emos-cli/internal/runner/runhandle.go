@@ -23,9 +23,8 @@ type RunHandle struct {
 
 	cmd       *exec.Cmd
 	container string
-	// killTarget is the exact full-path string the recipe's python process
-	// was invoked with. Used to scope `pkill -f` to the recipe
-	killTarget string
+	// for container more pidFile holds the pid of the shell that executed the process
+	pidFile string
 
 	once     sync.Once
 	done     chan struct{}
@@ -84,21 +83,33 @@ func (h *RunHandle) Cancel(grace time.Duration) error {
 	return nil
 }
 
-// signal sends sig to the recipe's process group. In a container the recipe is
-// signalled inside it and only docker exec is killed.
+// signal sends sig to the recipe's process group. In a container the group
+// is signalled inside it, and only docker exec is killed on the host.
 func (h *RunHandle) signal(sig syscall.Signal) {
 	if !h.Running() {
 		return
 	}
 	if h.container != "" {
-		_, _ = container.Exec(h.container, fmt.Sprintf(
-			"pkill -%d -f %s || true", sig, shellQuote(h.killTarget)))
+		_, _ = container.Exec(h.container, containerKill(h.pidFile, sig))
 		if sig != syscall.SIGKILL {
 			return
 		}
 	}
 	// Negative pid = signal the entire process group (set up via Setpgid).
 	_ = syscall.Kill(-h.cmd.Process.Pid, sig)
+}
+
+// containerKill is the shell line that signals the process group recorded in
+// pidFile.
+func containerKill(pidFile string, sig syscall.Signal) string {
+	return fmt.Sprintf("kill -%d -- -$(cat %s) 2>/dev/null || true", int(sig), shellQuote(pidFile))
+}
+
+// withPidFile prefixes shell with a line that records the shell's pid in a
+// new file under the container's /tmp.
+func withPidFile(shell string) (string, string) {
+	pidFile := fmt.Sprintf("/tmp/emos-%d.pid", time.Now().UnixNano())
+	return "echo $$ > " + shellQuote(pidFile) + " && " + shell, pidFile
 }
 
 // shellQuote wraps `s` in single quotes for safe inclusion in a shell command.
@@ -148,16 +159,40 @@ func StartProcess(cmd *exec.Cmd) (*RunHandle, error) {
 	return h, nil
 }
 
+// start runs shell in the strategy's environment, in its own process group,
+// writing its output to out.
+func start(s RuntimeStrategy, shell string, out io.Writer) (*RunHandle, error) {
+	var pidFile string
+	// In a container the pid of the process is kept in a file and the group is
+	// signalled there.
+	if _, ok := s.(*ContainerStrategy); ok {
+		shell, pidFile = withPidFile(shell)
+	}
+	cmd := s.Command(shell)
+	cmd.Stdout = out
+	cmd.Stderr = out
+	h, err := StartProcess(cmd)
+	if err != nil {
+		return nil, err
+	}
+	if pidFile != "" {
+		h.container = config.ContainerName
+		h.pidFile = pidFile
+		go func() {
+			<-h.done
+			_, _ = container.Exec(h.container, "rm -f "+shellQuote(pidFile))
+		}()
+	}
+	return h, nil
+}
+
 // startRecipe starts a recipe in the strategy's environment, writing its output
 // to out.
 func startRecipe(s RuntimeStrategy, recipeName string, out io.Writer) (*RunHandle, error) {
 	// Run from the recipe's folder, so it finds files next to it by relative path.
 	dir := filepath.Join(s.RecipesDir(), recipeName)
-	cmd := s.Command(fmt.Sprintf("cd %s && exec python3 -u %s",
-		shellQuote(dir), shellQuote(filepath.Join(dir, "recipe.py"))))
-	cmd.Stdout = out
-	cmd.Stderr = out
-	h, err := StartProcess(cmd)
+	h, err := start(s, fmt.Sprintf("cd %s && exec python3 -u %s",
+		shellQuote(dir), shellQuote(filepath.Join(dir, "recipe.py"))), out)
 	if err != nil {
 		return nil, fmt.Errorf("start recipe: %w", err)
 	}

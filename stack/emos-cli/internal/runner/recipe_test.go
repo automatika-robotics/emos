@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -137,5 +138,41 @@ func TestWrongRobotNamesTheRobotARecipeWasMadeFor(t *testing.T) {
 	// No robot plugin installed at all
 	if got := forM20.WrongRobot(&config.EMOSConfig{}); got != "emos-plugin-m20" {
 		t.Errorf("no robot installed = %q, want the recipe's plugin", got)
+	}
+}
+
+// A container's process group on the host is only the docker exec client, so
+// the recipe is signalled inside the container by the group of the pid its
+// shell recorded before exec'ing it. The same lines run here on the host.
+func TestAContainerProcessIsSignalledByTheGroupItsPidFileNames(t *testing.T) {
+	shell, pidFile := withPidFile("exec sleep 30")
+	if !strings.HasPrefix(shell, "echo $$ > '/tmp/emos-") || !strings.HasSuffix(shell, ".pid' && exec sleep 30") {
+		t.Fatalf("shell = %q", shell)
+	}
+	t.Cleanup(func() { os.Remove(pidFile) })
+	h, err := StartProcess(exec.Command("bash", "-c", shell))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(h.Kill)
+	time.Sleep(300 * time.Millisecond)
+	recorded, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.TrimSpace(string(recorded)), strconv.Itoa(h.cmd.Process.Pid); got != want {
+		t.Fatalf("the file holds pid %s, the exec'd process is %s", got, want)
+	}
+
+	if err := exec.Command("bash", "-c", containerKill(pidFile, syscall.SIGINT)).Run(); err != nil {
+		t.Fatalf("the kill line failed: %v", err)
+	}
+	select {
+	case <-h.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("the process group was not signalled")
+	}
+	if got := containerKill("/tmp/emos-1.pid", syscall.SIGKILL); got != "kill -9 -- -$(cat '/tmp/emos-1.pid') 2>/dev/null || true" {
+		t.Errorf("kill line = %q", got)
 	}
 }

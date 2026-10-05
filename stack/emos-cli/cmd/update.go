@@ -139,6 +139,14 @@ func restartDashboard() {
 		return
 	}
 	ui.Info("Restarting the dashboard on the new version (requires sudo)...")
+	// The unit follows the binary: this version's definition replaces the one
+	// on disk before the restart
+	if bin, err := dashboardBinary(); err == nil {
+		user := installer.UnitUser(config.DashboardServiceName)
+		if err := installer.DashboardUnit(bin, user, config.DashboardPort()).Refresh(); err != nil {
+			ui.Warn("The dashboard unit was not updated: " + err.Error())
+		}
+	}
 	if err := installer.RestartUnit(config.DashboardServiceName); err != nil {
 		ui.Warn("The dashboard still runs the previous version: " + err.Error())
 		ui.Faint("Restart it with 'sudo systemctl restart " + config.DashboardServiceName + "'.")

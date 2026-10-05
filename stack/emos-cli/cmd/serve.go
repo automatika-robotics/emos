@@ -320,15 +320,10 @@ var serveInstallServiceCmd = &cobra.Command{
 	Short: "Install a systemd unit that starts the dashboard at boot",
 	Run: func(cmd *cobra.Command, args []string) {
 		warnIfSudo()
-		bin, err := os.Executable()
+		bin, err := dashboardBinary()
 		if err != nil {
 			ui.Error("Could not determine emos binary path: " + err.Error())
 			os.Exit(1)
-		}
-		// `os.Executable` may return /tmp/<garbage> on `go run` — point at the
-		// installed binary instead when possible.
-		if _, err := os.Stat("/usr/local/bin/emos"); err == nil {
-			bin = "/usr/local/bin/emos"
 		}
 		user := os.Getenv("SUDO_USER")
 		if user == "" {
@@ -358,6 +353,14 @@ var serveInstallServiceCmd = &cobra.Command{
 			freshCode,
 		)
 	},
+}
+
+// dashboardBinary is the emos binary the dashboard unit runs.
+func dashboardBinary() (string, error) {
+	if _, err := os.Stat("/usr/local/bin/emos"); err == nil {
+		return "/usr/local/bin/emos", nil
+	}
+	return os.Executable()
 }
 
 var serveUninstallServiceCmd = &cobra.Command{

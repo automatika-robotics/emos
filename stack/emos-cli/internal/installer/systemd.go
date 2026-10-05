@@ -2,6 +2,7 @@ package installer
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/user"
@@ -23,6 +24,7 @@ type SystemdUnit struct {
 	ExecStop    string
 	Restart     string // "always", "on-failure", ""
 	RestartSec  int    // seconds between Restart= attempts. 0 → systemd default (100ms).
+	KillMode    string // "mixed", "process", "" → systemd default (control-group)
 	// StartLimitBurst and StartLimitIntervalSec widen systemd's start-rate
 	// guard. The defaults (5 attempts in 10s) are too tight for a unit that
 	// depends on the network coming up
@@ -63,6 +65,9 @@ func (u SystemdUnit) Render() string {
 	if u.RestartSec > 0 {
 		b.WriteString(fmt.Sprintf("RestartSec=%d\n", u.RestartSec))
 	}
+	if u.KillMode != "" {
+		b.WriteString("KillMode=" + u.KillMode + "\n")
+	}
 	if u.User != "" {
 		b.WriteString("User=" + u.User + "\n")
 	}
@@ -88,14 +93,9 @@ func (u SystemdUnit) Install(enable, start bool) error {
 	if !u.IsSupported() {
 		return fmt.Errorf("systemd not detected")
 	}
-	path := "/etc/systemd/system/" + u.Name
-	cmd := exec.Command("sudo", "tee", path)
-	cmd.Stdin = strings.NewReader(u.Render())
-	cmd.Stdout = os.Stdout // tee's echo of the file body
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
+	if err := u.write(os.Stdout); err != nil {
+		return err
 	}
-	_ = exec.Command("sudo", "systemctl", "daemon-reload").Run()
 	if enable {
 		if err := exec.Command("sudo", "systemctl", "enable", u.Name).Run(); err != nil {
 			return fmt.Errorf("enable %s: %w", u.Name, err)
@@ -107,6 +107,36 @@ func (u SystemdUnit) Install(enable, start bool) error {
 		}
 	}
 	return nil
+}
+
+// Refresh rewrites an installed unit from this definition. The running
+// service keeps the old one until it is restarted.
+func (u SystemdUnit) Refresh() error {
+	if !u.IsSupported() {
+		return fmt.Errorf("systemd not detected")
+	}
+	return u.write(nil)
+}
+
+// write puts the unit under /etc/systemd/system through sudo and reloads
+// systemd. echo receives tee's copy of the file body, when not nil.
+func (u SystemdUnit) write(echo io.Writer) error {
+	path := "/etc/systemd/system/" + u.Name
+	cmd := exec.Command("sudo", "tee", path)
+	cmd.Stdin = strings.NewReader(u.Render())
+	cmd.Stdout = echo
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	_ = exec.Command("sudo", "systemctl", "daemon-reload").Run()
+	return nil
+}
+
+// UnitUser is the user an installed unit runs as, "" for root or when the
+// unit is unknown.
+func UnitUser(unitName string) string {
+	out, _ := exec.Command("systemctl", "show", "-p", "User", "--value", unitName).Output()
+	return strings.TrimSpace(string(out))
 }
 
 // Uninstall stops, disables, removes, and reloads.
@@ -187,6 +217,9 @@ func DashboardUnit(binaryPath, runAsUser string, port int) SystemdUnit {
 		Wants:       []string{"network-online.target"},
 		ExecStart:   fmt.Sprintf("%s serve --addr :%d", binaryPath, port),
 		Restart:     "on-failure",
+		// A stop signals the daemon alone, which interrupts the recipe it runs
+		// and waits for it
+		KillMode: "mixed",
 		// Boot-time hardening: space retries by 5s and tolerate up to 10
 		// attempts over a 5-minute window.
 		RestartSec:            5,

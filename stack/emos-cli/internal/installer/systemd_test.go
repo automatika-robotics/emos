@@ -174,3 +174,13 @@ func formatPort(p int) string {
 	}
 	return out
 }
+
+func TestDashboardUnitStopsOnlyTheDaemon(t *testing.T) {
+	unit := DashboardUnit("/usr/local/bin/emos", "ahr", 8765).Render()
+	if !strings.Contains(unit, "\nKillMode=mixed\n") {
+		t.Errorf("the dashboard unit should stop only emos serve, so it can interrupt its recipe:\n%s", unit)
+	}
+	if plain := (SystemdUnit{Name: "x.service", ExecStart: "/bin/true"}).Render(); strings.Contains(plain, "KillMode") {
+		t.Errorf("a unit without a kill mode should leave it to systemd:\n%s", plain)
+	}
+}

@@ -90,9 +90,10 @@ Run it as your own user, not with `sudo`. It stops and removes the dashboard ser
 
 ```bash
 emos update
+emos update --rebuild
 ```
 
-Updates the CLI first. When a newer release exists it replaces its own binary, restarts the dashboard service if one is running, and asks you to run `emos update` again. The second run updates the installation for its mode (pixi: fetch, refresh the environment, rebuild; native: fetch, rebuild, merge into `/opt/ros`; container: pull the image and recreate the container), then pulls and rebuilds every installed plugin. On a pixi install with CUDA the GPU build is offered again at the end.
+Updates the CLI first. When a newer release exists it replaces its own binary, restarts the dashboard service if one is running, and asks you to run `emos update` again. The second run updates the installation for its mode (pixi: fetch, refresh the environment, rebuild; native: fetch, rebuild, merge into `/opt/ros`; container: pull the image and recreate the container), then pulls and rebuilds every installed plugin. With `--rebuild`, kompass-core is rebuilt and, on a pixi install with CUDA, the GPU build of dependencies is offered again, even when what is installed is still good.
 
 ### `emos status`
 

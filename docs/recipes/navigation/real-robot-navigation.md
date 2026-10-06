@@ -11,7 +11,7 @@ emos plugin install emos-plugin-lite3
 emos plugin inspect emos-plugin-lite3
 ```
 
-The install builds the plugin and resolves the drivers its manifest declares, the Livox and RealSense drivers for the Lite3. `inspect` prints what the plugin offers: its feedback streams and their keys, its commands, its actions and events, where its sensors sit, and how it maps. That listing is the reference for every binding below. [Plugins](../../getting-started/plugins.md) covers installing and updating.
+The install builds the plugin and resolves the sensor drivers its manifest declares. `inspect` prints what the plugin offers: its feedback streams and their keys, its commands, its actions and events, where its sensors sit, and how it maps. That listing is the reference for every binding below. [Plugins](../../getting-started/plugins.md) covers installing and updating.
 
 ## Attaching it
 
@@ -46,7 +46,7 @@ launcher.inputs(location=Topic(name="odometry_filtered", msg_type="Odometry", us
 
 ## Sensor data
 
-The local mapper builds its grid from the Mid-360's point cloud. Binding the cloud is what starts the LiDAR driver: the launcher starts a driver only for feeds a recipe binds, so a recipe that never reads the cloud never runs it.
+The local mapper builds its grid from the LiDAR's point cloud. Binding the cloud is what starts the LiDAR driver: the launcher starts a driver only for feeds a recipe binds, so a recipe that never reads the cloud never runs it.
 
 ```python
 from kompass.components import LocalMapper, LocalMapperConfig
@@ -59,7 +59,7 @@ local_mapper = LocalMapper(
 local_mapper.inputs(sensor_data=Topic(name="lidar", msg_type="PointCloud2", use_plugin=True))
 ```
 
-The cloud arrives on a native ROS topic, `/livox/lidar`, so the binding just points the subscriber at it. The LiDAR's frame is placed on the body by the plugin's mounts, published as a static transform, so the mapper knows where the sensor sits without a URDF. The robot's other streams bind the same way when a recipe wants them: the RealSense image under `camera`, the two ultrasound sensors under `ultrasound_front` and `ultrasound_back`, the battery, the joint states.
+The LiDAR's driver publishes the cloud on a ROS topic of its own, so the binding just points the subscriber at it, and the key `lidar` is the same whichever LiDAR the robot carries. The LiDAR's frame is placed on the body by the plugin's mounts, published as a static transform, so the mapper knows where the sensor sits without a URDF. The robot's other streams bind the same way when a recipe wants them: the RealSense image under `camera`, the two ultrasound sensors under `ultrasound_front` and `ultrasound_back`, the battery, the joint states.
 
 ## Commands
 
@@ -221,7 +221,10 @@ robot_blocked = Event(
     emergency_stop.msg.data.is_true()
     | (controller.status_topic.msg.status == ComponentStatus.STATUS_FAILURE_ALGORITHM_LEVEL)
 )
-send_goal = Action(method=planner.trigger_main_action_server, args=(goal.msg.point.x, goal.msg.point.y, 0.05, 0.2))
+send_goal = Action(
+    method=planner.trigger_main_action_server,
+    kwargs={"goal_x": goal.msg.point.x, "goal_y": goal.msg.point.y, "tolerance_dist": 0.1, "tolerance_ori": 0.2},
+)
 
 launcher.add_pkg(
     components=[map_server, planner, controller, local_mapper, driver],

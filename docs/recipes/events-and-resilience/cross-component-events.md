@@ -82,12 +82,12 @@ from kompass.actions import log
 
 send_goal = Action(
     method=planner.trigger_main_action_server,
-    args=(
-        clicked_point.msg.point.x,
-        clicked_point.msg.point.y,
-        0.05,  # goal distance tolerance
-        0.2,   # goal angle tolerance, in radians
-    ),
+    kwargs={
+        "goal_x": clicked_point.msg.point.x,
+        "goal_y": clicked_point.msg.point.y,
+        "tolerance_dist": 0.1,  # goal distance tolerance, in meters
+        "tolerance_ori": 0.2,   # goal angle tolerance, in radians
+    },
 )
 ```
 
@@ -186,7 +186,12 @@ event_clicked_point = Event(clicked_point)
 
 send_goal = Action(
     method=planner.trigger_main_action_server,
-    args=(clicked_point.msg.point.x, clicked_point.msg.point.y, 0.05, 0.2),
+    kwargs={
+        "goal_x": clicked_point.msg.point.x,
+        "goal_y": clicked_point.msg.point.y,
+        "tolerance_dist": 0.1,
+        "tolerance_ori": 0.2,
+    },
 )
 
 # --- Wire Events -> Actions ---

@@ -146,7 +146,7 @@ Every action returns `(success, message)`, and the movement actions consult the 
 | `sensor_data_timeout`      | 0.2 s     | Sensor data older than this is stale.                                                         |
 | `stale_sensor_policy`      | `stop`    | What a stale sensor means: `stop` the robot, or `skip` that sensor.                           |
 | `pc_min_height`            | 0.0 m     | Points below this height are ignored in point clouds.                                         |
-| `closed_loop`, `closed_loop_span`, `cmd_tolerance` | false, 3, 0.05 | Send commands in closed loop against the robot's measured velocity. |
+| `closed_loop`, `closed_loop_span`, `cmd_tolerance` | true, 3, 0.05 | Send commands in closed loop against the robot's measured velocity. |
 | `smooth_commands`          | false     | Filters incoming commands against jerk.                                                       |
 | `use_gpu`                  | true      | Run the zone check on the GPU when there is one.                                              |
 

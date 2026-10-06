@@ -154,7 +154,9 @@ def toggle_led():
     """Toggle an LED on the robot."""
     global led_on
     led_on = not led_on
-    print(f"LED toggled {'ON' if led_on else 'OFF'}")
+    message = f"LED toggled {'ON' if led_on else 'OFF'}"
+    print(message)
+    return True, message
 
 cortex = Cortex(
     actions=[
@@ -167,7 +169,7 @@ cortex = Cortex(
 )
 ```
 
-The description is mandatory -- it's what the planner sees when deciding whether to call this tool.
+The description is mandatory -- it's what the planner sees when deciding whether to call this tool. The function runs as an action, so like every action it returns `(success, message)`.
 
 ---
 
@@ -209,7 +211,7 @@ Open the Web UI at `https://localhost:5001`, accept the self-signed certificate 
 Or send a goal from another terminal directly to Cortex's action server:
 
 ```shell
-ros2 action send_goal /cortex/cortex_input_command \
+ros2 action send_goal /cortex_input_command \
     automatika_embodied_agents/action/VisionLanguageAction \
     "{task: 'describe what you see and track the person'}"
 ```

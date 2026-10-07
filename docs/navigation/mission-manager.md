@@ -65,11 +65,7 @@ A goal that describes no mission is refused before anything starts: no waypoints
 
 The robot drives to the waypoint through the planner. If there is nothing to do there, it goes straight on to the next one, which simply replaces the plan being driven. If there is a dwell or a signal to wait for, the mission first stops path tracking and stops the robot, then waits. A wait at the last waypoint is skipped when it is a signal, since there is nothing to continue to; a dwell there still runs. Under the continue policy a wait that runs out is fine and the mission goes on; under the other two it ends the mission.
 
-```{admonition} Returning to start is not followed to the end yet
-:class: caution
-
-With `ON_TIMEOUT_RETURN_TO_START`, the drive back to the start is begun but not followed to completion in this version: the mission reports its outcome and the routine is removed while the return is still under way.
-```
+With `ON_TIMEOUT_RETURN_TO_START`, a wait that runs out ends the mission and drives the robot back to the pose it had when the mission started. The feedback and the status show the mission returning to its start, cancelling the goal stops it on the way, and the outcome is timed out either way, with how the drive back went in the status message. Only this timeout triggers the drive back: a waypoint that fails, a cancel or a deactivation ends the mission where the robot stands.
 
 ## Following a mission
 

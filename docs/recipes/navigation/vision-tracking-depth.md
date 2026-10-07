@@ -104,6 +104,8 @@ controller.algorithm = ControllersID.VISION_DEPTH
 controller.inputs(vision_detections=detections_topic, depth_camera_info=depth_cam_info_topic)
 ```
 
+The follower tracks the target in the robot's own frame, so it needs no localization. On a localized robot, `VisionRGBDFollowerConfig(use_local_coordinates=False)` tracks in the world frame instead, which adds the target's estimated velocity to the commands and so wants an accurate pose and a steady detection rate.
+
 ---
 
 ## Step 4: Helper Components

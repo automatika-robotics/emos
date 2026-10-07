@@ -470,17 +470,17 @@ $$
 * - heading_gain
   - `float`
   - `0.7`
-  - Heading gain in the control law. Must be between `0.0` and `1e2`.
+  - Heading gain in the control law. Must be between `0.0` and `10.0`.
 
 * - cross_track_min_linear_vel
   - `float`
   - `0.05`
-  - Minimum linear velocity for cross-track control (m/s). Must be between `1e-4` and `1e2`.
+  - Minimum linear velocity for cross-track control (m/s). Must be between `1e-4` and `10.0`.
 
 * - cross_track_gain
   - `float`
   - `1.5`
-  - Gain for cross-track in the control law. Must be between `0.0` and `1e2`.
+  - Gain for cross-track in the control law. Must be between `0.0` and `50.0`.
 
 * - max_angle_error
   - `float`
@@ -785,7 +785,7 @@ The VisionFollowerRGBD is a sophisticated 3D visual servoing controller. It comb
 
 - **3D Projection -- Depth Fusion.** Projects 2D bounding boxes into 3D space using the depth image and camera intrinsics.
 - **Relative Positioning** -- Maintain a specific distance and bearing relative to the target.
-- **Velocity Tracking** -- Capable of estimating target velocity to provide smoother, more predictive following.
+- **Velocity Tracking** -- When tracking in the world frame, estimates the target's velocity and feeds it forward for smoother, more predictive following.
 - **Recovery Behaviors** -- Includes configurable **Wait** and **Search** (rotating in place) logic for when the target is temporarily occluded or leaves the field of view.
 
 ### Supported Inputs
@@ -810,7 +810,7 @@ The RGB-D follower inherits all parameters from DWA and adds vision-specific set
 * - **target_distance**
   - `float`
   - `None`
-  - The desired distance (m) to maintain from the target.
+  - Edge-to-edge distance (m) to keep from the target. `None` holds the gap the target is at when tracking starts.
 * - **target_orientation**
   - `float`
   - `0.0`
@@ -831,6 +831,10 @@ The RGB-D follower inherits all parameters from DWA and adds vision-specific set
   - `np.array`
   - `[0,0,0]`
   - 3D translation vector $(x, y, z)$ from camera to robot base.
+* - **use_local_coordinates**
+  - `bool`
+  - `True`
+  - Track the target in the robot's own frame, which needs no localization. `False` tracks in the world frame, which needs the robot localized and adds velocity tracking.
 
 ```
 

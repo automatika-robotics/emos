@@ -60,7 +60,7 @@ The Drive Manager provides built-in behaviors for direct control and recovery. T
   - Moves the robot backwards for `max_distance` meters, if the backward direction is clear of obstacles.
 
 * - **rotate_in_place**
-  - Rotates the robot in place for `max_rotation` radians, if the given safety margin around the robot is clear of obstacles.
+  - Rotates the robot in place by `max_rotation` radians, counter-clockwise when positive and clockwise when negative, as long as the space around it is clear by `safety_margin` beyond the critical zone, 5% of the robot's radius by default.
 
 * - **move_to_unblock**
   - Recovery behavior. Automatically attempts to move forward, backward, or rotate to free the robot from a collision state or blockage. Takes optional `max_distance_forward`, `max_distance_backwards` and `max_rotation` limits.

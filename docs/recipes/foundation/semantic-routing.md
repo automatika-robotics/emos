@@ -2,11 +2,15 @@
 
 The SemanticRouter component in EMOS allows you to route text queries to specific [components](../../intelligence/ai-components.md) based on the user's intent or the output of a preceding component.
 
-The router operates in two distinct modes:
+The router has three ways of deciding where a query goes:
 
-1. **Vector Mode (Default):** This mode uses a Vector DB to calculate the mathematical similarity (distance) between the incoming query and the samples defined in your routes. It is extremely fast and lightweight.
+1. **LLM Mode (Agentic):** An LLM reads the intent of the query and picks the route. It handles nuance, context and negation (*"Don't go to the kitchen"* is not a request to go there), at the cost of a generation per query.
 
-2. **LLM Mode (Agentic):** This mode uses an LLM to intelligently analyze the intent of the query and triggers routes accordingly. This is more computationally expensive but can handle complex nuances, context, and negation (e.g., "Don't go to the kitchen" might be routed differently by an agent than a simple vector similarity search).
+2. **Decision Mode:** A decision model reads the intent the same way, but answers in one forward pass with a confidence for its choice instead of generating text. It is fast, and the confidence can be used as a threshold.
+
+3. **Vector Mode:** A vector DB measures the similarity between the query's embedding and the samples of each route. No model is in the loop, so it is the lightest of the three, and it matches on similarity alone.
+
+The mode follows from what the router is given: a `model_client` with an LLM, a `model_client` with a decision model, or a `db_client`.
 
 In this recipe, we will route queries between two components: a General Purpose LLM (for chatting) and a Go-to-X Component (for navigation commands) that we built in the previous [recipe](goto-navigation.md). The Go-to-X component resolves a place name by calling the `Memory` component's `locate` tool, so we set up `Vision` and `Memory` here too. Lets start by setting up our components.
 
@@ -21,9 +25,8 @@ import numpy as np
 
 from agents.components import LLM, Memory, Vision
 from agents.models import OllamaModel, VisionModel
-from agents.vectordbs import ChromaDB
 from agents.config import LLMConfig, MemoryConfig, VisionConfig
-from agents.clients import ChromaClient, OllamaClient, RoboMLRESPClient
+from agents.clients import OllamaClient, RoboMLRESPClient
 from agents.ros import Launcher, Topic, Route, MemLayer
 
 # Reuse one (tool-capable) model for the generic LLM and the Go-to-X LLM
@@ -34,10 +37,6 @@ qwen_client = OllamaClient(qwen)
 embedding_client = OllamaClient(
     OllamaModel(name="embeddings", checkpoint="nomic-embed-text-v2-moe:latest")
 )
-
-# Vector DB for the SemanticRouter — it stores the route samples
-chroma = ChromaDB()
-chroma_client = ChromaClient(db=chroma)
 
 
 # -- Perception: vision + memory build the map --
@@ -141,7 +140,7 @@ The Go-to-X LLM calls `Memory` **in-process**, so the router, the LLMs, and Memo
 
 ## Creating the SemanticRouter
 
-The SemanticRouter takes an input _String_ topic and sends whatever is published on that topic to a _Route_. A _Route_ is a thin wrapper around _Topic_ and takes in the name of a topic to publish on and example queries, that would match a potential query that should be published to a particular topic. For example, if we ask our robot a general question, like "Whats the capital of France?", we do not want that question to be routed to a Go-to-X component, but to a generic LLM. Thus in its route, we would provide examples of general questions. Lets start by creating our routes for the input topics of the two components above.
+The SemanticRouter takes an input _String_ topic and sends whatever is published on that topic to a _Route_. A _Route_ is a thin wrapper around _Topic_ and takes in the name of a topic to publish on and example queries, that would match a potential query that should be published to a particular topic. For example, if we ask our robot a general question, like "Whats the capital of France?", we do not want that question to be routed to a Go-to-X component, but to a generic LLM. Thus in its route, we would provide examples of general questions. The samples serve every mode: an LLM or a decision model reads them as the description of the route, and vector mode embeds them. Lets start by creating our routes for the input topics of the two components above.
 
 ```python
 from agents.ros import Route
@@ -164,46 +163,71 @@ llm_route = Route(routes_to=llm_in,
 The `routes_to` parameter of a `Route` can be a `Topic` or an `Action`. `Actions` can be system level functions (e.g. to restart a component), functions exposed by components (e.g. to start the VLA component for manipulation, or the 'say' method in TextToSpeech component) or arbitrary functions written in the recipe. `Actions` are a powerful concept in EMOS, because their arguments can come from any topic in the system. To learn more, check out [Events & Actions](../../concepts/events-and-actions.md).
 ```
 
-## Option 1: Vector Mode (Similarity)
+## Option 1: LLM Mode (Agentic)
 
-This is the standard approach. In Vector mode, the SemanticRouter component stores the route samples in a vector DB. Distance is calculated between an incoming query's embedding and the embeddings of the example queries to determine which _Route_(_Topic_) the query should be sent on. We pass the `chroma_client` set up above as the `db_client`, and specify a router name in the config, which acts as a _collection_name_ in the database.
+Give the router a `model_client` with an LLM and each route becomes a tool the model can call, described by the route's samples. The model reads the query and calls the route that fits, or none, in which case the input goes to `default_route`.
+
+```{note}
+We can use the same LLM (`model_client`) as we are using for our other Q&A components.
+```
 
 ```python
 from agents.components import SemanticRouter
-from agents.config import SemanticRouterConfig
 
-router_config = SemanticRouterConfig(router_name="go-to-router", distance_func="l2")
-# Initialize the router component
 router = SemanticRouter(
     inputs=[query_topic],
     routes=[llm_route, goto_route],
-    default_route=llm_route,  # If none of the routes fall within a distance threshold
-    config=router_config,
-    db_client=chroma_client,  # Providing db_client enables Vector Mode
-    component_name="router"
+    default_route=llm_route,  # Used when the model picks no route
+    model_client=qwen_client,  # A model client with an LLM enables LLM Mode
+    component_name="router",
 )
-```
-
-## Option 2: LLM Mode (Agentic)
-
-Alternatively, we can use an LLM to make routing decisions. This is useful if your routes require "understanding" rather than just similarity. We simply provide a `model_client` instead of a `db_client` (no ChromaDB needed in this mode).
-
-```{note}
-We can even use the same LLM (`model_client`) as we are using for our other Q&A components.
-```
-
-```python
-# No SemanticRouterConfig needed, we can use LLMConfig or let it be default
-router = SemanticRouter(
-    inputs=[query_topic],
-    routes=[llm_route, goto_route],
-    model_client=qwen_client, # Providing model_client enables LLM Mode
-    component_name="smart_router"
-)
-
 ```
 
 The LLM mode also runs on the built-in local model: pass `config=LLMConfig(enable_local_model=True)` and leave `model_client` out, and the router deploys the local model when it configures.
+
+## Option 2: Decision Mode
+
+A decision model answers typed questions about a text in one forward pass, with a probability for every option, and generates no text. The router turns its routes into one such question, each route described by its samples, and the answer names a route and comes with a confidence. The route is used when the confidence reaches `minimum_confidence`, and the input goes to `default_route` otherwise. The model is served by llama.cpp and reached through the generic client with a `GenericDecisionModel`; the Decision Models tutorial covers what these models are and how to serve one.
+
+```python
+from agents.clients import GenericHTTPClient
+from agents.config import SemanticRouterConfig
+from agents.models import GenericDecisionModel
+
+# Served with: llama-server -m lev-Q8_0.gguf --alias lev --port 8090
+decision_client = GenericHTTPClient(GenericDecisionModel(name="lev", checkpoint="lev"), port=8090)
+
+router = SemanticRouter(
+    inputs=[query_topic],
+    routes=[llm_route, goto_route],
+    default_route=llm_route,  # Used when the confidence of the choice is below minimum_confidence
+    config=SemanticRouterConfig(router_name="go-to-router", minimum_confidence=0.3),
+    model_client=decision_client,  # A model client with a decision model enables Decision Mode
+    component_name="router",
+)
+```
+
+## Option 3: Vector Mode (Similarity)
+
+In Vector mode, the router stores the route samples in a vector DB and measures the distance between an incoming query's embedding and theirs. The closest sample's route wins, and the input goes to `default_route` when none is within `maximum_distance`. The router needs a `db_client`, and `router_name` in the config names the collection the samples are stored in; `distance_func` and `maximum_distance` only apply in this mode.
+
+```python
+from agents.clients import ChromaClient
+from agents.config import SemanticRouterConfig
+from agents.vectordbs import ChromaDB
+
+# Vector DB for the router -- it stores the route samples
+chroma_client = ChromaClient(db=ChromaDB())
+
+router = SemanticRouter(
+    inputs=[query_topic],
+    routes=[llm_route, goto_route],
+    default_route=llm_route,  # Used when no route is within the distance threshold
+    config=SemanticRouterConfig(router_name="go-to-router", distance_func="l2"),
+    db_client=chroma_client,  # A db client enables Vector Mode
+    component_name="router",
+)
+```
 
 And that is it. Whenever something is published on the input topic **question**, it will be routed, either to a Go-to-X component or an LLM component. We can now expose this topic to our command interface. The complete code for setting up the router is given below:
 
@@ -216,9 +240,8 @@ import numpy as np
 
 from agents.components import LLM, Memory, SemanticRouter, Vision
 from agents.models import OllamaModel, VisionModel
-from agents.vectordbs import ChromaDB
 from agents.config import LLMConfig, MemoryConfig, SemanticRouterConfig, VisionConfig
-from agents.clients import ChromaClient, OllamaClient, RoboMLRESPClient
+from agents.clients import OllamaClient, RoboMLRESPClient
 from agents.ros import Launcher, Topic, Route, MemLayer
 
 # Reuse one (tool-capable) model for the generic LLM and the Go-to-X LLM
@@ -229,10 +252,6 @@ qwen_client = OllamaClient(qwen)
 embedding_client = OllamaClient(
     OllamaModel(name="embeddings", checkpoint="nomic-embed-text-v2-moe:latest")
 )
-
-# Vector DB for the SemanticRouter — it stores the route samples
-chroma = ChromaDB()
-chroma_client = ChromaClient(db=chroma)
 
 
 # -- Perception: vision + memory build the map --
@@ -349,26 +368,45 @@ llm_route = Route(
     ],
 )
 
-# --- MODE 1: VECTOR ROUTING (Active) ---
-router_config = SemanticRouterConfig(router_name="go-to-router", distance_func="l2")
-
+# --- MODE 1: LLM ROUTING (Active) ---
 router = SemanticRouter(
     inputs=[query_topic],
     routes=[llm_route, goto_route],
-    default_route=llm_route,
-    config=router_config,
-    db_client=chroma_client, # Vector mode requires db_client
+    default_route=llm_route,  # Used when the model picks no route
+    model_client=qwen_client,  # LLM mode requires a model client with an LLM
     component_name="router",
 )
 
-# --- MODE 2: LLM ROUTING (Commented Out) ---
-# To use LLM routing (Agentic), comment out the block above and uncomment this:
+# --- MODE 2: DECISION ROUTING (Commented Out) ---
+# To route with a decision model, comment out the block above and uncomment this.
+# The model is served by llama.cpp, e.g.: llama-server -m lev-Q8_0.gguf --alias lev --port 8090
 #
+# from agents.clients import GenericHTTPClient
+# from agents.models import GenericDecisionModel
+#
+# decision_client = GenericHTTPClient(GenericDecisionModel(name="lev", checkpoint="lev"), port=8090)
 # router = SemanticRouter(
 #     inputs=[query_topic],
 #     routes=[llm_route, goto_route],
-#     default_route=llm_route,
-#     model_client=qwen_client, # LLM mode requires model_client
+#     default_route=llm_route,  # Used when the confidence of the choice is below minimum_confidence
+#     config=SemanticRouterConfig(router_name="go-to-router", minimum_confidence=0.3),
+#     model_client=decision_client,  # Decision mode requires a model client with a decision model
+#     component_name="router",
+# )
+
+# --- MODE 3: VECTOR ROUTING (Commented Out) ---
+# To route by similarity to the samples, comment out the active block and uncomment this:
+#
+# from agents.clients import ChromaClient
+# from agents.vectordbs import ChromaDB
+#
+# chroma_client = ChromaClient(db=ChromaDB())  # stores the route samples
+# router = SemanticRouter(
+#     inputs=[query_topic],
+#     routes=[llm_route, goto_route],
+#     default_route=llm_route,  # Used when no route is within the distance threshold
+#     config=SemanticRouterConfig(router_name="go-to-router", distance_func="l2"),
+#     db_client=chroma_client,  # Vector mode requires a db client
 #     component_name="router",
 # )
 

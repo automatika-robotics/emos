@@ -134,6 +134,10 @@ Building maps with EMOS itself needs a pixi or native install on the robot.
 
 GLIM had nothing to build a map from: it received no LiDAR frames during the session, or it failed before the session ended. The CLI prints the session's last lines under the message, and the whole log is in `~/emos/logs`. Check that the LiDAR, and the IMU if the robot maps with one, are publishing. A session that ends without a map leaves an empty map directory behind; `emos map list` shows it and `emos map rm` removes it.
 
+### "The mapping session did not stop in time, so it was killed"
+
+Ending a session gives the backend time to finish the map and write it, and a session still running after that is killed. Had the map been written by then it would be reported as saved and this message would not appear, so no map was saved. The session's log under `~/emos/logs` shows where it stalled, and the empty map directory is removed with `emos map rm` as above.
+
 ---
 
 ## Dashboard

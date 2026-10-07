@@ -41,7 +41,10 @@ Most of them wrap a model, and where the model runs is a separate choice: a clou
   - The agent. It discovers every action, action server, service, routine and plugin action in the recipe, plans a sequence of calls for a natural-language goal, and runs it while watching the outputs. See [Cortex](cortex.md).
 
 * - **SemanticRouter**
-  - Sends an input to one of several destinations by what it says, using a vector database of examples or an LLM to decide, so one microphone or one text input can drive several pipelines.
+  - Sends an input to one of several destinations by what it says, using an LLM, a decision model or a vector database of examples to decide, so one microphone or one text input can drive several pipelines.
+
+* - **DecisionComponent**
+  - Asks a decision model typed questions about what the robot hears or sees, or about what another component reports: a yes/no, a choice among options or a score on ordered levels, each answered in one forward pass with a probability per option and no generated text. Every question's answers come out on a topic of their own, so an event can threshold them. The components `ask` action lets Cortex or an LLM put a question on demand.
 
 * - **MotionDetector**
   - Detects motion in an image stream or a point cloud stream and publishes a boolean, which makes it an event source, along with the frames of the episode as a video or the motion centres as poses. Given the robot's odometry it ignores the robot's own movement. It replaces the earlier VideoMessageMaker.

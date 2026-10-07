@@ -22,6 +22,9 @@ Clients in EmbodiedAgents take as input a **model** or **vector database (DB)** 
 * - **GenericSTT**
   - A generic wrapper for Speech-to-Text models served via OpenAI-compatible `/v1/audio/transcriptions` APIs. Supports language hints (`language`) and temperature settings. This wrapper must be used with the **GenericHTTPClient**.
 
+* - **GenericDecisionModel**
+  - A generic wrapper for decision models served via the `/v1/systemone` API. A decision model answers typed questions about a state, a yes/no, a choice or a score, in one forward pass with a probability for every option, and generates no text. The checkpoint is the model id the server lists. This wrapper must be used with the **GenericHTTPClient**. See [Decision Models](#decision-models) below.
+
 * - **OllamaModel**
   - A LLM/VLM model loaded from an Ollama checkpoint. Supports configurable generation and deployment options available in Ollama API. Complete list of Ollama models [here](https://ollama.com/library). This wrapper must be used with the **OllamaClient**.
 
@@ -100,6 +103,30 @@ Two config fields tune them. `local_model_options` passes backend options throug
 - The container and pixi installs of EMOS include these dependencies, with CUDA builds of `llama-cpp-python` and `sherpa-onnx` where the board has a toolkit. On a native install add them as shown above.
 - The wakeword spotter of SpeechToText also needs `pip install sentencepiece`.
 - GPU builds exist for `llama-cpp-python` (CUDA and Metal) and for `onnxruntime` (`onnxruntime-gpu`).
+```
+
+## Decision Models
+
+A decision model gives up generating text. Given a state and typed questions, it scores the options in one forward pass and returns a probability for each, which is what makes it fast and its answers easy to threshold. The open models below are served with llama.cpp's `llama-server` from the GGUF repositories of [ggml-org](https://huggingface.co/blog/ggml-org/decision-models-in-llamacpp), and a recipe reaches them with `GenericDecisionModel` on the `GenericHTTPClient`. The small ones run on a CPU; the ones that read images are 27B models and want a GPU. `llama-server` comes with llama.cpp and is not part of an EMOS install.
+
+| Model   | Size | Reads images | Languages              | License                      |
+|:--------|:-----|:-------------|:-----------------------|:-----------------------------|
+| Julia-1 | 144M | no           | 50+                    | Apache 2.0                   |
+| Laya    | 421M | no           | English                | Apache 2.0                   |
+| Kev-4B  | 4B   | no           | English                | Apache 2.0                   |
+| lev     | 4B   | no           | English                | Apache 2.0                   |
+| OpenJev | 27B  | yes          | en, de, fr, hi, zh, ja | CC BY-NC 4.0, non-commercial |
+| Clef    | 27B  | yes          | English                | Apache 2.0                   |
+
+```bash
+llama-server -m lev-Q8_0.gguf --alias lev --port 8090
+```
+
+```python
+from agents.clients import GenericHTTPClient
+from agents.models import GenericDecisionModel
+
+decision_client = GenericHTTPClient(GenericDecisionModel(name="lev", checkpoint="lev"), port=8090)
 ```
 
 ## Available Vector Databases

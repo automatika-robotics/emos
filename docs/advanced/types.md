@@ -64,6 +64,7 @@ These types are defined by EmbodiedAgents for AI component communication.
 | **Trackings** | automatika_embodied_agents | Object tracking data including IDs, labels, and trajectories |
 | **TrackingsMultiSource** | automatika_embodied_agents | Object tracking data from multiple sources |
 | **Detections3D** | automatika_embodied_agents | Metric 3D boxes with labels, scores and depth validity, in a named frame |
+| **Decision** | automatika_embodied_agents | A decision model's answer to one question: the question's `id` and `type`, the `choice`, `score` or `noul` (probability of yes) answer with its `confidence`, and the `options` with their `probabilities` |
 | **VisionLanguageAction** (action) | automatika_embodied_agents | A task instruction for the VLA and Cortex action servers |
 | **MoveManipulator** (action) | automatika_embodied_agents | A motion goal for the MoveIt component: pose, joints, named, Cartesian, pick or place |
 

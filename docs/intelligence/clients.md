@@ -17,7 +17,7 @@ Some clients need an extra package, listed in the table. When it is missing, the
 
 * - **Generic**
   - GenericHTTPClient
-  - Any OpenAI-compatible API: vLLM, ms-swift, lmdeploy, Google Gemini, OpenAI itself and the like. Handles standard and streaming responses, language and multimodal models, speech in both directions, and tool calling.
+  - Any OpenAI-compatible API: vLLM, llama.cpp, SGLang, Google Gemini, OpenAI itself and the like. Handles standard and streaming responses, language and multimodal models, speech in both directions, and tool calling. It can also be used for (System 1) decision models for typed questions.
 
 * - **RoboML**
   - RoboMLHTTPClient

@@ -62,6 +62,7 @@ A component's settings live in a configuration object, an `attrs` class that is 
 | `run_type`                         | `TIMED`        | What drives the main step, see below.                                                                 |
 | `fallback_rate`                    | 100 Hz         | How often the component checks its health and runs its fallbacks.                                     |
 | `executor_spin_timeout`            | 0.01 s         | How long the component's executor blocks per spin. Lower it for latency-sensitive callbacks.          |
+| `external_processor_timeout`       | 1 s            | With `multiprocessing=True`, how long the component waits for a function the recipe attached to it, a topic pre- or post-processor or an LLM tool, which then runs in the recipe's process. |
 | `log_level`, `rclpy_log_level`     | info, warn     | The component's own log level, and the ROS client library's underneath it.                            |
 | `frames`, `robot`                  | from the launcher | The frame names and the robot description, set on every component by the launcher or the plugin.   |
 

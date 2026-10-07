@@ -142,6 +142,16 @@ launcher.include_launch_file(
 
 `include_launch_file` takes Python, XML and YAML launch files. The file is looked up in the package's share directory, directly or under `launch/`, and with `package=None` the name is used as a plain path. Launch arguments are passed as a dictionary.
 
+A node started this way can only read ROS topics, and a plugin's feed is not always one. `publish_plugin_feedback` puts a feed on a ROS topic so that such a node can subscribe to it:
+
+```python
+launcher.add_plugin(robot)
+launcher.publish_plugin_feedback(robot.feedbacks["Odometry"], "/odom")
+launcher.add_ros_node(package="robot_localization", executable="ekf_node", parameters=["ekf.yaml"])
+```
+
+The feed is taken from the plugin's `feedbacks` by its key, and the topic defaults to `<plugin id>/<feed key>`. Publishing a feed counts as using it, so a plugin that starts a driver only for the feeds a recipe asks for starts this one's. A feed that is already a ROS topic is not published a second time: the launcher warns and names the topic it is on. The recipe does not start if the topic is already taken by another feed or by a component's output.
+
 Drivers that a plugin needs are declared inside the plugin and started through the same machinery, so a recipe does not add them itself.
 
 ---

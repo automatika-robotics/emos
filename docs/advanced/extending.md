@@ -317,6 +317,15 @@ awesome_component:
   loop_rate: 100.0
 ```
 
+**Example:**
+
+```shell
+ros2 service call /awesome_component/configure_from_file automatika_ros_sugar/srv/ConfigureFromFile \
+  "{path_to_file: '/path/to/config.yaml', keep_alive: false}"
+```
+
+With `keep_alive: false` the component is stopped, configured from the file and brought back to the state it was in. With `true` the new values are applied while it keeps running. The response says whether the reconfiguration succeeded, and why not when it did not.
+
 ### Executing a Component Method
 
 The `ExecuteMethod` service enables runtime invocation of any class method in the component. This is useful for triggering specific behaviors, tools, or diagnostics during runtime without writing additional interfaces.

@@ -51,6 +51,13 @@ Turn *"go to the kitchen"* into a `PoseStamped` goal -- an LLM with Memory tools
 Generalise the tool calling pattern: write your own Python function as the LLM's tool, with full control over the schema and the published output.
 :::
 
+:::{grid-item-card} {material-regular}`rule;1.2em;sd-text-primary` Decision Models
+:link: decision-models
+:link-type: doc
+
+Typed questions answered in one forward pass: is this meant for me, which room is this, is the task done. Probabilities an event can act on, from a model that generates no text.
+:::
+
 :::{grid-item-card} {material-regular}`alt_route;1.2em;sd-text-primary` Semantic Routing
 :link: semantic-routing
 :link-type: doc

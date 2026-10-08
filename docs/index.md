@@ -41,6 +41,7 @@ recipes/foundation/prompt-engineering
 recipes/foundation/semantic-map
 recipes/foundation/goto-navigation
 recipes/foundation/tool-calling
+recipes/foundation/decision-models
 recipes/foundation/semantic-routing
 recipes/foundation/complete-agent
 ```

@@ -117,6 +117,8 @@ That variant needs no referee at all, but it also only exists in a simulator wit
 
 ```{seealso}
 Events reach much further than this. A speech-to-text component's output and an event that turns it into a goal would start the VLA by voice. The [Events & Actions](../events-and-resilience/event-driven-cognition.md) recipes show more of what they can do.
+
+A decision model makes a faster referee, one that answers every second with a probability and reads the task from the VLA itself. [Decision Models](../foundation/decision-models.md#example-4-an-arm-that-knows-when-it-is-done) builds that version of this recipe.
 ```
 
 ## Launching the system

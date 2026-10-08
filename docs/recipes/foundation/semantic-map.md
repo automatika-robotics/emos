@@ -112,7 +112,7 @@ def introspection_validation(output: str) -> Optional[str]:
 introspector.add_publisher_preprocessor(introspection_answer, introspection_validation)
 ```
 
-Now `introspection_answer` only carries clean one-word labels.
+Now `introspection_answer` only carries clean one-word labels. A decision model answers the same question with one of the three rooms by construction, and a probability for each, so the validator is not needed; [Decision Models](decision-models.md#example-2-what-kind-of-place-is-this) asks it that way.
 
 ---
 

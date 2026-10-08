@@ -187,7 +187,7 @@ The LLM mode also runs on the built-in local model: pass `config=LLMConfig(enabl
 
 ## Option 2: Decision Mode
 
-A decision model answers typed questions about a text in one forward pass, with a probability for every option, and generates no text. The router turns its routes into one such question, each route described by its samples, and the answer names a route and comes with a confidence. The route is used when the confidence reaches `minimum_confidence`, and the input goes to `default_route` otherwise. The model is served by llama.cpp and reached through the generic client with a `GenericDecisionModel`; the Decision Models tutorial covers what these models are and how to serve one.
+A decision model answers typed questions about a text in one forward pass, with a probability for every option, and generates no text. The router turns its routes into one such question, each route described by its samples, and the answer names a route and comes with a confidence. The route is used when the confidence is above `minimum_confidence` set in the config. Otherwise the input goes to `default_route`. Open decision models are served by llama.cpp and can be reached through the `GenericHTTPClient` client with a `GenericDecisionModel`; [Decision Models](decision-models.md) covers what these models are and how to serve one.
 
 ```python
 from agents.clients import GenericHTTPClient

@@ -184,6 +184,7 @@ LLMS_TXT_SELECTION = [
     "recipes/foundation/semantic-map.md",
     "recipes/foundation/goto-navigation.md",
     "recipes/foundation/tool-calling.md",
+    "recipes/foundation/decision-models.md",
     "recipes/foundation/semantic-routing.md",
     "recipes/foundation/complete-agent.md",
     # Planning & Manipulation Recipes
@@ -262,7 +263,7 @@ def generate_llms_txt(app, exception):
         "GenericHTTPClient, LeRobotClient, etc.) with a model wrapper. Clients are "
         "interchangeable -- swap inference backends without changing component logic.\n"
         "3. **Build Components** -- Instantiate components (LLM, VLM, VLA, SpeechToText, "
-        "TextToSpeech, Vision, Memory, Cortex, SemanticRouter) with inputs, outputs, and a "
+        "TextToSpeech, Vision, Memory, Cortex, SemanticRouter, DecisionComponent) with inputs, outputs, and a "
         "model_client. Set `trigger` to control when the component executes. Use `Memory` "
         "for spatio-temporal memory and `Cortex` as an agentic harness that auto-discovers "
         "the rest of the graph as LLM tools.\n"

@@ -31,6 +31,13 @@ Robots that listen, see, and speak -- microphone in, visually-grounded answer ou
 One sentence in, the right capability fires. *"How tall is Everest?"* wakes the LLM. *"What do you see?"* wakes the VLM. *"Take me to the kitchen."* dispatches the navigation stack. Behavior emerges from intent.
 :::
 
+:::{grid-item-card} {material-regular}`rule;1.2em;sd-text-primary` Robots That Decide in Milliseconds
+:link: ../recipes/foundation/decision-models
+:link-type: doc
+
+*"Was that meant for me?"* *"Is the task done?"* *"Which room is this?"* A decision model answers typed questions in one forward pass, with a probability an event can act on, and never generates a word.
+:::
+
 :::{grid-item-card} {material-regular}`precision_manufacturing;1.2em;sd-text-primary` Robots That Pick Up What You Mean
 :link: ../recipes/planning-and-manipulation/vla-manipulation
 :link-type: doc

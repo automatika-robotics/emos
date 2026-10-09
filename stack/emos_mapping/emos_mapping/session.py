@@ -19,7 +19,15 @@ from ros_sugar.robot import RobotPlugin, RosTopicTransport
 from ros_sugar.robot.cli import load_plugin_class
 from ros_sugar.robot.mapping import NativeMapping
 
-from .backend import backend_has_cuda, backend_version, glim_node, write_glim_config
+from .backend import (
+    ENVIRONMENTS,
+    apply_glim_settings,
+    backend_has_cuda,
+    backend_version,
+    glim_node,
+    glim_roles,
+    write_glim_config,
+)
 from .builder import MapBuilder, MapBuilderConfig
 
 # Topics the session publishes a plugin's own sensors on when the plugin
@@ -98,6 +106,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument(
         "--store", help="maps directory (default: the plugin's declared store)"
     )
+    parser.add_argument(
+        "--env",
+        choices=sorted(ENVIRONMENTS),
+        help="where the map is built, for GLIM's settings (default: GLIM's own)",
+    )
     args = parser.parse_args(argv)
 
     # get plugin and its mapping declaration
@@ -131,6 +144,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("the mapping backend (GLIM) is not installed", file=sys.stderr)
         return 2
 
+    unknown = sorted(set(declaration.custom_settings) - set(glim_roles()))
+    if unknown:
+        print(
+            f"cannot map with {args.plugin}: its GLIM settings name roles GLIM "
+            f"does not have: {', '.join(unknown)}",
+            file=sys.stderr,
+        )
+        return 2
+
     # specify map store
     store = os.path.expanduser(args.store or declaration.store)
     directory = map_directory(store, args.name)
@@ -146,6 +168,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         lidar_imu=lidar_imu,
         base_frame=plugin.base_frame,
     )
+    settings, left_out = apply_glim_settings(
+        config_dir, [ENVIRONMENTS.get(args.env, {}), declaration.custom_settings]
+    )
+    if left_out:
+        print(
+            "GLIM settings the selected modules do not have, left out: "
+            + ", ".join(left_out),
+            flush=True,
+        )
     dump_dir = os.path.join(glim_dir, "dump")
 
     # setup map builder node
@@ -183,7 +214,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "provider": "native",
         "robot": {"plugin": args.plugin, "name": plugin.metadata.name},
-        "backend": {"name": "glim", "version": version, "gpu": gpu},
+        "backend": {
+            "name": "glim",
+            "version": version,
+            "gpu": gpu,
+            "environment": args.env,
+            "settings": settings,
+        },
         "inputs": {"cloud": points_topic, "imu": imu_topic, "lidar_imu": lidar_imu},
         "band": {"z_min": declaration.z_min, "z_max": declaration.z_max},
     }

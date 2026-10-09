@@ -33,6 +33,24 @@ const (
 	warningPrefix = "Mapping warning: "
 )
 
+// Environments are the places a map EMOS builds can be made in. The session
+// carries settings for the mapping backend for each.
+var Environments = []string{"indoor", "outdoor"}
+
+// CheckEnvironment refuses an environment the session has no settings for.
+// Empty leaves the backend's own settings.
+func CheckEnvironment(env string) error {
+	if env == "" {
+		return nil
+	}
+	for _, known := range Environments {
+		if env == known {
+			return nil
+		}
+	}
+	return fmt.Errorf("environment %q is not one of %s", env, strings.Join(Environments, ", "))
+}
+
 // ErrStopTimedOut says the session did not exit after the stop request and
 // was killed.
 var ErrStopTimedOut = errors.New("the mapping session did not stop in time and was killed")
@@ -105,10 +123,12 @@ type NativeSession struct {
 }
 
 // StartNative begins a mapping session EMOS runs itself, for the plugin at
-// entryPoint. It returns once the session has announced the map's directory.
+// entryPoint, in environment env (one of Environments, or empty for the
+// backend's own settings). It returns once the session has announced the
+// map's directory.
 // The session's output goes to out, and its warnings for the operator to
 // warn, when given. Cancelling ctx before then kills it.
-func (d *Declaration) StartNative(ctx context.Context, entryPoint, name string, start Starter, out io.Writer, warn func(string)) (*NativeSession, error) {
+func (d *Declaration) StartNative(ctx context.Context, entryPoint, name, env string, start Starter, out io.Writer, warn func(string)) (*NativeSession, error) {
 	if d.Kind != KindNative {
 		return nil, fmt.Errorf("this robot maps with its own software")
 	}
@@ -118,9 +138,12 @@ func (d *Declaration) StartNative(ctx context.Context, entryPoint, name string, 
 	if !validEntryPoint.MatchString(entryPoint) {
 		return nil, fmt.Errorf("plugin entry point %q is not '<package.module>:<ClassName>'", entryPoint)
 	}
+	if err := CheckEnvironment(env); err != nil {
+		return nil, err
+	}
 
 	announced := newAnnouncement(out, warn)
-	proc, err := start(sessionShell(entryPoint, name), announced)
+	proc, err := start(sessionShell(entryPoint, name, env), announced)
 	if err != nil {
 		return nil, fmt.Errorf("start mapping: %w", err)
 	}
@@ -138,8 +161,12 @@ func (d *Declaration) StartNative(ctx context.Context, entryPoint, name string, 
 
 // sessionShell is the command that runs the session. The module is run
 // directly, so an interrupt reaches one process, once.
-func sessionShell(entryPoint, name string) string {
-	return "python3 -u -m emos_mapping.session --plugin " + entryPoint + " --name " + name
+func sessionShell(entryPoint, name, env string) string {
+	shell := "python3 -u -m emos_mapping.session --plugin " + entryPoint + " --name " + name
+	if env != "" {
+		shell += " --env " + env
+	}
+	return shell
 }
 
 // Done closes when the session has ended, whether or not it was asked to.

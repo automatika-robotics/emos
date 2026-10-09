@@ -21,6 +21,7 @@ import (
 
 var (
 	mapExportDir    string
+	mapEnv          string
 	mapRMW          string
 	mapSetupRebuild bool
 )
@@ -41,6 +42,9 @@ func init() {
 		Args:  cobra.MaximumNArgs(1),
 		RunE:  runMapNew,
 	}
+	newCmd.Flags().StringVar(&mapEnv, "env", "",
+		"where a map EMOS builds itself is made ("+strings.Join(mapping.Environments, ", ")+"), "+
+			"for the mapping backend's settings; asked when unset")
 	newCmd.Flags().StringVar(&mapRMW, "rmw", "",
 		"RMW implementation for a map EMOS builds itself ("+runner.RMWChoices+"); "+
 			"unset keeps the environment's, or ROS's default")
@@ -213,9 +217,36 @@ func runMapNew(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if decl.Kind == mapping.KindNative {
-		return runNativeMapNew(cfg, decl, name)
+		env := mapEnv
+		if env == "" {
+			if env, err = askEnvironment(); err != nil {
+				ui.Info("Cancelled.")
+				return nil
+			}
+		}
+		return runNativeMapNew(cfg, decl, name, env)
+	}
+	if mapEnv != "" {
+		ui.Warn("--env only applies to maps EMOS builds itself; this robot maps with its own software.")
 	}
 	return runVendorMapNew(decl, name)
+}
+
+// environmentChoices are the environments as the operator is asked for them,
+// in the order of mapping.Environments.
+var environmentChoices = []string{
+	"Indoors (rooms, corridors, warehouses)",
+	"Outdoors (yards, streets, open sites)",
+}
+
+// askEnvironment asks where the map is made, for the mapping backend's
+// settings.
+func askEnvironment() (string, error) {
+	choice, err := ui.Choose("Where is this map?", environmentChoices)
+	if err != nil {
+		return "", err
+	}
+	return mapping.Environments[choice], nil
 }
 
 // loopAdvice is what makes a map line up with itself, whoever builds it.
@@ -420,11 +451,14 @@ func nativeMappingReady(cfg *config.EMOSConfig) error {
 	if err := runner.CheckRMW(mapRMW); err != nil {
 		return err
 	}
+	if err := mapping.CheckEnvironment(mapEnv); err != nil {
+		return err
+	}
 	return refuseWhilePluginsBusy("mapping")
 }
 
 // runNativeMapNew builds a map with EMOS's own mapping session.
-func runNativeMapNew(cfg *config.EMOSConfig, decl *mapping.Declaration, name string) error {
+func runNativeMapNew(cfg *config.EMOSConfig, decl *mapping.Declaration, name, env string) error {
 	logFile := runner.LogFilePath("map-" + name)
 	log, err := runner.OpenLog(logFile)
 	if err != nil {
@@ -435,6 +469,7 @@ func runNativeMapNew(cfg *config.EMOSConfig, decl *mapping.Declaration, name str
 	ui.Header("MAPPING")
 	ui.Info("EMOS builds this map itself from the robot's LiDAR.")
 	ui.Info("RMW Implementation: " + runner.RMWLabel(mapRMW))
+	ui.Info("Environment: " + env)
 
 	// Caught from here on, so the session is never left running behind a CLI
 	// that a signal ended. The session is in its own process group.
@@ -465,7 +500,7 @@ func runNativeMapNew(cfg *config.EMOSConfig, decl *mapping.Declaration, name str
 	ui.Info("The session's output is saved to: " + logFile)
 
 	startCtx, cancelStart := cancelOnSignal(sigs)
-	session, err := decl.StartNative(startCtx, cfg.Plugin.EntryPoint, name, start, log, ui.Warn)
+	session, err := decl.StartNative(startCtx, cfg.Plugin.EntryPoint, name, env, start, log, ui.Warn)
 	cancelStart()
 	if err != nil {
 		return explainSession(err, logFile)

@@ -213,6 +213,23 @@ func Select(prompt string, options []string) int {
 	return result
 }
 
+// Choose displays an arrow-key menu and returns the 0-based index of the
+// chosen option, or an error when the user cancels with Ctrl+C.
+func Choose(prompt string, options []string) (int, error) {
+	var result int
+	opts := make([]huh.Option[int], len(options))
+	for i, opt := range options {
+		opts[i] = huh.NewOption(opt, i)
+	}
+	err := huh.NewSelect[int]().
+		Title(prompt).
+		Options(opts...).
+		Value(&result).
+		WithTheme(huhTheme()).
+		Run()
+	return result, err
+}
+
 func huhTheme() *huh.Theme {
 	t := huh.ThemeCharm()
 	t.Focused.Title = lipgloss.NewStyle().Foreground(ThemeBlue).Bold(true)

@@ -7,9 +7,12 @@ from ament_index_python.packages import PackageNotFoundError
 
 import emos_mapping.backend as backend
 from emos_mapping.backend import (
+    ENVIRONMENTS,
     GLIM_NODE,
     MAP_TOPIC,
+    apply_glim_settings,
     glim_node,
+    glim_roles,
     read_dump,
     strip_json_comments,
     write_glim_config,
@@ -85,6 +88,53 @@ def test_the_lidar_imu_offset_is_written_when_declared(tmp_path):
     directory = write_glim_config(str(tmp_path / "d"), "/p", "/i")
     assert load(os.path.join(directory, "config_sensors.json"))["sensors"]["T_lidar_imu"][:3] == [0.006, -0.012, 0.008]
 
+
+
+def test_the_indoor_settings_land_in_the_modules_the_session_picked(tmp_path):
+    """Each module names its own resolutions: one layer serves the GPU and
+    CPU modules alike, and what a module does not have is reported."""
+    gpu = write_glim_config(str(tmp_path / "gpu"), "/p", "/i", gpu=True)
+    applied, left_out = apply_glim_settings(gpu, [ENVIRONMENTS["indoor"]])
+    odometry = load(os.path.join(gpu, "config_odometry_gpu.json"))["odometry_estimation"]
+    assert odometry["voxel_resolution"] == 0.15
+    sub = load(os.path.join(gpu, "config_sub_mapping_gpu.json"))["sub_mapping"]
+    assert sub["submap_voxel_resolution"] == 0.2 and sub["submap_target_num_points"] == -1
+    assert load(os.path.join(gpu, "config_preprocess.json"))["preprocess"]["distance_far_thresh"] == 40.0
+    assert applied["odometry"] == {"voxel_resolution": 0.15}
+    assert "odometry.vgicp_resolution" in left_out and "odometry.voxel_resolution" not in left_out
+
+    cpu = write_glim_config(str(tmp_path / "cpu"), "/p", "/i")
+    applied, left_out = apply_glim_settings(cpu, [ENVIRONMENTS["indoor"]])
+    odometry = load(os.path.join(cpu, "config_odometry_cpu.json"))["odometry_estimation"]
+    assert odometry["vgicp_resolution"] == 0.25 and odometry["ivox_resolution"] == 0.5
+    assert "voxel_resolution" not in odometry
+    # The unselected GPU file is left as GLIM ships it
+    assert load(os.path.join(cpu, "config_odometry_gpu.json"))["odometry_estimation"]["voxel_resolution"] == 0.25
+
+
+def test_the_plugins_settings_win_over_the_environments(tmp_path):
+    directory = write_glim_config(str(tmp_path / "c"), "/p", "/i", gpu=True)
+    sensor = {"preprocess": {"k_correspondences": 20, "distance_far_thresh": 30.0}}
+    applied, _ = apply_glim_settings(directory, [ENVIRONMENTS["indoor"], sensor])
+    preprocess = load(os.path.join(directory, "config_preprocess.json"))["preprocess"]
+    assert preprocess["k_correspondences"] == 20 and preprocess["distance_far_thresh"] == 30.0
+    assert applied["preprocess"] == {"distance_far_thresh": 30.0, "k_correspondences": 20}
+
+
+def test_outdoors_keeps_glims_own_settings(tmp_path):
+    directory = write_glim_config(str(tmp_path / "c"), "/p", "/i", gpu=True)
+    before = sorted(os.listdir(directory))
+    assert apply_glim_settings(directory, [ENVIRONMENTS["outdoor"]]) == ({}, ())
+    assert sorted(os.listdir(directory)) == before
+    assert load(os.path.join(directory, "config_preprocess.json"))["preprocess"]["distance_far_thresh"] == 100.0
+
+
+def test_settings_for_a_role_glim_does_not_have_are_refused(tmp_path):
+    assert set(glim_roles()) >= {"sensors", "preprocess", "odometry", "sub_mapping", "global_mapping", "ros"}
+    assert "path" not in glim_roles()
+    directory = write_glim_config(str(tmp_path / "c"), "/p", "/i")
+    with pytest.raises(ValueError, match="no configuration role 'mapping'"):
+        apply_glim_settings(directory, [{"mapping": {"x": 1}}])
 
 
 def test_the_backend_version_is_read_from_glims_manifest(tmp_path, monkeypatch):

@@ -97,3 +97,10 @@ def test_glims_origin_is_at_the_imu_when_it_maps_with_one():
     assert origin_offset("/emos_mapping/imu", body_imu) == pytest.approx(-0.10596)
     assert origin_offset(None, body_imu) == 0.0  # LiDAR-only: the LiDAR is the origin
     assert origin_offset("/livox/imu", None) == 0.0  # GLIM's default: no offset
+
+
+def test_an_environment_emos_has_no_settings_for_is_refused(capsys):
+    with pytest.raises(SystemExit) as exited:
+        main(["--plugin", "p:P", "--name", "x", "--env", "underwater"])
+    assert exited.value.code == 2
+    assert "invalid choice: 'underwater'" in capsys.readouterr().err

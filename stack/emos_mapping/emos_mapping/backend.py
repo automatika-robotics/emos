@@ -107,6 +107,77 @@ def write_glim_config(
     return directory
 
 
+#: NOTE: GLIM settings for where the map is built, by configuration role.
+#: GLIM's defaults suit outdoor scenes. Indoors, finer voxels keep the walls and
+#: furniture a 5 cm grid needs, submaps keep every point their keyframes have,
+#: and returns from beyond the building (through windows) are dropped.
+ENVIRONMENTS: Dict[str, Dict[str, Dict[str, Any]]] = {
+    "indoor": {
+        "preprocess": {"distance_far_thresh": 40.0},
+        "odometry": {
+            "voxel_resolution": 0.15,  # GPU LiDAR-IMU
+            "vgicp_resolution": 0.25,  # CPU LiDAR-IMU
+            "ivox_resolution": 0.5,  # CPU and LiDAR-only
+        },
+        "sub_mapping": {
+            "keyframe_voxel_resolution": 0.2,
+            "submap_voxel_resolution": 0.2,
+            "submap_target_num_points": -1,
+        },
+        "global_mapping": {"submap_voxel_resolution": 0.2},
+    },
+    "outdoor": {},
+}
+
+
+def glim_roles() -> Tuple[str, ...]:
+    """The configuration roles GLIM's config.json names, ``ros`` to
+    ``global_mapping``: the keys a layer of settings is given by."""
+    selected = _read(os.path.join(templates_dir(), "config.json"))["global"]
+    return tuple(
+        key[len("config_") :]
+        for key, name in selected.items()
+        if key.startswith("config_") and name
+    )
+
+
+def apply_glim_settings(
+    directory: str, layers: Sequence[Dict[str, Dict[str, Any]]]
+) -> Tuple[Dict[str, Dict[str, Any]], Tuple[str, ...]]:
+    """Set GLIM settings, layer by layer, in the configuration in directory.
+
+    Each layer maps a role (``preprocess``, ``odometry`` ...) to its keys,
+    and a later layer wins. A role is the file config.json selects for it,
+    and a key is set only where that file has it: each module (CPU, GPU,
+    LiDAR-only) names its own resolutions, so one layer serves them all.
+
+    :return: The settings set, by role, and the ``role.key`` names the
+        selected files do not have.
+    :raises ValueError: For a role config.json does not name.
+    """
+    selected = _read(os.path.join(directory, "config.json"))["global"]
+    files: Dict[str, Dict[str, Any]] = {}
+    applied: Dict[str, Dict[str, Any]] = {}
+    missing = []
+    for layer in layers:
+        for role, keys in layer.items():
+            name = selected.get(f"config_{role}")
+            if not name:
+                raise ValueError(f"GLIM has no configuration role '{role}'")
+            if role not in files:
+                files[role] = _read(os.path.join(directory, name))
+            (section,) = files[role].values()
+            for key, value in keys.items():
+                if key in section:
+                    section[key] = value
+                    applied.setdefault(role, {})[key] = value
+                elif f"{role}.{key}" not in missing:
+                    missing.append(f"{role}.{key}")
+    for role, config in files.items():
+        _write(os.path.join(directory, selected[f"config_{role}"]), config)
+    return applied, tuple(missing)
+
+
 def glim_node(config_dir: str, dump_dir: str) -> Dict[str, Any]:
     """Keyword arguments for Launcher to start GLIM. It saves its
     dump into dump_dir when it shuts down."""

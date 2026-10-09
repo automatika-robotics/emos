@@ -106,7 +106,7 @@ success_event = Event(success_check.msg.data.contains("YES"), on_change=True)
 player.set_termination_trigger(mode="event", stop_event=success_event, max_timesteps=1800)
 ```
 
-`on_change=True` is right for the referee, which keeps publishing verdicts, NO after NO and then YES, and should trigger once when the answer turns. It is wrong for a topic that publishes a single message. The simulation's own success marker, `/so101/task_success`, publishes `YES` once when the scene's condition is met, and an edge-triggered event would need an earlier negative evaluation before it could fire. An event on that topic leaves `on_change` out:
+`on_change=True` is right for the referee, which keeps publishing verdicts, NO after NO and then YES, and should trigger once when the answer turns. The simulation's own success marker, `/so101/task_success`, is a different kind of topic: it publishes `YES` once, when the scene's condition is met, so there is nothing to turn. An event on it fires on that one message either way, because a condition that is already true when the event first evaluates it counts as a rising edge, and the simpler form leaves `on_change` out:
 
 ```python
 task_success = Topic(name="/so101/task_success", msg_type="String")

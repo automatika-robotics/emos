@@ -74,7 +74,7 @@ Two rules apply. The function's return annotation has to be `bool`, and it canno
 
 | Parameter                 | Effect                                                                                                                                                 |
 | :------------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `on_change=True`          | Fire only when the condition turns from false to true, not on every message while it stays true. The right choice for "goal reached" or "entered zone". |
+| `on_change=True`          | Fire only when the condition turns from false to true, not on every message while it stays true. A condition that is already true when the event is first evaluated counts as such a turn, so the event fires once straight away. The right choice for "goal reached" or "entered zone". |
 | `handle_once=True`        | Fire exactly once for the life of the recipe. Useful for initialisation.                                                                                |
 | `keep_event_delay=2.0`    | After firing, ignore further triggers for this many seconds. A debounce for noisy signals.                                                             |
 | `check_rate=10.0`         | For a function condition, how often it is polled, in hertz.                                                                                            |

@@ -19,9 +19,10 @@ from .backend import MAP_TOPIC, read_dump
 from .grid import (
     Grid,
     GridSpec,
-    Ground,
+    GroundSurface,
     build_grid,
     estimate_ground,
+    estimate_ground_surface,
     render_preview,
     write_artifact,
     write_png,
@@ -30,6 +31,10 @@ from .grid import (
 PREVIEW_FILE = "preview.png"
 STATE_FILE = "state.json"
 METADATA_FILE = "map.json"
+
+# NOTE: Floor height difference across a map threshold value. Past this value the operator is warned that
+# the map is likely tilted or drifted, in metres
+FLOOR_SPAN_WARNING = 0.3
 
 
 @define(kw_only=True)
@@ -47,6 +52,9 @@ class MapBuilderConfig(BaseComponentConfig):
     mount_heights: Dict[str, float] = field(factory=dict)
     # Height of the base frame above the ground when the robot stands
     base_height: float = field(default=0.0)
+    # Height of the map's origin w.r.t LiDAR frame.
+    # 1 = the origin is 1 m above the LiDAR frame, -0.5 = 0.5 m below it.
+    origin_offset: float = field(default=0.0)
     # ROS topic the LiDAR cloud is read from
     cloud_topic_name: str = field(default="")
     # Directory GLIM dumps its final map into when it shuts down
@@ -153,20 +161,36 @@ class MapBuilder(BaseComponent):
                 continue
             frame = callback.msg.header.frame_id
             if frame in self.config.mount_heights:
-                height = self.config.mount_heights[frame] + self.config.base_height
+                height = (
+                    self.config.mount_heights[frame]
+                    + self.config.base_height
+                    + self.config.origin_offset
+                )
                 self.expected_ground = -height
                 self.get_logger().info(
-                    f"Expecting the ground {height:.2f} m below the LiDAR frame '{frame}'"
+                    f"Expecting the ground {height:.2f} m below the map origin "
+                    f"(LiDAR frame '{frame}', offset {self.config.origin_offset:+.2f} m)"
                 )
             return
 
-    def _build(self) -> Optional[Tuple[Ground, Grid]]:
-        """The ground found in the map's points and their grid, or None
+    def _build(self) -> Optional[Tuple[GroundSurface, Grid]]:
+        """The floor found in the map's points and their grid, or None
         without points."""
         if self.points is None or len(self.points) == 0:
             return None
-        ground = estimate_ground(self.points[:, 2], expected=self.expected_ground)
+        reference = estimate_ground(self.points[:, 2], expected=self.expected_ground)
+        ground = estimate_ground_surface(self.points, self.spec, reference)
         return ground, build_grid(self.points, self.spec, ground)
+
+    @staticmethod
+    def _ground_record(ground: GroundSurface) -> Dict[str, Any]:
+        """What state.json and map.json say about the floor"""
+        return {
+            "z": round(ground.reference.z, 3),
+            "source": ground.reference.source,
+            "tiles": ground.found,
+            "span": round(ground.span, 3),
+        }
 
     def write_preview(self) -> None:
         """Rewrite preview.png and state.json from the latest map."""
@@ -179,7 +203,7 @@ class MapBuilder(BaseComponent):
         )
         state = {
             "points": len(self.points),
-            "ground": {"z": round(ground.z, 3), "source": ground.source},
+            "ground": self._ground_record(ground),
             **grid.counts(),
             "elapsed_s": round(time.time() - self.started_at, 1),
         }
@@ -204,6 +228,29 @@ class MapBuilder(BaseComponent):
         if built is None:
             return None
         ground, grid = built
+        source = "dump" if dumped is not None else "live"
+        if dumped is None and self.config.dump_dir:
+            print(
+                f"Mapping warning: GLIM left no map in {self.config.dump_dir}. "
+                "The map is built from the last one it published, which is "
+                "thinned out and misses the last few metres driven.",
+                flush=True,
+            )
+        if ground.found == 0:
+            print(
+                "Mapping warning: no floor was found in the map; the grid is "
+                f"sliced at one ground height ({ground.reference.z:.2f} m, "
+                f"{ground.reference.source}). Check it before navigating on it.",
+                flush=True,
+            )
+        elif ground.span > FLOOR_SPAN_WARNING:
+            print(
+                f"Mapping warning: the floor's height varies by {ground.span:.1f} m "
+                "across the map, so the 3D map is likely tilted or has drifted. "
+                "The grid follows the floor, but check it before navigating on it, "
+                "or map again.",
+                flush=True,
+            )
         paths = write_artifact(self.config.output_dir, self.points, grid)
         record = {
             "schema_version": 1,
@@ -214,9 +261,10 @@ class MapBuilder(BaseComponent):
                 "origin": [round(grid.origin[0], 4), round(grid.origin[1], 4), 0.0],
                 "width": grid.width,
                 "height": grid.height,
-                "ground": {"z": round(ground.z, 3), "source": ground.source},
+                "ground": self._ground_record(ground),
             },
             "points": len(self.points),
+            "cloud_source": source,
         }
         paths["metadata"] = os.path.join(self.config.output_dir, METADATA_FILE)
         with open(paths["metadata"], "w") as f:

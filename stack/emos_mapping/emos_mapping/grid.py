@@ -1,7 +1,7 @@
 """Occupancy grids from a 3D map cloud.
 
-A height slice of the SLAM backend's global point cloud, written in the ROS
-map_server format that Kompass's MapServer loads.
+A slice of the SLAM backend's global point cloud at a height above its
+floor, written in the ROS map_server format that Kompass's MapServer loads.
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import struct
 import zlib
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Union
 
 import numpy as np
 from attrs import define, field
@@ -24,8 +24,9 @@ OCCUPIED = 0
 class GridSpec:
     """How the cloud is sliced into a grid.
 
-    z_min and z_max bound the obstacle band, in metres above the ground plane.
-    Points between floor_depth below the ground and z_min are floor returns.
+    z_min and z_max bound the obstacle band, in metres above the floor under
+    each point. Points between floor_depth below the floor and z_min are floor
+    returns.
     """
 
     resolution: float = 0.05
@@ -36,6 +37,11 @@ class GridSpec:
     min_points: int = 2
     # Unknown margin around the mapped area, in metres
     padding: float = 0.5
+    # Side of the square tiles the floor is found in, in metres
+    ground_tile: float = 2.0
+    # Largest step between a tile's floor and the floors around it. A tile
+    # stepping further holds a table top or a ceiling, not the floor.
+    max_floor_step: float = 0.3
 
 
 @define(frozen=True)
@@ -44,6 +50,59 @@ class Ground:
 
     z: float
     source: str  # "expected" or "estimated"
+
+    def height_at(self, xy: np.ndarray) -> np.ndarray:
+        """The ground's height under each (x, y)"""
+        return np.full(len(xy), self.z)
+
+
+@define
+class GroundSurface:
+    """The floor's height across the map, found tile by tile.
+
+    One plane fits a map only when the SLAM backend kept it level. A map that
+    drifted, tilted, or spans floors at different heights has its floor at a
+    different height in each place, so each tile has its own. Tiles with no
+    floor of their own take the floor of the nearest tiles that have one: a
+    LiDAR sees walls far beyond the floor it sees.
+
+    reference is the single plane of estimate_ground, used for the whole map
+    when no tile shows a floor.
+    """
+
+    floors: np.ndarray = field(eq=False)  # (rows, cols) float, all NaN if none found
+    origin: Tuple[float, float]  # world position of the corner of tile (0, 0)
+    tile: float
+    reference: Ground
+    found: int  # tiles a floor was found in, before filling
+
+    @property
+    def span(self) -> float:
+        """Height between the lowest and highest floor, in metres"""
+        known = self.floors[np.isfinite(self.floors)]
+        return float(known.max() - known.min()) if known.size else 0.0
+
+    def height_at(self, xy: np.ndarray) -> np.ndarray:
+        """The floor's height under each (x, y), interpolated between the
+        centres of the tiles around it."""
+        if self.found == 0:
+            return self.reference.height_at(xy)
+        rows, cols = self.floors.shape
+        u = (xy[:, 0] - self.origin[0]) / self.tile - 0.5
+        v = (xy[:, 1] - self.origin[1]) / self.tile - 0.5
+        c0 = np.floor(u).astype(np.int64)
+        r0 = np.floor(v).astype(np.int64)
+        wu, wv = u - c0, v - r0
+
+        def at(r, c):
+            return self.floors[np.clip(r, 0, rows - 1), np.clip(c, 0, cols - 1)]
+
+        return (
+            at(r0, c0) * (1 - wu) * (1 - wv)
+            + at(r0, c0 + 1) * wu * (1 - wv)
+            + at(r0 + 1, c0) * (1 - wu) * wv
+            + at(r0 + 1, c0 + 1) * wu * wv
+        )
 
 
 @define
@@ -123,15 +182,100 @@ def _refine(z: np.ndarray, centre: float, bin_size: float) -> float:
     return float(np.median(band))
 
 
-def build_grid(points: np.ndarray, spec: GridSpec, ground: Ground) -> Grid:
+def estimate_ground_surface(
+    points: np.ndarray,
+    spec: GridSpec,
+    reference: Ground,
+    bin_size: float = 0.05,
+    min_points: int = 20,
+    contrast: float = 2.5,
+) -> GroundSurface:
+    """Find the floor's height in each tile of the map.
+
+    A tile's floor is the lowest band of its heights that stands out as a
+    plane, contrast times its mean count. A tile seeing only a wall spreads
+    its points evenly and has none. A floor stepping more than
+    max_floor_step from the median of the floors around it is dropped: the
+    plane is a table, a bed or a ceiling. A floor with no other around it is
+    dropped too, as too little to go on.
+    """
+    pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    pts = pts[np.isfinite(pts).all(axis=1)]
+    tile = spec.ground_tile
+    if len(pts) == 0:
+        return GroundSurface(np.full((1, 1), np.nan), (0.0, 0.0), tile, reference, 0)
+    x0 = float(np.floor(pts[:, 0].min() / tile) * tile)
+    y0 = float(np.floor(pts[:, 1].min() / tile) * tile)
+    cols = int((pts[:, 0].max() - x0) // tile) + 1
+    rows = int((pts[:, 1].max() - y0) // tile) + 1
+    index = ((pts[:, 1] - y0) // tile).astype(np.int64) * cols + (
+        (pts[:, 0] - x0) // tile
+    ).astype(np.int64)
+
+    floors = np.full(rows * cols, np.nan)
+    # Each tile's heights, in order, as one run of the sorted array
+    order = np.lexsort((pts[:, 2], index))
+    index, z = index[order], pts[order, 2]
+    starts = np.flatnonzero(np.r_[True, index[1:] != index[:-1]])
+    for start, end in zip(starts, np.r_[starts[1:], len(index)]):
+        if end - start < min_points:
+            continue
+        zs = z[start:end]
+        edges = np.arange(zs[0], zs[-1] + 2 * bin_size, bin_size)
+        counts, _ = np.histogram(zs, bins=edges)
+        planes = np.flatnonzero(counts >= max(min_points, contrast * counts.mean()))
+        if planes.size:
+            # A sloping floor spreads over a run of bins; take all of it
+            last = planes[0]
+            while last + 1 in planes:
+                last += 1
+            band = zs[(zs >= edges[planes[0]]) & (zs < edges[last + 1])]
+            floors[index[start]] = float(np.median(band))
+    floors = floors.reshape(rows, cols)
+
+    around = _neighbour_median(floors, radius=2, exclude_centre=True)
+    floors[~(np.abs(floors - around) <= spec.max_floor_step)] = np.nan
+    found = int(np.isfinite(floors).sum())
+    # Outward from the tiles with a floor, a ring of tiles at a time
+    while found and np.isnan(floors).any():
+        holes = np.isnan(floors)
+        neighbours = _neighbour_median(floors, radius=1)
+        floors[holes] = neighbours[holes]
+    return GroundSurface(floors, (x0, y0), tile, reference, found)
+
+
+def _neighbour_median(
+    values: np.ndarray, radius: int, exclude_centre: bool = False
+) -> np.ndarray:
+    """The median of the known values in the window around each cell, NaN
+    where the window holds none."""
+    rows, cols = values.shape
+    padded = np.pad(values, radius, constant_values=np.nan)
+    window = [
+        padded[dy : dy + rows, dx : dx + cols]
+        for dy in range(2 * radius + 1)
+        for dx in range(2 * radius + 1)
+        if not (exclude_centre and dy == radius and dx == radius)
+    ]
+    stack = np.stack(window)
+    known = np.isfinite(stack).any(axis=0)
+    out = np.full(values.shape, np.nan)
+    out[known] = np.nanmedian(stack[:, known], axis=0)
+    return out
+
+
+def build_grid(
+    points: np.ndarray, spec: GridSpec, ground: Union[Ground, GroundSurface]
+) -> Grid:
     """Slice a cloud (N, 3) in the map frame into a grid.
 
     A cell is occupied when at least min_points obstacle-band points fall in
     it, free when it holds floor returns and no obstacle, unknown otherwise.
+    Heights are taken above the ground under each point.
     """
     pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
     pts = pts[np.isfinite(pts).all(axis=1)]
-    z = pts[:, 2] - ground.z
+    z = pts[:, 2] - ground.height_at(pts[:, :2])
     obstacle = (z >= spec.z_min) & (z <= spec.z_max)
     floor = (z >= -spec.floor_depth) & (z < spec.z_min)
     used = obstacle | floor

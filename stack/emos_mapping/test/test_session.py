@@ -15,6 +15,7 @@ from emos_mapping.session import (  # noqa: E402
     map_directory,
     mapping_input,
     mount_heights,
+    origin_offset,
 )
 
 
@@ -89,3 +90,10 @@ def test_the_imu_offset_comes_from_the_declaration():
     declared = NativeMapping(cloud="lidar", imu_xyz=(0.0, 0.0, 0.1), imu_rpy=(0.0, 0.0, 1.5))
     assert imu_offset(declared) == ((0.0, 0.0, 0.1), (0.0, 0.0, 1.5))
     assert imu_offset(NativeMapping(cloud="lidar")) is None  # GLIM's default applies
+
+
+def test_glims_origin_is_at_the_imu_when_it_maps_with_one():
+    body_imu = ((-0.12815, 0.0, -0.10596), (0.0, 0.0, 0.0))
+    assert origin_offset("/emos_mapping/imu", body_imu) == pytest.approx(-0.10596)
+    assert origin_offset(None, body_imu) == 0.0  # LiDAR-only: the LiDAR is the origin
+    assert origin_offset("/livox/imu", None) == 0.0  # GLIM's default: no offset

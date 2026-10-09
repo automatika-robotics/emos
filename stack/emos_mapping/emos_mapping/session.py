@@ -64,6 +64,21 @@ def imu_offset(declaration) -> Optional[Tuple[Tuple[float, ...], Tuple[float, ..
     return declaration.imu_xyz, declaration.imu_rpy
 
 
+def origin_offset(
+    imu_topic: Optional[str],
+    lidar_imu: Optional[Tuple[Tuple[float, ...], Tuple[float, ...]]],
+) -> float:
+    """Height of GLIM's map origin above the LiDAR frame.
+
+    GLIM starts its map at the IMU when it fuses one, so the origin sits where
+    the IMU does in the LiDAR's frame. A tilted LiDAR mount is ignored: a few
+    millimetres for an IMU beside the LiDAR, more for one far from a tilted one.
+    """
+    if imu_topic is None or lidar_imu is None:
+        return 0.0
+    return float(lidar_imu[0][2])
+
+
 def map_directory(store: str, name: str) -> str:
     return os.path.join(store, f"{name}-{datetime.now():%Y%m%d-%H%M%S}")
 
@@ -147,6 +162,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             z_max=declaration.z_max,
             mount_heights=mount_heights(plugin),
             base_height=plugin.base_height if plugin.base_height is not None else 0.0,
+            origin_offset=origin_offset(imu_topic, lidar_imu),
             cloud_topic_name=points_topic or "",
             dump_dir=dump_dir,
         ),

@@ -2,6 +2,7 @@ import os
 import struct
 
 import numpy as np
+import pytest
 
 from emos_mapping.grid import (
     FREE,
@@ -11,6 +12,7 @@ from emos_mapping.grid import (
     Ground,
     build_grid,
     estimate_ground,
+    estimate_ground_surface,
     write_artifact,
 )
 
@@ -123,6 +125,73 @@ def test_no_points_in_range_gives_an_unknown_grid():
     pts = surface(-1, 1, -1, 1, 5.0)  # everything far above the band
     grid = build_grid(pts, GridSpec(), Ground(0.0, "expected"))
     assert grid.counts() == {"occupied": 0, "free": 0, "unknown": 1}
+
+
+def floor_grid(pts, spec=GridSpec(z_min=0.15, z_max=0.80)):
+    reference = estimate_ground(pts[:, 2])
+    return build_grid(pts, spec, estimate_ground_surface(pts, spec, reference))
+
+
+def test_a_tilted_map_is_sliced_along_its_floor():
+    """A map that drifted 5 degrees: one ground plane puts the far end's floor
+    in the obstacle band, the floor found tile by tile does not."""
+    pts = room()
+    pts[:, 2] += np.tan(np.deg2rad(5.0)) * pts[:, 0]
+
+    level = build_grid(pts, GridSpec(), estimate_ground(pts[:, 2]))
+    assert level.cell(4.0, 0.0) != FREE or level.cell(-4.0, 0.0) != FREE
+
+    grid = floor_grid(pts)
+    for x in (-4.0, -2.0, 0.0, 2.0, 4.0):
+        assert grid.cell(x, 0.0) == FREE, x
+    assert grid.cell(5.0, 0.0) == OCCUPIED and grid.cell(-5.0, 0.0) == OCCUPIED
+    assert grid.cell(1.5, 1.5) == OCCUPIED  # the table, at its height above the floor
+
+
+def test_floors_at_two_heights_are_both_floor():
+    """A map that spans a room a metre lower than the other"""
+    upper = room()
+    lower = room() + np.array([10.0, 0.0, -1.0])
+    grid = floor_grid(np.vstack([upper, lower]))
+    assert grid.cell(0.0, 0.0) == FREE and grid.cell(10.0, 0.0) == FREE
+    assert grid.cell(-5.0, 0.0) == OCCUPIED and grid.cell(15.0, 0.0) == OCCUPIED
+    assert grid.cell(11.5, 1.5) == OCCUPIED  # the lower room's table
+
+
+def test_a_plane_high_above_the_floors_around_it_is_not_floor():
+    """A canopy outside the room, seen with no floor under it, would be taken
+    as the floor of its tile and freed."""
+    g = -LIDAR_HEIGHT
+    pts = np.vstack([room(), surface(6.2, 7.8, -1, 1, g + 2.5)])
+    spec = GridSpec(z_min=0.15, z_max=0.80)
+    ground = estimate_ground_surface(pts, spec, estimate_ground(pts[:, 2]))
+    assert ground.height_at(np.array([[7.0, 0.0]]))[0] == pytest.approx(g, abs=0.05)
+    assert build_grid(pts, spec, ground).cell(7.0, 0.0) == UNKNOWN
+
+
+def test_a_wall_beyond_the_floor_seen_takes_the_nearest_floor():
+    """A LiDAR sees walls well past the floor it sees"""
+    g = -LIDAR_HEIGHT
+    pts = np.vstack([room(), wall(14, 14, -2, 2, g, g + 2.5)])
+    assert floor_grid(pts).cell(14.0, 0.0) == OCCUPIED
+
+
+def test_a_map_without_a_floor_is_sliced_at_the_reference_ground():
+    g = -LIDAR_HEIGHT
+    pts = np.vstack([wall(-2, 2, 0, 0, g, g + 2.5), wall(-2, 2, 3, 3, g, g + 2.5)])
+    reference = Ground(g, "expected")
+    ground = estimate_ground_surface(pts, GridSpec(), reference)
+    assert ground.found == 0 and ground.span == 0.0
+    assert build_grid(pts, GridSpec(), ground).cell(0.0, 0.0) == OCCUPIED
+
+
+def test_the_floor_span_measures_a_tilt():
+    pts = room()
+    pts[:, 2] += 0.05 * pts[:, 0]  # 0.5 m over the room's 10 m
+    ground = estimate_ground_surface(pts, GridSpec(), estimate_ground(pts[:, 2]))
+    assert ground.found > 0 and 0.3 < ground.span < 0.6
+    flat = estimate_ground_surface(room(), GridSpec(), estimate_ground(room()[:, 2]))
+    assert flat.span < 0.05
 
 
 def test_artifact_files_are_what_map_server_and_pcl_read(tmp_path):

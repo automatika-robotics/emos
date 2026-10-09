@@ -178,3 +178,45 @@ def test_the_dump_replaces_the_last_published_map(tmp_path):
     assert json.load(open(paths["metadata"]))["points"] == len(grown)
     _, grid = builder._build()
     assert grid.cell(6.5, 6.5) == FREE
+
+
+def test_the_ground_is_expected_under_glims_origin_at_the_imu(tmp_path):
+    """Mapping with an IMU, GLIM's map starts at the IMU, not at the LiDAR: a
+    Lite3's body IMU is 0.106 m below its RoboSense, on a body 0.2 m up."""
+    builder = make_builder(
+        tmp_path, mount_heights={"rslidar": 0.106}, base_height=0.2, origin_offset=-0.106
+    )
+    builder.callbacks["lidar"].callback(cloud_msg([(1.0, 0.0, 0.0)], frame_id="rslidar"))
+    builder._execution_step()
+    assert builder.expected_ground == pytest.approx(-0.2)
+
+
+def test_a_missing_dump_is_said_and_recorded(tmp_path, capsys):
+    builder = make_builder(tmp_path, dump_dir=str(tmp_path / "glim" / "dump"))
+    publish_map(builder, room())
+    paths = builder.finish({"name": "room"})
+    assert "Mapping warning: GLIM left no map in" in capsys.readouterr().out
+    assert json.load(open(paths["metadata"]))["cloud_source"] == "live"
+
+
+def test_a_map_from_the_dump_says_so_without_a_warning(tmp_path, capsys):
+    dump = tmp_path / "glim" / "dump"
+    write_dump(str(dump), [(np.eye(4), room())])
+    builder = make_builder(tmp_path, dump_dir=str(dump))
+    paths = builder.finish({"name": "room"})
+    assert "Mapping warning" not in capsys.readouterr().out
+    record = json.load(open(paths["metadata"]))
+    assert record["cloud_source"] == "dump"
+    assert record["grid"]["ground"]["tiles"] > 0 and record["grid"]["ground"]["span"] < 0.05
+
+
+def test_a_tilted_map_is_flagged_to_the_operator(tmp_path, capsys):
+    tilted = room()
+    tilted[:, 2] += 0.08 * tilted[:, 0]  # 0.8 m over the room's 10 m
+    builder = make_builder(tmp_path)
+    publish_map(builder, tilted)
+    paths = builder.finish({"name": "room"})
+    assert "Mapping warning: the floor's height varies by" in capsys.readouterr().out
+    _, grid = builder._build()
+    assert grid.cell(4.0, 0.0) == FREE and grid.cell(-4.0, 0.0) == FREE
+    assert json.load(open(paths["metadata"]))["grid"]["ground"]["span"] > 0.3

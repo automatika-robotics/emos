@@ -21,6 +21,7 @@ A recipe without Cortex earns each behaviour by wiring it: a vision component pu
 | User input goes through a bespoke LLM step into a typed goal.            | User input is a sentence sent to Cortex's action server.                                                                      |
 | Recovery is wired per component.                                         | A confirmation before each step handles the step, and replanning handles the plan.                                            |
 | You write the orchestration.                                             | You write the components. Cortex does the orchestration.                                                                      |
+| A capability the recipe lacks is code you write first.                   | When allowed, the planner writes the action or condition a task needs, as it needs it.                                        |
 
 ---
 
@@ -30,28 +31,33 @@ Every task runs through the same loop: plan, then execute with a check before ea
 
 ### Planning
 
-The planner is given two sets of tools. Planning tools are for research and change nothing: `inspect_component`, any component action marked for the planning phase, and, when events are enabled, `list_events`. Execution tools are everything that does something: component actions, goals to action servers, service requests, routines, plugin actions, custom actions, and Cortex's own `update_parameter` and `wait`.
+The planner works with two sets of tools. The planning tools are for finding things out and change nothing on the robot: `inspect_component`, any component action marked for the planning phase, `list_events` when events are enabled, and the four function-writing tools when the planner is allowed to write its own. The execution tools are the ones that make something happen: component actions, goals to action servers, service requests, routines, plugin actions, custom actions, and Cortex's own `update_parameter` and `wait`.
 
-On each iteration the model either calls planning tools to learn what it needs, which appends the results to the conversation and continues, or calls execution tools, which commits the plan as an ordered list of steps and ends planning, or answers in text alone, which is published on `output` and ends the task. Up to `max_planning_steps` rounds of research are allowed before the planner has to commit, and a plan longer than `max_execution_steps` is cut there.
+On each round the model does one of three things. It can call planning tools to find out what it needs, in which case the results are appended to the conversation and planning continues. It can call execution tools, which commits the plan as an ordered list of steps and ends the planning phase. Or it can answer in text alone, which is published on `output` and ends the task. The planner gets up to `max_planning_steps` rounds of research before it has to commit, and a plan longer than `max_execution_steps` is cut at that length.
 
 ### Execution
 
-Steps are dispatched in order. Before each one, a short confirmation call decides what happens to it:
+The steps run in order. Before each one, Cortex makes a short confirmation call in which the model decides what to do with the step by calling exactly one tool:
 
-| Decision   | Effect                                                                                                                                            |
-| :--------- | :------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `EXECUTE`  | Run the step. The confirmation may also fill in arguments, for instance binding a placeholder like `<output from step 1>` to what step 1 returned. |
-| `SKIP`     | Leave this step out and go on.                                                                                                                    |
-| `ABORT`    | Stop the plan.                                                                                                                                    |
-| `CONTINUE` | Wait for goals still in flight before deciding.                                                                                                   |
+| The model calls      | Effect                                                                                                                                                                              |
+| :------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `execute_step`       | Run the step as planned.                                                                                                                                                            |
+| the step's own tool  | Run the step with its arguments filled in, for instance a placeholder like `<output from step 1>` bound to what step 1 returned. A step whose arguments hold a placeholder can only be run this way. |
+| `skip_step`          | Leave this step out and go on.                                                                                                                                                      |
+| `abort_plan`         | Stop the plan, and the task ends as aborted.                                                                                                                                        |
+| `continue_executing` | Hold the step while an action started earlier is still running.                                                                                                                    |
 
-`CONTINUE` is what makes long tasks work. When a step sends a goal to an action server and does not wait for it, Cortex keeps reporting the goal's status and latest feedback to the model, which can hold until the goal succeeds before moving on.
+If the confirmation call fails, or the model answers without calling a tool, the step is not run. It is recorded as failed, with the consequences described below.
 
-Consecutive steps that need no such decisions are not run one at a time. Two or more component actions, plugin actions, awaited goals and waits in a row, with all their arguments known, are compiled into one [routine](../concepts/routines.md) hosted by the Monitor and run as a unit, with each step's message reported back as its result. A step that depends on an earlier result, a service call, or a routine tool breaks the run and goes through confirmation as before. `compile_routines=False` turns this off, and `step_timeout` bounds each compiled step.
+`continue_executing` is what allows long-running tasks. When a step has sent a goal to an action server without waiting for it, Cortex keeps reporting the goal's status and latest feedback to the model at each confirmation, and the model can keep holding the next step until the goal succeeds.
+
+When a step fails, the rest of the plan is not attempted. The remaining steps are recorded as not run, and the plan goes back to the planner together with the failure, so that it can plan around it.
+
+Consecutive steps that need no such decisions are not run one at a time. When two or more component actions, plugin actions, awaited goals or waits follow each other with all their arguments known, they are compiled into a single [routine](../concepts/routines.md) hosted by the Monitor and run as a unit, and each step's message is reported back as its result. A step that depends on an earlier result, a service call or a routine tool breaks the run and goes through confirmation as before. `compile_routines=False` turns this off, and `step_timeout` limits how long each compiled step may take.
 
 ### Replanning
 
-If the plan ends before its last step, because a step was aborted or a goal was still running when the steps ran out, Cortex plans again from where it stopped, with the results so far in the conversation. A task like "patrol until you see a person" is a sequence of such rounds.
+If the plan did not reach its end, because a step failed or because a goal was still running when the steps ran out, Cortex plans again from where it stopped, with everything that happened so far in the conversation. A task like "patrol until you see a person" is carried out as a sequence of such rounds.
 
 ---
 
@@ -67,6 +73,7 @@ Cortex does not search the recipe itself. The launcher builds a registry of ever
 | A plugin's actions                              | `<plugin id>-<action>`, for example `lite3-stand_up`, with the plugin's own description.                                                                             |
 | A routine the Monitor hosts                     | `routine-<name>`, plus `pause_routine`, `resume_routine` and `abort_routine`.                                                                                        |
 | Cortex itself                                   | `inspect_component` for planning, and `update_parameter` and `wait` for execution.                                                                                   |
+| A function the planner wrote                    | `scratch-<name>`, with the parameters of its signature, once `enable_scratch_functions` is on. See [Functions the planner writes](#functions-the-planner-writes). |
 
 Lifecycle methods such as `start`, `stop` and `restart` are left out, since the Monitor manages those, and so are Cortex's own actions.
 
@@ -80,9 +87,11 @@ class MyComponent(BaseComponent):
     def locate(self, name: str) -> ActionReturnType: ...
 ```
 
+The `ask` action of a `DecisionComponent` is one of these, offered in both phases as `<component>-ask`. It gives the planner a quick, typed check on what the robot sees or hears, or on a state the planner passes in, answered with a probability in a single forward pass rather than reasoned about in text.
+
 A component's action server takes one goal at a time. When Cortex sends a goal to a server that is still running one of its own, it cancels that goal, waits for the server to return, and sends the new one. A goal that some other client started is not touched: the planner is told the server is busy and shown the component's `cancel_main_goal` tool, so stopping it is its decision.
 
-Capabilities that live outside any component, a light to toggle, a database to query, an external API to call, are passed in as custom actions, each with a description:
+Capabilities that do not belong to any component, such as a light to toggle, a database to query or an external API to call, are passed in as custom actions, each with a description:
 
 ```python
 from agents.ros import Action
@@ -96,13 +105,13 @@ cortex = Cortex(
 )
 ```
 
-When a robot plugin is attached, the plugin's actions arrive through the same registry, and what the robot is and who makes it is put in front of the planner, as are the sensor plugins attached to the recipe. [Robot Plugins](../concepts/robot-plugins.md) covers what a plugin brings.
+When a robot plugin is attached, its actions arrive through the same registry, and the planner is told what the robot is and who makes it, along with the sensor plugins attached to the recipe. [Robot Plugins](../concepts/robot-plugins.md) covers what a plugin brings.
 
 ---
 
 ## Routines as skills
 
-A [routine](../concepts/routines.md) hosted by the Monitor is a skill the planner can use: one tool that runs a whole procedure with its own success tests and retries. Routines reach the Monitor when an event triggers them, when they are passed to `enable_ui`, or when they are given to Cortex directly, which needs neither:
+A [routine](../concepts/routines.md) hosted by the Monitor is a skill the planner can use, a single tool that runs a whole procedure with its own success tests and retries. A routine reaches the Monitor when an event triggers it, when it is passed to `enable_ui`, or when it is given to Cortex directly, which needs neither of the other two:
 
 ```python
 cortex = Cortex(routines=[pick_object, patrol], ...)
@@ -114,7 +123,28 @@ A routine given to Cortex needs a `description`, since that is what the planner 
 
 ## Standing instructions
 
-"Whenever the battery is low, go to the dock" is not a step in a plan but an event, and Cortex can install one. The tools for it are off by default because they are the most involved it offers; `CortexConfig(enable_events=True)` turns them on. The planner then has `add_event`, `remove_event` and `list_events`, and adds an event with an id, one or more conditions on the fields of a topic a component reads or writes, joined by all or any, the tool calls to run, and whether it fires once or every time. Instead of topic conditions an event can name a condition a plugin offers, such as a low battery with its threshold. A topic or field that does not exist is refused before anything is installed. Events outlive the task that installed them.
+An instruction like "whenever the battery is low, go to the dock" is not a step in a plan but an event, and Cortex can install one. The tools for this are off by default, since they are the most involved ones Cortex offers; `CortexConfig(enable_events=True)` turns them on. The planner then has `add_event`, `remove_event` and `list_events`. To add an event it gives an id, one or more conditions on the fields of a topic that some component reads or writes, whether all of them or any one must hold, the tool calls to run, and whether the event fires once or every time. In place of topic conditions, an event can name a ready-made condition, either one a plugin offers, such as a low battery with its threshold, or one the planner wrote itself, as described in the next section. A topic or field that does not exist is refused before anything is installed. Once installed, an event outlives the task that created it.
+
+---
+
+## Functions the planner writes
+
+Sometimes a task needs something the recipe does not have, such as a way to send an email or a reading that no component publishes. With `CortexConfig(enable_scratch_functions=True)`, the planner is allowed to write the missing piece itself as a Python function and use it straight away. The tools for this are `write_function`, `list_functions`, `read_function` and `remove_function`. A written function is one of two kinds:
+
+| Kind        | What the planner writes                                                                                                                                           | What it becomes                                                                   |
+| :---------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------- |
+| `action`    | `def <name>(<typed parameters>) -> tuple[bool, str]` with a docstring. It returns `(True, message)` or `(False, why)` and never raises.                            | The execution tool `scratch-<name>`, which a standing event can run as well.      |
+| `condition` | `def <name>() -> bool` with a docstring. It is quick, never blocks, and returns `False` rather than raising when it cannot tell.                                   | A condition that `add_event` polls at a `check_rate`, named `scratch-<name>`.     |
+
+Every function is checked when it is written. If it does not parse, does not keep the signature of its kind, has no docstring, or uses a name it did not import, it is refused and the planner is told why. A function may import the standard library, read the process environment through `os.environ`, and call the recipe's existing actions through `run_action("<tool name>", **arguments)`, which returns `(success, message)` like any action. It cannot send a goal to an action server; that remains a step of the plan. Writing a name again replaces the function, but any event that was installed with the earlier version keeps using it until the event is removed and added again. A condition that raises, returns something other than a bool, or takes longer than its polling period counts as not met, and the problem is reported once in the log.
+
+The planner knows nothing about the environment its functions will run in except what `scratch_notes` tells it. This is a note in plain words in the config that says which variables hold credentials, what the machine can reach, and what is installed; without it the planner can only guess. Two other settings matter. A written function's source has to fit in a single reply, so `max_new_tokens` needs a generous budget, 2000 or more. And if the planner is a thinking model, turn its thinking off with `OllamaModel(think=False)`, because thinking spends the same budget before the answer begins.
+
+```{warning}
+A written function runs in the launcher process, with that process's privileges, regardless of where the other components run, and it can do anything Python can do. Turn this on only with a planning model and on a deployment that you trust to that degree.
+```
+
+[Cortex Writes Its Own Tools](../recipes/planning-and-manipulation/cortex-writes-its-own-tools.md) walks through it with two standing instructions.
 
 ---
 
@@ -162,8 +192,10 @@ cortex = Cortex(
 | `compile_routines`           | true    | Run consecutive compilable steps as one routine.                           |
 | `step_timeout`               | 60 s    | Time allowed for a component or plugin action inside a compiled run.       |
 | `enable_events`              | false   | Offer the standing-instruction tools.                                      |
+| `enable_scratch_functions`   | false   | Let the planner write its own actions and event conditions.                |
+| `scratch_notes`              | empty   | What the planner is told about the environment its functions run in.      |
 
-The fields of `LLMConfig` apply too, among them `enable_local_model`, `enable_rag`, `collection_name`, `n_results`, `temperature` and `max_new_tokens`, whose default is 512.
+The fields of `LLMConfig` apply too, among them `enable_local_model`, `enable_rag`, `collection_name`, `n_results`, `temperature` and `max_new_tokens`, whose default for Cortex is 1000.
 
 Cortex always runs as an action server, so `run_type` is not yours to set. Its action type is `VisionLanguageAction` and the goal carries the task as a string.
 
@@ -190,7 +222,7 @@ When a [Memory](memory.md) component is in the recipe, Cortex's planning prompt 
 
 ## Observability
 
-Cortex publishes feedback on its action server as it works: each step with its tool name, whether it was executed, skipped or aborted or is waiting, the status and latest feedback of goals in flight with stall warnings, the progress of routines it started, and the results of a compiled run. The recipe's [web interface](../concepts/web-ui.md) shows these lines in the main log next to the components' own, so an operator sees the agent's reasoning and the planner's path-tracking feedback side by side.
+Cortex publishes feedback on its action server as it works: each step with its tool name, whether it was executed, skipped, failed or aborted or is waiting, the status and latest feedback of goals in flight with stall warnings, the progress of routines it started, and the results of a compiled run. The recipe's [web interface](../concepts/web-ui.md) shows these lines in the main log next to the components' own, so an operator sees the agent's reasoning and the planner's path-tracking feedback side by side.
 
 ---
 

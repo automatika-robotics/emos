@@ -191,6 +191,7 @@ LLMS_TXT_SELECTION = [
     "recipes/planning-and-manipulation/cortex-agent.md",
     "recipes/planning-and-manipulation/cortex-memory.md",
     "recipes/planning-and-manipulation/cortex-navigation.md",
+    "recipes/planning-and-manipulation/cortex-writes-its-own-tools.md",
     "recipes/planning-and-manipulation/planning-models.md",
     "recipes/planning-and-manipulation/vla-manipulation.md",
     "recipes/planning-and-manipulation/event-driven-vla.md",

@@ -54,6 +54,7 @@ recipes/planning-and-manipulation/index
 recipes/planning-and-manipulation/cortex-agent
 recipes/planning-and-manipulation/cortex-memory
 recipes/planning-and-manipulation/cortex-navigation
+recipes/planning-and-manipulation/cortex-writes-its-own-tools
 recipes/planning-and-manipulation/planning-models
 recipes/planning-and-manipulation/vla-manipulation
 recipes/planning-and-manipulation/event-driven-vla

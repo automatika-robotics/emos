@@ -38,7 +38,7 @@ Most of them wrap a model, and where the model runs is a separate choice: a clou
   - A graph-backed spatio-temporal memory of what the robot has seen and felt, built on [eMEM](https://github.com/automatika-robotics/emem): detections, scene descriptions and internal state, each at a place and a time, with retrieval tools for the recipe and for Cortex. See [Memory](memory.md).
 
 * - **Cortex**
-  - The agent. It discovers every action, action server, service, routine and plugin action in the recipe, plans a sequence of calls for a natural-language goal, and runs it while watching the outputs. See [Cortex](cortex.md).
+  - The agent. It discovers every action, action server, service, routine and plugin action in the recipe, plans a sequence of calls for a natural-language goal, and runs it while watching the outputs. When allowed, it writes the action or condition a task needs and the recipe lacks. See [Cortex](cortex.md).
 
 * - **SemanticRouter**
   - Sends an input to one of several destinations by what it says, using an LLM, a decision model or a vector database of examples to decide, so one microphone or one text input can drive several pipelines.

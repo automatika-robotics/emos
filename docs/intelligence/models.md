@@ -26,7 +26,7 @@ Clients in EmbodiedAgents take as input a **model** or **vector database (DB)** 
   - A generic wrapper for decision models served via the `/v1/systemone` API. A decision model answers typed questions about a state, a yes/no, a choice or a score, in one forward pass with a probability for every option, and generates no text. The checkpoint is the model id the server lists. This wrapper must be used with the **GenericHTTPClient**. See [Decision Models](#decision-models) below.
 
 * - **OllamaModel**
-  - A LLM/VLM model loaded from an Ollama checkpoint. Supports configurable generation and deployment options available in Ollama API. Complete list of Ollama models [here](https://ollama.com/library). This wrapper must be used with the **OllamaClient**.
+  - A LLM/VLM model loaded from an Ollama checkpoint. Supports configurable generation and deployment options available in Ollama API. For a thinking model, `think=False` makes it answer at once instead of spending its token budget on thinking first, which suits a planner or a tool-calling component. Complete list of Ollama models [here](https://ollama.com/library). This wrapper must be used with the **OllamaClient**.
 
 * - **TransformersLLM**
   - LLM models from HuggingFace/ModelScope based checkpoints. Supports quantization ("4bit", "8bit") specification. This model wrapper can be used with the **GenericHTTPClient** or any of the RoboML clients.

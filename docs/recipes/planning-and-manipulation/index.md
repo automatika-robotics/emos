@@ -28,6 +28,13 @@ Cortex paired with graph-backed spatio-temporal memory. It recalls past observat
 The full stack. Cortex orchestrates Vision, VLM, Memory, the Kompass navigation stack, and TTS end-to-end. Compound goals fulfilled by a single agent -- no behavior trees, no state machines.
 :::
 
+:::{grid-item-card} {material-regular}`edit_note;1.2em;sd-text-primary` Cortex Writes Its Own Tools
+:link: cortex-writes-its-own-tools
+:link-type: doc
+
+An agent that extends itself. Give Cortex a standing instruction the recipe has no tool for, such as *"email me whenever you see a person"*, and the planner writes the missing action in Python, has it checked against the action contract, and wires it into an event, all while the robot keeps running.
+:::
+
 :::{grid-item-card} {material-regular}`psychology;1.2em;sd-text-primary` Multimodal Planning
 :link: planning-models
 :link-type: doc

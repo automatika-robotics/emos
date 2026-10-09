@@ -100,8 +100,8 @@ depth_cam_info_topic = Topic(name="/camera/aligned_depth_to_color/camera_info", 
 
 config = ControllerConfig(ctrl_publish_type="Parallel")
 controller = Controller(component_name="controller", config=config)
-controller.algorithm = ControllersID.VISION_DEPTH
 controller.inputs(vision_detections=detections_topic, depth_camera_info=depth_cam_info_topic)
+controller.algorithm = ControllersID.VISION_DEPTH
 ```
 
 The follower tracks the target in the robot's own frame, so it needs no localization. On a localized robot, `VisionRGBDFollowerConfig(use_local_coordinates=False)` tracks in the world frame instead, which adds the target's estimated velocity to the commands and so wants an accurate pose and a steady detection rate.
@@ -174,8 +174,8 @@ depth_cam_info_topic = Topic(name="/camera/aligned_depth_to_color/camera_info", 
 # Setup the controller
 config = ControllerConfig(ctrl_publish_type="Parallel")
 controller = Controller(component_name="controller", config=config)
-controller.algorithm = ControllersID.VISION_DEPTH
 controller.inputs(vision_detections=detections_topic, depth_camera_info=depth_cam_info_topic)
+controller.algorithm = ControllersID.VISION_DEPTH
 controller.direct_sensor = False
 
 # Add additional helper components
@@ -186,14 +186,12 @@ mapper = LocalMapper(component_name="local_mapper")
 launcher = Launcher()
 launcher.add_pkg(
     components=[vision],
-    package_name="kompass",
     package_name="automatika_embodied_agents",
     multiprocessing=True,
     ros_log_level="warn",
 )
 launcher.add_pkg(
     components=[controller, mapper, driver],
-    package_name="kompass",
     package_name="kompass",
     multiprocessing=True,
 )

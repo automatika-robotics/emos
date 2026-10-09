@@ -182,8 +182,6 @@ from lite3_plugin import Lite3Plugin
 
 # --- The robot ---
 robot = Lite3Plugin()
-launcher = Launcher()
-launcher.add_plugin(robot)
 
 # --- The map the robot was mapped with ---
 map_server = MapServer(
@@ -214,6 +212,10 @@ driver = DriveManager(
     config=DriveManagerConfig(critical_zone_distance=0.05, critical_zone_angle=90.0, slowdown_zone_distance=0.3),
 )
 driver.outputs(robot_command=Topic(name="Twist", msg_type="Twist", use_plugin=True))
+
+# --- The launcher, with the robot attached ---
+launcher = Launcher()
+launcher.add_plugin(robot)
 
 # --- Events: the stack's and the robot's ---
 emergency_stop = driver.get_out_topic(TopicsKeys.EMERGENCY)

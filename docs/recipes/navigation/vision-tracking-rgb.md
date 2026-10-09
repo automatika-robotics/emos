@@ -151,12 +151,12 @@ from kompass.control import ControllersID, VisionRGBFollowerConfig
 # Set the controller component configuration
 config = ControllerConfig(loop_rate=10.0, ctrl_publish_type="Sequence", control_time_step=0.3)
 
-# Init the controller and pick the RGB-only vision follower
+# Init the controller and give it the vision tracking input, either the detections or the trackings topic
 controller = Controller(component_name="my_controller", config=config)
-controller.algorithm = ControllersID.VISION_IMG
-
-# Set the vision tracking input to either the detections or trackings topic
 controller.inputs(vision_detections=detections_topic)
+
+# Pick the RGB-only vision follower
+controller.algorithm = ControllersID.VISION_IMG
 
 # Set the vision follower configuration
 vision_follower_config = VisionRGBFollowerConfig(
@@ -188,7 +188,6 @@ launcher = Launcher()
 # setup agents as a package in the launcher and add the vision component
 launcher.add_pkg(
     components=[vision],
-    package_name="kompass",
     package_name="automatika_embodied_agents",
     multiprocessing=True,
     ros_log_level="warn",
@@ -197,7 +196,6 @@ launcher.add_pkg(
 # setup the navigation components in the launcher
 launcher.add_pkg(
     components=[controller, driver],
-    package_name="kompass",
     package_name="kompass",
     multiprocessing=True,
 )
@@ -277,10 +275,10 @@ config = ControllerConfig(
     loop_rate=10.0, ctrl_publish_type="Sequence", control_time_step=0.3
 )
 
-# Init the controller and pick the RGB-only vision follower
+# Init the controller, give it the vision tracking input, then pick the RGB-only vision follower
 controller = Controller(component_name="my_controller", config=config)
-controller.algorithm = ControllersID.VISION_IMG
 controller.inputs(vision_detections=detections_topic)
+controller.algorithm = ControllersID.VISION_IMG
 
 # Set the vision follower configuration
 vision_follower_config = VisionRGBFollowerConfig(
@@ -294,14 +292,12 @@ driver = DriveManager(component_name="my_driver")
 launcher = Launcher()
 launcher.add_pkg(
     components=[vision],
-    package_name="kompass",
     package_name="automatika_embodied_agents",
     multiprocessing=True,
     ros_log_level="warn",
 )
 launcher.add_pkg(
     components=[controller, driver],
-    package_name="kompass",
     package_name="kompass",
     multiprocessing=True,
 )

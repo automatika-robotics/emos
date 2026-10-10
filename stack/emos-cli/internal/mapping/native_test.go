@@ -71,7 +71,7 @@ func TestNativeSessionSavesTheMap(t *testing.T) {
 	var log bytes.Buffer
 
 	session, err := nativeDecl(store).StartNative(context.Background(),
-		"lite3_plugin:Lite3Plugin", "office", "", announcing(t, proc, dir, &shell), &log, nil)
+		"lite3_plugin:Lite3Plugin", "office", NativeOptions{}, announcing(t, proc, dir, &shell), &log, nil)
 	if err != nil {
 		t.Fatalf("StartNative: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestNativeSessionThatEndsBeforeAnnouncing(t *testing.T) {
 	proc := newFakeProcess()
 	proc.exit(2)
 	start := func(string, io.Writer) (Process, error) { return proc, nil }
-	_, err := nativeDecl(t.TempDir()).StartNative(context.Background(), "p:P", "office", "", start, io.Discard, nil)
+	_, err := nativeDecl(t.TempDir()).StartNative(context.Background(), "p:P", "office", NativeOptions{}, start, io.Discard, nil)
 	var exited *ErrSessionExited
 	if !errors.As(err, &exited) || exited.Code != 2 {
 		t.Errorf("want ErrSessionExited{2}, got %v", err)
@@ -113,7 +113,7 @@ func TestNativeSessionWithoutAMap(t *testing.T) {
 		proc.onInterrupt = func(p *fakeProcess) { p.exit(code) }
 		var shell string
 		session, err := nativeDecl(store).StartNative(context.Background(),
-			"p:P", "office", "", announcing(t, proc, dir, &shell), io.Discard, nil)
+			"p:P", "office", NativeOptions{}, announcing(t, proc, dir, &shell), io.Discard, nil)
 		if err != nil {
 			t.Fatalf("StartNative: %v", err)
 		}
@@ -134,7 +134,7 @@ func TestNativeSessionThatDiesIsStillJudgedByTheStore(t *testing.T) {
 	proc := newFakeProcess()
 	var shell string
 	session, err := nativeDecl(store).StartNative(context.Background(),
-		"p:P", "office", "", announcing(t, proc, dir, &shell), io.Discard, nil)
+		"p:P", "office", NativeOptions{}, announcing(t, proc, dir, &shell), io.Discard, nil)
 	if err != nil {
 		t.Fatalf("StartNative: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestStoppingANativeSessionCanBeGivenUpOn(t *testing.T) {
 	proc := newFakeProcess() // ignores the interrupt
 	var shell string
 	session, err := nativeDecl(store).StartNative(context.Background(),
-		"p:P", "office", "", announcing(t, proc, filepath.Join(store, "office-1"), &shell), io.Discard, nil)
+		"p:P", "office", NativeOptions{}, announcing(t, proc, filepath.Join(store, "office-1"), &shell), io.Discard, nil)
 	if err != nil {
 		t.Fatalf("StartNative: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestStartingANativeSessionCanBeGivenUpOn(t *testing.T) {
 	start := func(string, io.Writer) (Process, error) { return proc, nil }
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := nativeDecl(t.TempDir()).StartNative(ctx, "p:P", "office", "", start, io.Discard, nil)
+	_, err := nativeDecl(t.TempDir()).StartNative(ctx, "p:P", "office", NativeOptions{}, start, io.Discard, nil)
 	if !errors.Is(err, context.Canceled) || !proc.killed {
 		t.Errorf("want context.Canceled and a kill, got %v (killed=%v)", err, proc.killed)
 	}
@@ -184,7 +184,7 @@ func TestStartNativeRefusesWhatCannotGoIntoAShellCommand(t *testing.T) {
 		{"lite3_plugin", "office"},
 		{"$(id):Plugin", "office"},
 	} {
-		if _, err := decl.StartNative(context.Background(), c.entry, c.name, "", start, io.Discard, nil); err == nil {
+		if _, err := decl.StartNative(context.Background(), c.entry, c.name, NativeOptions{}, start, io.Discard, nil); err == nil {
 			t.Errorf("entry %q, name %q: want an error", c.entry, c.name)
 		}
 	}
@@ -197,11 +197,11 @@ func TestStartNativeRefusesWhatCannotGoIntoAShellCommand(t *testing.T) {
 		}
 	}
 	vendor := &Declaration{Kind: KindVendor, Vendor: &Vendor{}}
-	if _, err := vendor.StartNative(context.Background(), "p:P", "office", "", start, io.Discard, nil); err == nil {
+	if _, err := vendor.StartNative(context.Background(), "p:P", "office", NativeOptions{}, start, io.Discard, nil); err == nil {
 		t.Error("a vendor declaration should not start a native session")
 	}
 	for _, env := range []string{"underwater", "indoor; ls", "--name x"} {
-		if _, err := decl.StartNative(context.Background(), "p:P", "office", env, start, io.Discard, nil); err == nil {
+		if _, err := decl.StartNative(context.Background(), "p:P", "office", NativeOptions{Env: env}, start, io.Discard, nil); err == nil {
 			t.Errorf("environment %q: want an error", env)
 		}
 	}
@@ -216,10 +216,10 @@ func TestTheEnvironmentReachesTheSession(t *testing.T) {
 	proc := newFakeProcess()
 	var shell string
 	if _, err := nativeDecl(store).StartNative(context.Background(),
-		"lite3_plugin:Lite3Plugin", "office", "indoor", announcing(t, proc, dir, &shell), io.Discard, nil); err != nil {
+		"lite3_plugin:Lite3Plugin", "office", NativeOptions{Env: "indoor", Debug: true}, announcing(t, proc, dir, &shell), io.Discard, nil); err != nil {
 		t.Fatalf("StartNative: %v", err)
 	}
-	if want := "python3 -u -m emos_mapping.session --plugin lite3_plugin:Lite3Plugin --name office --env indoor"; shell != want {
+	if want := "python3 -u -m emos_mapping.session --plugin lite3_plugin:Lite3Plugin --name office --env indoor --debug"; shell != want {
 		t.Errorf("shell = %q, want %q", shell, want)
 	}
 	proc.exit(0)
@@ -562,7 +562,7 @@ func TestNativeSessionAgainstARealProcess(t *testing.T) {
 		return runner.StartProcess(cmd)
 	}
 	var log bytes.Buffer
-	session, err := nativeDecl(store).StartNative(context.Background(), "lite3_plugin:Lite3Plugin", "office", "", start, &log, nil)
+	session, err := nativeDecl(store).StartNative(context.Background(), "lite3_plugin:Lite3Plugin", "office", NativeOptions{}, start, &log, nil)
 	if err != nil {
 		t.Fatalf("StartNative: %v\n%s", err, log.String())
 	}
@@ -589,7 +589,7 @@ func TestAHangingNativeSessionIsKilledOnStop(t *testing.T) {
 		proc := newFakeProcess() // ignores the interrupt and never exits
 		var shell string
 		session, err := nativeDecl(store).StartNative(context.Background(),
-			"p:P", "office", "", announcing(t, proc, dir, &shell), io.Discard, nil)
+			"p:P", "office", NativeOptions{}, announcing(t, proc, dir, &shell), io.Discard, nil)
 		if err != nil {
 			t.Fatalf("StartNative: %v", err)
 		}
@@ -621,12 +621,40 @@ func TestSessionWarningsReachTheOperator(t *testing.T) {
 		io.WriteString(w, "Map directory: "+dir+"\n")
 		return proc, nil
 	}
-	if _, err := nativeDecl(store).StartNative(context.Background(), "p:P", "office", "", start, io.Discard,
+	if _, err := nativeDecl(store).StartNative(context.Background(), "p:P", "office", NativeOptions{}, start, io.Discard,
 		func(m string) { warnings = append(warnings, m) }); err != nil {
 		t.Fatalf("StartNative: %v", err)
 	}
 	io.WriteString(out, "[INFO] driver started\nMapping warning: no point cloud on /lidar yet\n[INFO] more\n")
 	if len(warnings) != 1 || warnings[0] != "no point cloud on /lidar yet" {
 		t.Errorf("want the warning forwarded, got %q", warnings)
+	}
+}
+
+func TestTheSessionSaysWhenTheRobotCanBeDriven(t *testing.T) {
+	store := t.TempDir()
+	dir := filepath.Join(store, "office-1")
+	proc := newFakeProcess()
+	var out io.Writer
+	start := func(sh string, w io.Writer) (Process, error) {
+		os.MkdirAll(dir, 0o755)
+		out = w
+		io.WriteString(w, "Map directory: "+dir+"\n")
+		return proc, nil
+	}
+	session, err := nativeDecl(store).StartNative(context.Background(), "p:P", "office", NativeOptions{}, start, io.Discard, nil)
+	if err != nil {
+		t.Fatalf("StartNative: %v", err)
+	}
+	select {
+	case <-session.Ready():
+		t.Fatal("not ready before the backend tracks the robot")
+	default:
+	}
+	io.WriteString(out, "[INFO] glim up\nMapping ready: GLIM is tracking the robot.\nMapping ready: again\n")
+	select {
+	case <-session.Ready():
+	default:
+		t.Error("want Ready closed once the session says so")
 	}
 }

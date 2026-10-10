@@ -15,7 +15,7 @@ from ros_sugar.core import BaseComponent
 from ros_sugar.io import Topic
 from sensor_msgs_py import point_cloud2
 
-from .backend import MAP_TOPIC, read_dump
+from .backend import MAP_TOPIC, ODOM_TOPIC, read_dump
 from .grid import (
     Grid,
     GridSpec,
@@ -81,7 +81,9 @@ class MapBuilder(BaseComponent):
         **kwargs,
     ):
         self.map_topic = Topic(name=MAP_TOPIC, msg_type="PointCloud2")
-        inputs = [self.map_topic] + ([cloud_topic] if cloud_topic else [])
+        self.odom_topic = Topic(name=ODOM_TOPIC, msg_type="Odometry")
+        inputs = [self.map_topic, self.odom_topic]
+        inputs += [cloud_topic] if cloud_topic else []
         config = config or MapBuilderConfig()
         super().__init__(component_name, inputs=inputs, config=config, **kwargs)
         self.config: MapBuilderConfig
@@ -93,6 +95,7 @@ class MapBuilder(BaseComponent):
         self._map_msg = None
         self._cloud_topic = cloud_topic
         self._cloud_warned = False
+        self._tracking = False
         # What finish() records in map.json besides the grid. Set by session.
         self.metadata: Dict[str, Any] = {}
         self._saved: Optional[Dict[str, str]] = None
@@ -107,6 +110,7 @@ class MapBuilder(BaseComponent):
 
     def _execution_step(self) -> None:
         self._check_cloud()
+        self._check_tracking()
         self._place_ground()
         if self._take_map():
             self.write_preview()
@@ -136,6 +140,14 @@ class MapBuilder(BaseComponent):
                 flush=True,
             )
             self._cloud_warned = True
+
+    def _check_tracking(self) -> None:
+        """Tell the operator, once, that GLIM is tracking the robot: it has
+        found gravity while the robot stood still, so it can be driven."""
+        if self._tracking or self.callbacks[self.odom_topic.name].msg is None:
+            return
+        self._tracking = True
+        print("Mapping ready: GLIM is tracking the robot.", flush=True)
 
     def _take_map(self) -> bool:
         """Read GLIM's map if a new one has arrived."""

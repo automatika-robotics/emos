@@ -6,7 +6,9 @@ from __future__ import annotations
 import argparse
 import faulthandler
 import os
+import shutil
 import signal
+import subprocess
 import sys
 import time
 from datetime import datetime
@@ -34,6 +36,11 @@ from .builder import MapBuilder, MapBuilderConfig
 # decodes them itself, namespaced to mapping.
 SESSION_CLOUD_TOPIC = "/emos_mapping/cloud"
 SESSION_IMU_TOPIC = "/emos_mapping/imu"
+
+# Where a debug session records its raw sensor data, in the map's directory
+DEBUG_BAG = os.path.join("debug", "bag")
+# Recorded besides the LiDAR and IMU: the transforms, for the sensors' mounts
+DEBUG_EXTRA_TOPICS = ("/tf", "/tf_static")
 
 
 def mapping_input(plugin, key: Optional[str], topic: str):
@@ -87,6 +94,30 @@ def origin_offset(
     return float(lidar_imu[0][2])
 
 
+def debug_recorder(bag: str, topics: List[str]) -> List[str]:
+    """The command recording a debug session's raw sensor data into bag"""
+    return [
+        "ros2", "bag", "record", "--storage", "mcap", "--output", bag, "--topics", *topics
+    ]
+
+
+def stop_recorder(
+    recorder: subprocess.Popen, grace: float = 5.0, closing: float = 30.0
+) -> None:
+    """Let the recorder close its bag. The CLI's stop reaches it with the rest
+    of the session's process group; a session that ended by itself asks it."""
+    try:
+        recorder.wait(timeout=grace)
+        return
+    except subprocess.TimeoutExpired:
+        recorder.send_signal(signal.SIGINT)
+    try:
+        recorder.wait(timeout=closing)
+    except subprocess.TimeoutExpired:
+        recorder.kill()
+        recorder.wait()
+
+
 def map_directory(store: str, name: str) -> str:
     return os.path.join(store, f"{name}-{datetime.now():%Y%m%d-%H%M%S}")
 
@@ -110,6 +141,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         "--env",
         choices=sorted(ENVIRONMENTS),
         help="where the map is built, for GLIM's settings (default: GLIM's own)",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="also record the raw sensor data into the map's directory, for support",
     )
     args = parser.parse_args(argv)
 
@@ -149,6 +185,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(
             f"cannot map with {args.plugin}: its GLIM settings name roles GLIM "
             f"does not have: {', '.join(unknown)}",
+            file=sys.stderr,
+        )
+        return 2
+
+    if args.debug and shutil.which("ros2") is None:
+        print(
+            "debug mode records with 'ros2 bag', which is not installed",
             file=sys.stderr,
         )
         return 2
@@ -224,6 +267,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         "inputs": {"cloud": points_topic, "imu": imu_topic, "lidar_imu": lidar_imu},
         "band": {"z_min": declaration.z_min, "z_max": declaration.z_max},
     }
+    recorder = None
+    if args.debug:
+        topics = [t for t in (points_topic, imu_topic) if t]
+        topics += DEBUG_EXTRA_TOPICS
+        bag = os.path.join(directory, DEBUG_BAG)
+        os.makedirs(os.path.dirname(bag))
+        recorder = subprocess.Popen(debug_recorder(bag, topics))
+        metadata["debug"] = {"bag": DEBUG_BAG, "topics": topics}
+        print(f"Recording the raw sensor data to {bag}", flush=True)
     builder.metadata = metadata
     # A hung session dumps every thread's stack into the log on SIGUSR1
     faulthandler.register(signal.SIGUSR1, all_threads=True)
@@ -234,6 +286,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         launcher.bringup()
     finally:
+        if recorder is not None:
+            stop_recorder(recorder)
         # GLIM has exited by now, so its dump is complete
         saved = builder.finish()
         if saved:

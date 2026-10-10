@@ -7,8 +7,10 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/installer"
@@ -21,6 +23,8 @@ import (
 
 var (
 	mapExportDir    string
+	mapDebug        bool
+	mapExportDebug  bool
 	mapEnv          string
 	mapRMW          string
 	mapSetupRebuild bool
@@ -45,6 +49,9 @@ func init() {
 	newCmd.Flags().StringVar(&mapEnv, "env", "",
 		"where a map EMOS builds itself is made ("+strings.Join(mapping.Environments, ", ")+"), "+
 			"for the mapping backend's settings; asked when unset")
+	newCmd.Flags().BoolVar(&mapDebug, "debug", false,
+		"also record the raw LiDAR and IMU data with a map EMOS builds itself, "+
+			"for support to replay; it is large")
 	newCmd.Flags().StringVar(&mapRMW, "rmw", "",
 		"RMW implementation for a map EMOS builds itself ("+runner.RMWChoices+"); "+
 			"unset keeps the environment's, or ROS's default")
@@ -69,6 +76,9 @@ func init() {
 	}
 	exportCmd.Flags().StringVarP(&mapExportDir, "output", "o", "",
 		"directory to put the archive in (default ~/emos/map-archives)")
+	exportCmd.Flags().BoolVar(&mapExportDebug, "debug", false,
+		"pack everything support needs instead, for a map EMOS built itself: the backend's "+
+			"configuration and working data, the raw sensor data of a debug session, and the session's log")
 	mapCmd.AddCommand(exportCmd)
 	mapCmd.AddCommand(&cobra.Command{
 		Use:   "import <archive>",
@@ -224,10 +234,14 @@ func runMapNew(cmd *cobra.Command, args []string) error {
 				return nil
 			}
 		}
-		return runNativeMapNew(cfg, decl, name, env)
+		if mapDebug && !confirmDebug(decl.Store()) {
+			ui.Info("Cancelled.")
+			return nil
+		}
+		return runNativeMapNew(cfg, decl, name, mapping.NativeOptions{Env: env, Debug: mapDebug})
 	}
-	if mapEnv != "" {
-		ui.Warn("--env only applies to maps EMOS builds itself; this robot maps with its own software.")
+	if mapEnv != "" || mapDebug {
+		ui.Warn("--env and --debug only apply to maps EMOS builds itself; this robot maps with its own software.")
 	}
 	return runVendorMapNew(decl, name)
 }
@@ -247,6 +261,120 @@ func askEnvironment() (string, error) {
 		return "", err
 	}
 	return mapping.Environments[choice], nil
+}
+
+// lowDiskSpace is the free space below which a debug recording may fill the
+// disk before the operator stops it.
+const lowDiskSpace = 5 << 30
+
+// confirmDebug tells the operator what a debug session records and asks
+// whether to go on.
+func confirmDebug(store string) bool {
+	ui.Header("DEBUG MODE")
+	ui.Warn("Debug mode records the raw LiDAR and IMU data with the map, for support to replay.")
+	ui.Warn("The recording is large: hundreds of MB for every minute of mapping. Keep the run to a few minutes.")
+	if free, err := freeSpace(store); err == nil {
+		ui.Info("Free space for maps: " + formatBytes(free))
+		if free < lowDiskSpace {
+			ui.Warn("That is little: the recording can fill the disk. Free some space or keep the run very short.")
+		}
+	}
+	ui.Faint("Most useful to support: the robot standing still until mapping is ready, then one slow loop back to the start.")
+	return ui.Confirm("Record the raw sensor data with this map?")
+}
+
+// freeSpace is the space left for an unprivileged user on the filesystem
+// holding path, or the nearest directory above it that exists.
+func freeSpace(path string) (uint64, error) {
+	for {
+		var fs syscall.Statfs_t
+		err := syscall.Statfs(path, &fs)
+		if err == nil {
+			return fs.Bavail * uint64(fs.Bsize), nil
+		}
+		parent := filepath.Dir(path)
+		if !errors.Is(err, syscall.ENOENT) || parent == path {
+			return 0, err
+		}
+		path = parent
+	}
+}
+
+// formatBytes is n in the largest of MB and GB it reaches.
+func formatBytes(n uint64) string {
+	if n >= 1<<30 {
+		return fmt.Sprintf("%.1f GB", float64(n)/(1<<30))
+	}
+	return fmt.Sprintf("%.0f MB", float64(n)/(1<<20))
+}
+
+// dirSize is the total size of the files under path.
+func dirSize(path string) (uint64, error) {
+	var total uint64
+	err := filepath.WalkDir(path, func(_ string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() {
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			total += uint64(info.Size())
+		}
+		return nil
+	})
+	return total, err
+}
+
+// reportDebug tells the operator where a debug session left its recording,
+// whether or not it made a map: a failed map is when support needs it most.
+func reportDebug(dir string) {
+	bag := filepath.Join(dir, mapping.DebugBag)
+	size, err := dirSize(bag)
+	if err != nil || size == 0 {
+		ui.Warn("Debug mode was on, but no raw sensor data was recorded. The session's log says why.")
+		return
+	}
+	ui.Info("Raw sensor data for support: " + bag + " (" + formatBytes(size) + ")")
+	ui.Faint("Pack it for support with 'emos map export --debug " + filepath.Base(dir) + "'.")
+}
+
+// trackingTimeout is how long the operator waits for the backend to track the
+// robot before being told to check the sensors.
+const trackingTimeout = 60 * time.Second
+
+// waitUntilTracking holds the operator until the backend tracks the robot,
+// which it does once it has found gravity with the robot standing still. It
+// reports whether the operator interrupted instead.
+func waitUntilTracking(sigs <-chan os.Signal, session *mapping.NativeSession) (interrupted bool) {
+	ui.Warn("Keep the robot still: mapping is starting.")
+	timeout := time.NewTimer(trackingTimeout)
+	defer timeout.Stop()
+	select {
+	case <-session.Ready():
+		ui.Success("Mapping is ready.")
+	case <-session.Done():
+	case <-sigs:
+		return true
+	case <-timeout.C:
+		ui.Warn(fmt.Sprintf("Mapping is not tracking the robot after %.0f s. Check that the LiDAR and IMU "+
+			"are publishing. You can drive, but the map may come out tilted.", trackingTimeout.Seconds()))
+	}
+	return false
+}
+
+// mappingGuidance is how to drive for a map that lines up with itself and
+// stays level.
+func mappingGuidance() {
+	ui.Info("Before driving:")
+	ui.Faint("Stand the robot on flat ground with a clear view around it.")
+	ui.Faint("Keep it still until EMOS says mapping is ready: the first seconds set which way is down.")
+	ui.Info("While driving:")
+	ui.Faint("Move slowly and turn gently. Fast turns and jolts blur the scans.")
+	ui.Faint(loopAdvice)
+	ui.Faint("Finish in an area you have already covered.")
+	ui.Faint("Keep people from crowding the robot: anyone moving around it ends up in the map.")
 }
 
 // loopAdvice is what makes a map line up with itself, whoever builds it.
@@ -458,7 +586,7 @@ func nativeMappingReady(cfg *config.EMOSConfig) error {
 }
 
 // runNativeMapNew builds a map with EMOS's own mapping session.
-func runNativeMapNew(cfg *config.EMOSConfig, decl *mapping.Declaration, name, env string) error {
+func runNativeMapNew(cfg *config.EMOSConfig, decl *mapping.Declaration, name string, opts mapping.NativeOptions) error {
 	logFile := runner.LogFilePath("map-" + name)
 	log, err := runner.OpenLog(logFile)
 	if err != nil {
@@ -469,7 +597,10 @@ func runNativeMapNew(cfg *config.EMOSConfig, decl *mapping.Declaration, name, en
 	ui.Header("MAPPING")
 	ui.Info("EMOS builds this map itself from the robot's LiDAR.")
 	ui.Info("RMW Implementation: " + runner.RMWLabel(mapRMW))
-	ui.Info("Environment: " + env)
+	ui.Info("Environment: " + opts.Env)
+	if opts.Debug {
+		ui.Info("Debug mode: recording the raw sensor data with the map")
+	}
 
 	// Caught from here on, so the session is never left running behind a CLI
 	// that a signal ended. The session is in its own process group.
@@ -495,18 +626,24 @@ func runNativeMapNew(cfg *config.EMOSConfig, decl *mapping.Declaration, name, en
 	}
 
 	ui.Header("BUILDING MAP: " + name)
-	ui.Faint(loopAdvice)
-	ui.Faint("Finish in an area you have already covered.")
+	mappingGuidance()
 	ui.Info("The session's output is saved to: " + logFile)
 
 	startCtx, cancelStart := cancelOnSignal(sigs)
-	session, err := decl.StartNative(startCtx, cfg.Plugin.EntryPoint, name, env, start, log, ui.Warn)
+	session, err := decl.StartNative(startCtx, cfg.Plugin.EntryPoint, name, opts, start, log, ui.Warn)
 	cancelStart()
 	if err != nil {
 		return explainSession(err, logFile)
 	}
 
-	interrupted := driveUntilStopped(sigs, session.Done())
+	interrupted := waitUntilTracking(sigs, session)
+	select {
+	case <-session.Done(): // ended before it could be driven; said below
+	default:
+		if !interrupted {
+			interrupted = driveUntilStopped(sigs, session.Done())
+		}
+	}
 
 	var built *mapping.Map
 	select {
@@ -525,6 +662,9 @@ func runNativeMapNew(cfg *config.EMOSConfig, decl *mapping.Declaration, name, en
 			return e
 		})
 		cancelStop()
+	}
+	if opts.Debug {
+		reportDebug(session.Dir)
 	}
 	if err != nil {
 		return explainSession(err, logFile)
@@ -637,6 +777,9 @@ func runMapExport(cmd *cobra.Command, args []string) error {
 	if dest == "" {
 		dest = config.MapArchivesDir
 	}
+	if mapExportDebug {
+		return runDebugExport(decl, name, dest)
+	}
 	archive, err := decl.Export(name, dest, mapping.SystemRunner)
 	if err != nil && archive != "" {
 		ui.Error(err.Error())
@@ -655,6 +798,34 @@ func runMapExport(cmd *cobra.Command, args []string) error {
 	if decl.Kind == mapping.KindNative {
 		ui.Faint("It holds the map's files; the mapping backend's working data stays on the robot.")
 	}
+	return nil
+}
+
+// runDebugExport packs a map with everything support needs to look into it.
+func runDebugExport(decl *mapping.Declaration, name, dest string) error {
+	var export *mapping.DebugExport
+	err := ui.Spinner(fmt.Sprintf("Packing '%s' for support", name), func() error {
+		var e error
+		export, e = decl.ExportDebug(name, dest, config.LogsDir)
+		return e
+	})
+	if err != nil {
+		return explain(err)
+	}
+	size := ""
+	if info, err := os.Stat(export.Archive); err == nil {
+		size = " (" + formatBytes(uint64(info.Size())) + ")"
+	}
+	ui.Success(fmt.Sprintf("Packed '%s' for support: %s%s", name, export.Archive, size))
+	if export.Log != "" {
+		ui.Faint("With the session's log, " + filepath.Base(export.Log) + ".")
+	} else {
+		ui.Faint("No session log for it was found in " + config.LogsDir + ".")
+	}
+	if !export.RawData {
+		ui.Faint("It holds no raw sensor data: record some with 'emos map new --debug'.")
+	}
+	ui.Faint("This archive is for support. 'emos map import' takes the plain export.")
 	return nil
 }
 

@@ -31,7 +31,23 @@ const (
 	// warningPrefix marks a line the session wants the operator to see while
 	// driving.
 	warningPrefix = "Mapping warning: "
+	// readyPrefix starts the line the session prints once the backend tracks
+	// the robot, which can then be driven.
+	readyPrefix = "Mapping ready: "
 )
+
+// DebugBag is where a debug session records its raw sensor data, in the map's
+// directory.
+const DebugBag = "debug/bag"
+
+// NativeOptions are how a mapping session EMOS runs itself is run.
+type NativeOptions struct {
+	// Env is where the map is made, one of Environments, or empty for the
+	// backend's own settings.
+	Env string
+	// Debug also records the raw sensor data, at DebugBag.
+	Debug bool
+}
 
 // Environments are the places a map EMOS builds can be made in. The session
 // carries settings for the mapping backend for each.
@@ -119,16 +135,16 @@ type NativeSession struct {
 	decl *Declaration
 	proc Process
 	// Dir is the directory the map is being built in.
-	Dir string
+	Dir   string
+	ready chan struct{}
 }
 
 // StartNative begins a mapping session EMOS runs itself, for the plugin at
-// entryPoint, in environment env (one of Environments, or empty for the
-// backend's own settings). It returns once the session has announced the
+// entryPoint, as opts says. It returns once the session has announced the
 // map's directory.
 // The session's output goes to out, and its warnings for the operator to
 // warn, when given. Cancelling ctx before then kills it.
-func (d *Declaration) StartNative(ctx context.Context, entryPoint, name, env string, start Starter, out io.Writer, warn func(string)) (*NativeSession, error) {
+func (d *Declaration) StartNative(ctx context.Context, entryPoint, name string, opts NativeOptions, start Starter, out io.Writer, warn func(string)) (*NativeSession, error) {
 	if d.Kind != KindNative {
 		return nil, fmt.Errorf("this robot maps with its own software")
 	}
@@ -138,18 +154,18 @@ func (d *Declaration) StartNative(ctx context.Context, entryPoint, name, env str
 	if !validEntryPoint.MatchString(entryPoint) {
 		return nil, fmt.Errorf("plugin entry point %q is not '<package.module>:<ClassName>'", entryPoint)
 	}
-	if err := CheckEnvironment(env); err != nil {
+	if err := CheckEnvironment(opts.Env); err != nil {
 		return nil, err
 	}
 
 	announced := newAnnouncement(out, warn)
-	proc, err := start(sessionShell(entryPoint, name, env), announced)
+	proc, err := start(sessionShell(entryPoint, name, opts), announced)
 	if err != nil {
 		return nil, fmt.Errorf("start mapping: %w", err)
 	}
 	select {
 	case dir := <-announced.dir:
-		return &NativeSession{decl: d, proc: proc, Dir: dir}, nil
+		return &NativeSession{decl: d, proc: proc, Dir: dir, ready: announced.ready}, nil
 	case <-proc.Done():
 		code, _ := proc.Wait()
 		return nil, &ErrSessionExited{Code: code}
@@ -161,13 +177,20 @@ func (d *Declaration) StartNative(ctx context.Context, entryPoint, name, env str
 
 // sessionShell is the command that runs the session. The module is run
 // directly, so an interrupt reaches one process, once.
-func sessionShell(entryPoint, name, env string) string {
+func sessionShell(entryPoint, name string, opts NativeOptions) string {
 	shell := "python3 -u -m emos_mapping.session --plugin " + entryPoint + " --name " + name
-	if env != "" {
-		shell += " --env " + env
+	if opts.Env != "" {
+		shell += " --env " + opts.Env
+	}
+	if opts.Debug {
+		shell += " --debug"
 	}
 	return shell
 }
+
+// Ready closes once the backend tracks the robot: until then it has to stand
+// still.
+func (s *NativeSession) Ready() <-chan struct{} { return s.ready }
 
 // Done closes when the session has ended, whether or not it was asked to.
 func (s *NativeSession) Done() <-chan struct{} { return s.proc.Done() }
@@ -216,17 +239,19 @@ func (s *NativeSession) Result() (*Map, error) {
 // announcement passes the session's output through to next, reports the map
 // directory once the session prints it, and forwards the session's warnings.
 type announcement struct {
-	next io.Writer
-	warn func(string)
-	dir  chan string
+	next  io.Writer
+	warn  func(string)
+	dir   chan string
+	ready chan struct{}
 
 	mu      sync.Mutex
 	pending []byte
 	found   bool
+	tracked bool
 }
 
 func newAnnouncement(next io.Writer, warn func(string)) *announcement {
-	return &announcement{next: next, warn: warn, dir: make(chan string, 1)}
+	return &announcement{next: next, warn: warn, dir: make(chan string, 1), ready: make(chan struct{})}
 }
 
 func (a *announcement) Write(p []byte) (int, error) {
@@ -245,6 +270,9 @@ func (a *announcement) Write(p []byte) (int, error) {
 			a.dir <- strings.TrimPrefix(line, announcePrefix)
 		case a.warn != nil && strings.HasPrefix(line, warningPrefix):
 			a.warn(strings.TrimPrefix(line, warningPrefix))
+		case !a.tracked && strings.HasPrefix(line, readyPrefix):
+			a.tracked = true
+			close(a.ready)
 		}
 	}
 	a.mu.Unlock()

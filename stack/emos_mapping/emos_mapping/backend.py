@@ -25,6 +25,9 @@ GLIM_NODE = "glim"
 # GLIM's rviz_viewer module publishes every finished submap here, merged at its
 # optimised pose, at most every 10 s
 MAP_TOPIC = f"/{GLIM_NODE}/map"
+# The same module publishes the odometry of every frame here, from the moment
+# GLIM has found gravity and starts tracking
+ODOM_TOPIC = f"/{GLIM_NODE}/odom"
 
 
 def backend_has_cuda() -> bool:

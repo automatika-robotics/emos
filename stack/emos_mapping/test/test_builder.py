@@ -7,6 +7,7 @@ import pytest
 pytest.importorskip("ros_sugar")
 import rclpy  # noqa: E402
 from ros_sugar.io import Topic  # noqa: E402
+from nav_msgs.msg import Odometry  # noqa: E402
 from sensor_msgs.msg import PointField  # noqa: E402
 from sensor_msgs_py import point_cloud2  # noqa: E402
 from std_msgs.msg import Header  # noqa: E402
@@ -95,7 +96,7 @@ def test_it_is_built_the_way_the_executable_builds_it(tmp_path):
     component = MapBuilder(config=MapBuilderConfig(output_dir=str(tmp_path)), component_name="b", config_file=None)
     component.rclpy_init_node()
     component._inputs_json = launched._inputs_json
-    assert set(component.callbacks) == {"lidar", component.map_topic.name}
+    assert set(component.callbacks) == {"lidar", component.map_topic.name, component.odom_topic.name}
     assert component.callbacks["lidar"].input_topic.use_plugin
 
 
@@ -220,3 +221,13 @@ def test_a_tilted_map_is_flagged_to_the_operator(tmp_path, capsys):
     _, grid = builder._build()
     assert grid.cell(4.0, 0.0) == FREE and grid.cell(-4.0, 0.0) == FREE
     assert json.load(open(paths["metadata"]))["grid"]["ground"]["span"] > 0.3
+
+
+def test_the_operator_is_told_once_when_glim_starts_tracking(tmp_path, capsys):
+    builder = make_builder(tmp_path)
+    builder._execution_step()
+    assert "Mapping ready" not in capsys.readouterr().out  # still finding gravity
+    builder.callbacks[builder.odom_topic.name].callback(Odometry())
+    builder._execution_step()
+    builder._execution_step()
+    assert capsys.readouterr().out.count("Mapping ready: GLIM is tracking the robot.") == 1

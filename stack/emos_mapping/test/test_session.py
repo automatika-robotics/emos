@@ -1,5 +1,6 @@
 import os
 import re
+import subprocess
 import sys
 
 import pytest
@@ -10,12 +11,14 @@ from ros_sugar.robot.mapping import NativeMapping  # noqa: E402
 
 from emos_mapping.session import (  # noqa: E402
     SESSION_IMU_TOPIC,
+    debug_recorder,
     imu_offset,
     main,
     map_directory,
     mapping_input,
     mount_heights,
     origin_offset,
+    stop_recorder,
 )
 
 
@@ -104,3 +107,31 @@ def test_an_environment_emos_has_no_settings_for_is_refused(capsys):
         main(["--plugin", "p:P", "--name", "x", "--env", "underwater"])
     assert exited.value.code == 2
     assert "invalid choice: 'underwater'" in capsys.readouterr().err
+
+
+def test_debug_mode_records_the_sensors_the_session_maps_with():
+    command = debug_recorder("/maps/office/debug/bag", ["/rslidar_points", "/emos_mapping/imu", "/tf_static"])
+    assert command[:3] == ["ros2", "bag", "record"]
+    assert command[command.index("--output") + 1] == "/maps/office/debug/bag"
+    assert command[command.index("--storage") + 1] == "mcap"
+    assert command[command.index("--topics") + 1 :] == ["/rslidar_points", "/emos_mapping/imu", "/tf_static"]
+
+
+def recorder(ignores_interrupt):
+    handler = "signal.SIG_IGN" if ignores_interrupt else "lambda *_: sys.exit(0)"
+    code = f"import signal, sys, time; signal.signal(signal.SIGINT, {handler}); print('up', flush=True); time.sleep(30)"
+    proc = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE)
+    proc.stdout.readline()  # its handler is in place
+    return proc
+
+
+def test_a_recorder_left_running_is_asked_to_close_its_bag():
+    proc = recorder(ignores_interrupt=False)
+    stop_recorder(proc, grace=0.1, closing=5.0)
+    assert proc.returncode == 0  # it shut down on SIGINT, the way ros2 bag closes a bag
+
+
+def test_a_recorder_that_will_not_stop_is_killed():
+    proc = recorder(ignores_interrupt=True)
+    stop_recorder(proc, grace=0.1, closing=0.3)
+    assert proc.returncode == -9

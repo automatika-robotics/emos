@@ -45,10 +45,28 @@ func DetectROS() []ROSInstallation {
 	return installs
 }
 
-// InstallNative builds EMOS packages and installs them into the ROS 2 installation.
-// Uses two separate colcon builds (matching the Dockerfile pattern):
-//  1. Localization dependencies (angles, geographic_info, robot_localization)
-//  2. EMOS packages (sugarcoat, kompass, embodied-agents)
+// StackPackages are the ROS packages colcon builds from the stack.
+var StackPackages = []string{
+	"automatika_ros_sugar",
+	"automatika_embodied_agents",
+	"kompass",
+	"kompass_interfaces",
+	"emos_mapping",
+}
+
+// CleanStackBuild drops the stack packages' build trees in the workspace at
+// wsDir, so the next colcon build starts from scratch. install/ stays, because
+// the mapping backend lives there.
+func CleanStackBuild(wsDir string) error {
+	for _, pkg := range StackPackages {
+		if err := os.RemoveAll(filepath.Join(wsDir, "build", pkg)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// InstallNative builds the EMOS packages and installs them into the ROS 2 installation.
 func InstallNative(wsPath, distro string) error {
 	rosPath := filepath.Join("/opt/ros", distro)
 	rosSetup := filepath.Join(rosPath, "setup.bash")
@@ -58,18 +76,18 @@ func InstallNative(wsPath, distro string) error {
 	os.MkdirAll(srcDir, 0755)
 
 	emosRepoURL := "https://github.com/" + config.GitHubOrg + "/" + config.GitHubRepo + ".git"
-	emosPackages := []string{"sugarcoat", "kompass", "embodied-agents"}
+	emosPackages := []string{"sugarcoat", "kompass", "embodied-agents", "emos_mapping"}
 	emosRepo := filepath.Join(srcDir, ".emos-repo")
 
 	if err := ui.Spinner("Fetching EMOS source...", func() error {
 		if _, err := os.Stat(emosRepo); err == nil {
-			if err := runCmd(emosRepo, "git", "pull"); err != nil {
+			if err := SyncWorkspace(emosRepo, config.WorkspaceRef()); err != nil {
 				return err
 			}
 			// Update submodules (stack packages are submodules)
 			return runCmd(emosRepo, "git", "submodule", "update", "--init", "--depth", "1")
 		}
-		return runCmd(srcDir, "git", "clone", "--depth", "1", "--recurse-submodules", "--shallow-submodules", emosRepoURL, ".emos-repo")
+		return runCmd(srcDir, "git", "clone", "--depth", "1", "-b", config.WorkspaceRef(), "--recurse-submodules", "--shallow-submodules", emosRepoURL, ".emos-repo")
 	}); err != nil {
 		return fmt.Errorf("failed to fetch emos source: %w", err)
 	}
@@ -92,52 +110,19 @@ func InstallNative(wsPath, distro string) error {
 		}
 	}
 
-	// Fetch localization dependencies
-	if err := ui.Spinner("Fetching dependencies...", func() error {
-		locDeps := []struct {
-			name   string
-			url    string
-			branch string
-		}{
-			{"angles", "https://github.com/ros/angles.git", "ros2"},
-			{"geographic_info", "https://github.com/ros-geographic-info/geographic_info.git", geoBranch(distro)},
-			{"robot_localization", "https://github.com/cra-ros-pkg/robot_localization.git", distro + "-devel"},
-		}
-
-		for _, dep := range locDeps {
-			dest := filepath.Join(srcDir, dep.name)
-			if _, err := os.Stat(dest); err == nil {
-				continue
-			}
-			if err := runCmd(srcDir, "git", "clone", "--depth", "1", "-b", dep.branch, dep.url); err != nil {
-				return fmt.Errorf("failed to clone %s: %w", dep.name, err)
-			}
-		}
-
-		// Remove unnecessary geographic_info subdirectories (matches Dockerfile)
-		for _, sub := range []string{"geographic_info", "geodesy"} {
-			os.RemoveAll(filepath.Join(srcDir, "geographic_info", sub))
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
-
 	// -- System dependencies --
 	ui.Info("Installing system dependencies...")
 	aptPkgs := []string{
 		"portaudio19-dev", "jq", "python3-empy",
 		"python3-ament-package", "ros-" + distro + "-rpyutils",
 		"ros-" + distro + "-rmw-zenoh-cpp",
+		"ros-" + distro + "-moveit-msgs", "ros-" + distro + "-control-msgs",
 	}
 	cmd := exec.Command("sudo", append([]string{"apt-get", "install", "-y"}, aptPkgs...)...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		ui.Warn("Some apt packages may have failed to install: " + err.Error())
-	}
-	if err := installGeoLib(); err != nil {
-		ui.Warn("Failed to install GeographicLib: " + err.Error())
 	}
 
 	// -- Install kompass-core with GPU support --
@@ -162,7 +147,7 @@ func InstallNative(wsPath, distro string) error {
 			"msgpack", "msgpack-numpy", "platformdirs",
 			"tqdm", "pyyaml", "toml", "websockets",
 			"ollama", "redis[hiredis]", "pyaudio",
-			"soundfile", "python-fasthtml", "monsterui",
+			"soundfile", "python-fasthtml>=0.12,<0.15", "monsterui>=1.0,<1.1",
 		}
 		args := append([]string{"-m", "pip", "install", "--no-cache-dir"}, pipPkgs...)
 		cmd := exec.Command("python3", args...)
@@ -190,10 +175,8 @@ func InstallNative(wsPath, distro string) error {
 	updateCmd.Stderr = os.Stderr
 	updateCmd.Run()
 
-	// -- Stage 1: Build localization dependencies --
-	// Build only the localization packages first, then install them into
-	// /opt/ros/{distro} so they're available as an underlay for EMOS packages.
-	ui.Info("Installing dependencies for localization packages...")
+	// -- Package dependencies --
+	ui.Info("Installing package dependencies...")
 	rosdepCmd := fmt.Sprintf("source %s && sudo apt-get update && rosdep install --from-paths %s --ignore-src -y", rosSetup, srcDir)
 	cmd = exec.Command("bash", "-c", rosdepCmd)
 	cmd.Stdout = os.Stdout
@@ -202,29 +185,10 @@ func InstallNative(wsPath, distro string) error {
 		ui.Warn("Some rosdep dependencies may have failed: " + err.Error())
 	}
 
-	locPkgs := "angles geographic_msgs robot_localization"
-	ui.Info("Building localization packages...")
-	buildCmd := fmt.Sprintf(
-		"source %s && cd %s && colcon build --merge-install --packages-select %s --cmake-args -DCMAKE_BUILD_TYPE=Release",
-		rosSetup, wsPath, locPkgs)
-	cmd = exec.Command("bash", "-c", buildCmd)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Env = cleanEnv()
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("localization build failed: %w", err)
-	}
-
-	if err := mergeIntoROS(filepath.Join(wsPath, "install"), rosPath); err != nil {
-		return err
-	}
-
-	// -- Stage 2: Build EMOS packages --
-	// Re-source /opt/ros/{distro} which now includes localization packages,
-	// then build only the EMOS packages.
-	emosPkgs := "automatika_ros_sugar automatika_embodied_agents kompass kompass_interfaces"
+	// -- Build EMOS packages --
+	emosPkgs := strings.Join(StackPackages, " ")
 	ui.Info("Building EMOS packages (this may take a while)...")
-	buildCmd = fmt.Sprintf(
+	buildCmd := fmt.Sprintf(
 		"unset VIRTUAL_ENV && source %s && cd %s && colcon build --merge-install --packages-select %s --cmake-args -DCMAKE_BUILD_TYPE=Release",
 		rosSetup, wsPath, emosPkgs)
 	cmd = exec.Command("bash", "-c", buildCmd)
@@ -281,6 +245,7 @@ func VerifyNativeInstall(rosSetup string) error {
 		"automatika_embodied_agents",
 		"kompass",
 		"kompass_interfaces",
+		"emos_mapping",
 	}
 
 	listCmd := fmt.Sprintf("source %s && ros2 pkg list", rosSetup)
@@ -305,19 +270,20 @@ func VerifyNativeInstall(rosSetup string) error {
 	return nil
 }
 
-// UpdateNative pulls latest sources, rebuilds, and re-installs into the ROS 2 installation.
-func UpdateNative(wsPath, distro string) error {
+// UpdateNative pulls latest sources, rebuilds, and re-installs into the ROS 2
+// installation. kompass-core is left alone when it is current, unless rebuild.
+func UpdateNative(wsPath, distro string, rebuild bool) error {
 	rosPath := filepath.Join("/opt/ros", distro)
 	rosSetup := filepath.Join(rosPath, "setup.bash")
 	srcDir := filepath.Join(wsPath, "src")
 
 	// Pull latest emos repo and re-copy stack packages
 	emosRepo := filepath.Join(srcDir, ".emos-repo")
-	emosPackages := []string{"sugarcoat", "kompass", "embodied-agents"}
+	emosPackages := []string{"sugarcoat", "kompass", "embodied-agents", "emos_mapping"}
 
 	if _, err := os.Stat(filepath.Join(emosRepo, ".git")); err == nil {
 		if err := ui.Spinner("Fetching EMOS source...", func() error {
-			if err := runCmd(emosRepo, "git", "pull"); err != nil {
+			if err := SyncWorkspace(emosRepo, config.WorkspaceRef()); err != nil {
 				return err
 			}
 			return runCmd(emosRepo, "git", "submodule", "update", "--init", "--depth", "1")
@@ -334,32 +300,27 @@ func UpdateNative(wsPath, distro string) error {
 		}
 	}
 
-	// Update localization dependency repos
-	if err := ui.Spinner("Fetching dependencies...", func() error {
-		for _, name := range []string{"angles", "geographic_info", "robot_localization"} {
-			repoPath := filepath.Join(srcDir, name)
-			if _, err := os.Stat(filepath.Join(repoPath, ".git")); err != nil {
-				continue
-			}
-			if err := runCmd(repoPath, "git", "pull"); err != nil {
-				return fmt.Errorf("failed to update %s: %w", name, err)
-			}
-		}
-		return nil
-	}); err != nil {
-		ui.Warn(err.Error())
+	current := false
+	if !rebuild {
+		var note string
+		current, note = KompassCoreCurrent(func(script string) (string, error) {
+			out, err := exec.Command("bash", "-c", "source "+rosSetup+" && "+script).Output()
+			return string(out), err
+		})
+		ui.Info(note)
 	}
-
-	// Update kompass-core via GPU install script (download to file, not curl|bash)
-	ui.Info("Updating kompass-core...")
-	installGPUCmd := exec.Command("bash", "-c",
-		`tmpf=$(mktemp /tmp/install_gpu_XXXXXX.sh) && `+
-			`curl -fsSL https://raw.githubusercontent.com/automatika-robotics/kompass-core/main/build_dependencies/install_gpu.sh -o "$tmpf" && `+
-			`chmod +x "$tmpf" && bash "$tmpf" && rm -f "$tmpf"`)
-	installGPUCmd.Stdout = os.Stdout
-	installGPUCmd.Stderr = os.Stderr
-	if err := installGPUCmd.Run(); err != nil {
-		ui.Warn("kompass-core update failed: " + err.Error())
+	if !current {
+		// Update kompass-core via GPU install script (download to file)
+		ui.Info("Updating kompass-core...")
+		installGPUCmd := exec.Command("bash", "-c",
+			`tmpf=$(mktemp /tmp/install_gpu_XXXXXX.sh) && `+
+				`curl -fsSL https://raw.githubusercontent.com/automatika-robotics/kompass-core/main/build_dependencies/install_gpu.sh -o "$tmpf" && `+
+				`chmod +x "$tmpf" && bash "$tmpf" && rm -f "$tmpf"`)
+		installGPUCmd.Stdout = os.Stdout
+		installGPUCmd.Stderr = os.Stderr
+		if err := installGPUCmd.Run(); err != nil {
+			ui.Warn("kompass-core update failed: " + err.Error())
+		}
 	}
 
 	// Ensure rosdep is initialized and up to date
@@ -375,7 +336,7 @@ func UpdateNative(wsPath, distro string) error {
 	updateCmd.Stderr = os.Stderr
 	updateCmd.Run()
 
-	// -- Stage 1: Rebuild localization packages --
+	// -- Package dependencies --
 	rosdepCmd := fmt.Sprintf("source %s && sudo apt-get update && rosdep install --from-paths %s --ignore-src -y", rosSetup, srcDir)
 	cmd := exec.Command("bash", "-c", rosdepCmd)
 	cmd.Stdout = os.Stdout
@@ -384,26 +345,13 @@ func UpdateNative(wsPath, distro string) error {
 		ui.Warn("Some rosdep dependencies may have failed: " + err.Error())
 	}
 
-	locPkgs := "angles geographic_msgs robot_localization"
-	ui.Info("Rebuilding localization packages...")
-	buildCmd := fmt.Sprintf(
-		"source %s && cd %s && colcon build --merge-install --packages-select %s --cmake-args -DCMAKE_BUILD_TYPE=Release",
-		rosSetup, wsPath, locPkgs)
-	cmd = exec.Command("bash", "-c", buildCmd)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Env = cleanEnv()
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("localization build failed: %w", err)
-	}
-	if err := mergeIntoROS(filepath.Join(wsPath, "install"), rosPath); err != nil {
+	// -- Rebuild EMOS packages --
+	emosPkgs := strings.Join(StackPackages, " ")
+	ui.Info("Rebuilding EMOS packages...")
+	if err := CleanStackBuild(wsPath); err != nil {
 		return err
 	}
-
-	// -- Stage 2: Rebuild EMOS packages --
-	emosPkgs := "automatika_ros_sugar automatika_embodied_agents kompass kompass_interfaces"
-	ui.Info("Rebuilding EMOS packages...")
-	buildCmd = fmt.Sprintf(
+	buildCmd := fmt.Sprintf(
 		"unset VIRTUAL_ENV && source %s && cd %s && colcon build --merge-install --packages-select %s --cmake-args -DCMAKE_BUILD_TYPE=Release",
 		rosSetup, wsPath, emosPkgs)
 	cmd = exec.Command("bash", "-c", buildCmd)
@@ -451,27 +399,6 @@ func mergeIntoROS(installDir, rosPath string) error {
 	return nil
 }
 
-// geoBranch returns the git branch for geographic_info.
-// Only jazzy has a dedicated branch; all others use "ros2".
-func geoBranch(distro string) string {
-	if distro == "jazzy" {
-		return "jazzy"
-	}
-	return "ros2"
-}
-
-// installGeoLib installs the correct GeographicLib apt package.
-// Ubuntu 24.04+ renamed it to libgeographiclib-dev; older uses libgeographic-dev.
-// Matches the Dockerfile's fallback pattern.
-func installGeoLib() error {
-	cmd := exec.Command("sudo", "apt-get", "install", "-y", "libgeographiclib-dev")
-	if err := cmd.Run(); err != nil {
-		cmd = exec.Command("sudo", "apt-get", "install", "-y", "libgeographic-dev")
-		return cmd.Run()
-	}
-	return nil
-}
-
 // cleanEnv returns the current environment with VIRTUAL_ENV removed and PATH
 // cleaned of any venv bin directories, preventing stale venvs from interfering
 // with colcon builds.
@@ -497,6 +424,15 @@ func cleanEnv() []string {
 		env = append(env, e)
 	}
 	return env
+}
+
+// SyncWorkspace moves the git checkout at dir to ref on origin, a tag or a
+// branch.
+func SyncWorkspace(dir, ref string) error {
+	if err := runCmd(dir, "git", "fetch", "--depth", "1", "origin", ref); err != nil {
+		return err
+	}
+	return runCmd(dir, "git", "checkout", "--detach", "FETCH_HEAD")
 }
 
 func runCmd(dir string, name string, args ...string) error {

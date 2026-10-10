@@ -9,9 +9,8 @@
   const robot = useRobot();
 
   // Title priority: the device's unique EMOS name (/info) is the primary
-  // identity. A licensed manifest's explicit name wins if present;
-  // the robot model (e.g. from a plugin) shows in the subtitle. Hostname is the
-  // final fallback.
+  // identity. A robot's explicit name wins if present; the robot model (from
+  // its plugin) shows in the subtitle. Hostname is the final fallback.
   let title = $derived(
     $robot.data?.name ||
       $info.data?.name ||

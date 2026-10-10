@@ -1,0 +1,305 @@
+"""A native mapping session with GLIM on the robot plugin's LiDAR and IMU, and the
+map built from its clouds."""
+
+from __future__ import annotations
+
+import argparse
+import faulthandler
+import os
+import shutil
+import signal
+import subprocess
+import sys
+import time
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
+from ament_index_python.packages import PackageNotFoundError
+from ros_sugar import Launcher
+from ros_sugar.io import Topic
+from ros_sugar.robot import RobotPlugin, RosTopicTransport
+from ros_sugar.robot.cli import load_plugin_class
+from ros_sugar.robot.mapping import NativeMapping
+
+from .backend import (
+    ENVIRONMENTS,
+    apply_glim_settings,
+    backend_has_cuda,
+    backend_version,
+    glim_node,
+    glim_roles,
+    write_glim_config,
+)
+from .builder import MapBuilder, MapBuilderConfig
+
+# Topics the session publishes a plugin's own sensors on when the plugin
+# decodes them itself, namespaced to mapping.
+SESSION_CLOUD_TOPIC = "/emos_mapping/cloud"
+SESSION_IMU_TOPIC = "/emos_mapping/imu"
+
+# Where a debug session records its raw sensor data, in the map's directory
+DEBUG_BAG = os.path.join("debug", "bag")
+# Recorded besides the LiDAR and IMU: the transforms, for the sensors' mounts
+DEBUG_EXTRA_TOPICS = ("/tf", "/tf_static")
+
+
+def mapping_input(plugin, key: Optional[str], topic: str):
+    """Where the backend reads a mapping input, and what to publish there.
+
+    A feedback the plugin carries on a ROS topic is read where it already is. A
+    feedback the plugin decodes itself is requested to the plugin host to publish
+    on ``topic``, which is what the second return value is for.
+
+    :return: The topic the backend reads, and the feedback to publish there,
+        or ``None`` when it is on ROS already
+    """
+    if key is None:
+        return None, None
+    feedback = plugin.feedbacks.get(key)
+    if feedback is None:
+        raise ValueError(f"the plugin has no feedback '{key}'")
+    if isinstance(feedback.transport, RosTopicTransport):
+        return feedback.transport.topic_name, None
+    return topic, feedback
+
+
+def mount_heights(plugin) -> Dict[str, float]:
+    """Height above the base frame of each sensor frame the plugin mounts."""
+    return {
+        mount.child: float(mount.xyz[2])
+        for mount in plugin.mounts
+        if isinstance(mount.child, str)
+    }
+
+
+def imu_offset(declaration) -> Optional[Tuple[Tuple[float, ...], Tuple[float, ...]]]:
+    """The IMU's (xyz, rpy) in the LiDAR frame, when the declaration gives it."""
+    if declaration.imu_xyz is None:
+        return None
+    return declaration.imu_xyz, declaration.imu_rpy
+
+
+def origin_offset(
+    imu_topic: Optional[str],
+    lidar_imu: Optional[Tuple[Tuple[float, ...], Tuple[float, ...]]],
+) -> float:
+    """Height of GLIM's map origin above the LiDAR frame.
+
+    GLIM starts its map at the IMU when it fuses one, so the origin sits where
+    the IMU does in the LiDAR's frame. A tilted LiDAR mount is ignored: a few
+    millimetres for an IMU beside the LiDAR, more for one far from a tilted one.
+    """
+    if imu_topic is None or lidar_imu is None:
+        return 0.0
+    return float(lidar_imu[0][2])
+
+
+def debug_recorder(bag: str, topics: List[str]) -> List[str]:
+    """The command recording a debug session's raw sensor data into bag"""
+    return [
+        "ros2", "bag", "record", "--storage", "mcap", "--output", bag, "--topics", *topics
+    ]
+
+
+def stop_recorder(
+    recorder: subprocess.Popen, grace: float = 5.0, closing: float = 30.0
+) -> None:
+    """Let the recorder close its bag. The CLI's stop reaches it with the rest
+    of the session's process group; a session that ended by itself asks it."""
+    try:
+        recorder.wait(timeout=grace)
+        return
+    except subprocess.TimeoutExpired:
+        recorder.send_signal(signal.SIGINT)
+    try:
+        recorder.wait(timeout=closing)
+    except subprocess.TimeoutExpired:
+        recorder.kill()
+        recorder.wait()
+
+
+def map_directory(store: str, name: str) -> str:
+    return os.path.join(store, f"{name}-{datetime.now():%Y%m%d-%H%M%S}")
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    parser = argparse.ArgumentParser(prog="session", description=__doc__)
+    parser.add_argument(
+        "--plugin",
+        required=True,
+        help="robot plugin, as '<package.module>:<ClassName>'",
+    )
+    parser.add_argument(
+        "--name",
+        required=True,
+        help="map name; the directory gets a timestamp appended",
+    )
+    parser.add_argument(
+        "--store", help="maps directory (default: the plugin's declared store)"
+    )
+    parser.add_argument(
+        "--env",
+        choices=sorted(ENVIRONMENTS),
+        help="where the map is built, for GLIM's settings (default: GLIM's own)",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="also record the raw sensor data into the map's directory, for support",
+    )
+    args = parser.parse_args(argv)
+
+    # get plugin and its mapping declaration
+    try:
+        plugin = load_plugin_class(args.plugin)()
+    except (ImportError, AttributeError, ValueError) as e:
+        print(f"could not load plugin '{args.plugin}': {e}", file=sys.stderr)
+        return 2
+    if not isinstance(plugin, RobotPlugin) or not isinstance(
+        plugin.MAPPING, NativeMapping
+    ):
+        print(f"{args.plugin} does not declare native mapping", file=sys.stderr)
+        return 2
+    declaration = plugin.MAPPING
+    # get mapping topics, and the feedback the session has to put on ROS itself
+    try:
+        points_topic, publish_cloud = mapping_input(
+            plugin, declaration.cloud, SESSION_CLOUD_TOPIC
+        )
+        imu_topic, publish_imu = mapping_input(
+            plugin, declaration.imu, SESSION_IMU_TOPIC
+        )
+    except ValueError as e:
+        print(f"cannot map with {args.plugin}: {e}", file=sys.stderr)
+        return 2
+
+    try:
+        version = backend_version()
+        gpu = backend_has_cuda()
+    except PackageNotFoundError:
+        print("the mapping backend (GLIM) is not installed", file=sys.stderr)
+        return 2
+
+    unknown = sorted(set(declaration.custom_settings) - set(glim_roles()))
+    if unknown:
+        print(
+            f"cannot map with {args.plugin}: its GLIM settings name roles GLIM "
+            f"does not have: {', '.join(unknown)}",
+            file=sys.stderr,
+        )
+        return 2
+
+    if args.debug and shutil.which("ros2") is None:
+        print(
+            "debug mode records with 'ros2 bag', which is not installed",
+            file=sys.stderr,
+        )
+        return 2
+
+    # specify map store
+    store = os.path.expanduser(args.store or declaration.store)
+    directory = map_directory(store, args.name)
+    os.makedirs(directory)
+    # setup glim
+    glim_dir = os.path.join(directory, "glim")
+    lidar_imu = imu_offset(declaration)
+    config_dir = write_glim_config(
+        os.path.join(glim_dir, "config"),
+        points_topic,
+        imu_topic,
+        gpu=gpu,
+        lidar_imu=lidar_imu,
+        base_frame=plugin.base_frame,
+    )
+    settings, left_out = apply_glim_settings(
+        config_dir, [ENVIRONMENTS.get(args.env, {}), declaration.custom_settings]
+    )
+    if left_out:
+        print(
+            "GLIM settings the selected modules do not have, left out: "
+            + ", ".join(left_out),
+            flush=True,
+        )
+    dump_dir = os.path.join(glim_dir, "dump")
+
+    # setup map builder node
+    builder = MapBuilder(
+        "map_builder",
+        cloud_topic=Topic(
+            name=declaration.cloud, msg_type="PointCloud2", use_plugin=True
+        ),
+        config=MapBuilderConfig(
+            loop_rate=1.0,
+            output_dir=directory,
+            resolution=declaration.resolution,
+            z_min=declaration.z_min,
+            z_max=declaration.z_max,
+            mount_heights=mount_heights(plugin),
+            base_height=plugin.base_height if plugin.base_height is not None else 0.0,
+            origin_offset=origin_offset(imu_topic, lidar_imu),
+            cloud_topic_name=points_topic or "",
+            dump_dir=dump_dir,
+        ),
+    )
+    # launch
+    launcher = Launcher(robot_plugin=plugin)
+    # Request the plugin host to publish topics for feedbacks the plugin decodes
+    for feedback, topic in ((publish_cloud, points_topic), (publish_imu, imu_topic)):
+        if feedback is not None:
+            launcher.publish_plugin_feedback(feedback, topic)
+    launcher.add_pkg(
+        components=[builder], package_name="emos_mapping", multiprocessing=False
+    )
+    launcher.add_ros_node(**glim_node(config_dir, dump_dir))
+
+    metadata: Dict[str, Any] = {
+        "name": args.name,
+        "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "provider": "native",
+        "robot": {"plugin": args.plugin, "name": plugin.metadata.name},
+        "backend": {
+            "name": "glim",
+            "version": version,
+            "gpu": gpu,
+            "environment": args.env,
+            "settings": settings,
+        },
+        "inputs": {"cloud": points_topic, "imu": imu_topic, "lidar_imu": lidar_imu},
+        "band": {"z_min": declaration.z_min, "z_max": declaration.z_max},
+    }
+    recorder = None
+    if args.debug:
+        topics = [t for t in (points_topic, imu_topic) if t]
+        topics += DEBUG_EXTRA_TOPICS
+        bag = os.path.join(directory, DEBUG_BAG)
+        os.makedirs(os.path.dirname(bag))
+        recorder = subprocess.Popen(debug_recorder(bag, topics))
+        metadata["debug"] = {"bag": DEBUG_BAG, "topics": topics}
+        print(f"Recording the raw sensor data to {bag}", flush=True)
+    builder.metadata = metadata
+    # A hung session dumps every thread's stack into the log on SIGUSR1
+    faulthandler.register(signal.SIGUSR1, all_threads=True)
+
+    # Operator guidance is the CLI's; this only states the facts it needs.
+    print(f"Map directory: {directory}", flush=True)
+    started = time.time()
+    try:
+        launcher.bringup()
+    finally:
+        if recorder is not None:
+            stop_recorder(recorder)
+        # GLIM has exited by now, so its dump is complete
+        saved = builder.finish()
+        if saved:
+            print(f"Map saved: {directory} ({time.time() - started:.0f} s)", flush=True)
+        else:
+            print(
+                "No map written: GLIM produced no map",
+                file=sys.stderr,
+                flush=True,
+            )
+    return 0 if saved else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

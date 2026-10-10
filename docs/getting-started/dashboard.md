@@ -1,217 +1,177 @@
 # EMOS Dashboard
 
-The EMOS Dashboard is a web app that runs on your robot. Once you open it in a browser, you can browse and install recipes, start and stop them, and watch what they do — all without touching a terminal. It's the recommended way to use EMOS on a freshly unboxed robot.
+The dashboard is a web app that runs on the robot. Open it in a browser and you can install recipes from the catalog, start and stop them, watch their output, and see what the robot is and what it can do, all without a terminal. It ships with EMOS, so there is nothing extra to install, and on a freshly set up robot it is the easiest way to get going.
 
 ![EMOS Dashboard overview](../_static/images/dashboard_overview.png)
 
-## What you get
-
-- A **home page** that shows what your robot is, whether something is running, and one-click shortcuts to start a recipe.
-- A **recipes library** with a built-in catalog you can install from with one click.
-- A **plugins catalog** to install the robot plugin for your hardware in one click.
-- A **live console** that streams a recipe's output as it runs.
-- A **system page** that tells you the robot's name on the network, the URLs to open from other devices, and a QR code to scan with your phone.
-
-You don't need to install anything extra to use the dashboard — it ships with EMOS.
-
 ## Open it for the first time
 
-After you install EMOS, open a terminal on the robot and run:
+If you said yes when the installer offered to start the dashboard at boot, it is already running. Otherwise start it from a terminal on the robot:
 
 ```bash
 emos serve
 ```
 
-You'll see a block like this:
+Either way you will have seen a block like this, printed by the installer or by `emos serve`:
 
 ```text
 EMOS DASHBOARD
 
 Robot identity: rugged-juniper
 Reach the dashboard from a browser:
-  http://rugged-juniper.local:8765
-  http://localhost:8765
-  http://192.168.1.42:8765
-  http://emos.local:8765
+  https://rugged-juniper.local:8765
+  https://localhost:8765
+  https://192.168.1.42:8765
+  https://emos.local:8765
+
+TLS fingerprint (verify on first browser warning):
+  8B:F2:0C:...:E7
 
 Pairing code (shown once): 482917
+Enter it in the browser, or scan the QR below with a phone to auto-pair.
 Save it now — it is not stored in plaintext on disk.
 
   ▄▄▄▄▄▄▄  ▄ ▄▄  ▄▄▄▄▄▄▄
   █ ▄▄▄ █ ▀▄ ██  █ ▄▄▄ █ ...
 ```
 
-Three things to notice:
-
-1. **Robot identity** — your robot has been given a friendly name (`rugged-juniper` here). This is how you'll find it from your laptop or phone.
-2. **The URLs** — pick whichever one your laptop can reach. From the same Wi-Fi, `http://rugged-juniper.local:8765` usually works directly. If `.local` doesn't resolve (most Android phones), use the IP address — e.g. `http://192.168.1.42:8765`.
-3. **The pairing code** — six digits, shown only on first launch. You'll type it into the browser to grant that browser access.
+Three things in there matter. The **robot identity** is a friendly name the robot picked for itself (`rugged-juniper` here), and it is how you will find the robot from a laptop or a phone. The **URLs** are the addresses the dashboard answers at; from the same Wi-Fi, `https://rugged-juniper.local:8765` usually works, and if `.local` names do not resolve on your device (most Android phones), use the IP address instead. The **pairing code** is what you type into the browser to be let in.
 
 ```{important}
-The pairing code is shown **once**. If you lose it, you can mint a new one any time with `emos config rotate-pairing`.
+The pairing code is printed once and never stored in readable form on the robot. If you lose it, `emos config rotate-pairing` mints a new one.
 ```
 
 ### Pair the browser
 
 ![EMOS serve pairing flow](../_static/images/emos_serve_start.gif)
 
-Open one of the URLs in your browser. The dashboard notices it's the first visit and shows a **Pair** screen — type the six-digit code from the terminal and you're in. The browser remembers the pairing for ~90 days, so you won't have to do this again unless you clear cookies, switch browsers, or revoke the access.
+Open one of the URLs. The first thing the browser shows is a security warning, because the robot signs its own certificate. Compare the fingerprint in the browser's certificate details with the one printed above, then continue. You land on the **Pair** screen; type the six-digit code and you are in. The browser remembers the pairing for about 90 days, so you will not have to do this again unless you clear its storage, switch browsers, or revoke the access from the robot.
 
-To pair a phone the same way, point its camera at the QR code that the terminal printed; the QR opens the same Pair screen with the code pre-filled.
+A phone pairs even faster: point its camera at the QR code in the terminal. It opens the Pair screen with the code already filled in.
 
 ## Dashboard views
 
-The dashboard has seven pages. The sidebar (or the command palette — press {kbd}`Ctrl`+{kbd}`K` / {kbd}`⌘`+{kbd}`K` to open it) lets you jump between them.
+The sidebar has five pages: Console, Recipes, Plugins, Runs and System. You can also jump anywhere, or start a recipe, from the command palette, which opens with {kbd}`Ctrl`+{kbd}`K` or {kbd}`⌘`+{kbd}`K`.
 
-### Home
+### Console
 
 ![EMOS Dashboard Home](../_static/images/emos_dashboard_main.png)
 
-A one-glance view of the robot: identity, install status, how long it's been up, and what (if anything) is running right now. If you haven't installed any recipes yet, you'll see a friendly card suggesting one to try first.
+The home page. It shows what the robot is, how it is installed, how many recipes it has and whether one is running right now. The first three installed recipes get a **Run** button right here, and the most recent runs are listed underneath. On a robot with no recipes yet, it points you to the catalog.
 
 ### Recipes
 
 ![EMOS Recipe Pulling](../_static/images/emos_recipe_pull.gif)
 
-The library, with two tabs:
+Your recipe library, in two tabs. **Installed** is what is on the robot. **Catalog** is what Automatika publishes and you can install with one click: press **Get** on a card and the recipe downloads in the background, then moves over to the Installed tab when it is done. **Details** opens a page with the full description before you decide.
 
-- **Installed** — what's already on this robot.
-- **Catalog** — recipes published by Automatika that you can install with one click.
-
-Tap **Get** on a catalog card and the recipe downloads in the background; the card fills in as it progresses and shows up under Installed when it's done. If your robot is offline, the Catalog tab will tell you so — your already-installed recipes will keep working, you just can't browse the catalog until the robot can reach the internet.
-
-```{tip}
-The bar at the top of the page shows whether your robot is currently online. It refreshes itself every few seconds, so you'll know immediately if connectivity comes back.
-```
+The catalog needs the robot to be online. If it is not, the tab says so, and everything already installed keeps working in the meantime; the cloud icon in the page header tells you when the robot can reach the internet again.
 
 ### Recipe Detail
 
 ![EMOS Recipe Details](../_static/images/emos_recipe_details.png)
 
-Click any installed recipe to see what it does. The page shows:
-
-- A short description.
-- The **sensors** the recipe expects (camera, lidar, microphone, …) — and, when relevant, suggested driver packages to install if a sensor is missing.
-- Recent runs of this recipe.
-- A **Run** button.
-
-If a sensor your recipe needs isn't connected, the run will warn you up-front rather than silently hanging.
+Open an installed recipe to see its description and the topics it uses. Each topic is marked with where it comes from: the robot plugin, a named sensor plugin, a plain ROS sensor topic, or some other topic. If a recipe needs a robot or sensor plugin that is not installed, the page says so and links you to the Plugins page. The **Run** button starts the recipe and takes you to its live console. Only one recipe runs at a time, so while one is running the button waits until you stop it.
 
 ### Plugins
 
-<!-- TODO screenshot: Plugins page — catalog grid + the active-plugin card -->
-<!-- ![EMOS Plugins page](../_static/images/emos_plugins.png) -->
+<!-- TODO screenshot: Plugins page, installed robot + sensor cards above the catalog -->
 
-The catalog of **robot plugins** — the package that teaches EMOS how to talk to your specific robot. A robot runs one plugin at a time; the active one is shown at the top.
+A robot runs one robot plugin plus any number of sensor plugins, and this page is where you manage both. Installed plugins are shown at the top, the robot first and the sensors below it, each with its description and a count of the feeds, actions and events it provides, and a **Remove** button. Below that is the catalog. **Install** puts a robot plugin on a robot that has none, **Replace robot** swaps it for another one, **Add** adds a sensor plugin, and **Reinstall** refreshes a plugin that is already there. Progress streams onto the card while a plugin is being fetched and built.
 
-- Browse the published plugins, each with its vendor, picture, and description.
-- Tap **Install** on a card to fetch, build, and activate it. Progress streams live on the card the same way recipe pulls do; the active plugin then powers the robot identity on the **System** page.
-- **Reinstall** or **Remove** the active plugin from the same page.
-
-Installing here is the browser equivalent of `emos plugin install`. For the full flow and the CLI commands, see [Robot Plugins](plugins.md).
+This is the browser side of `emos plugin`. [Plugins](plugins.md) has the whole story.
 
 ### Runs
 
-A timeline of every recipe you've run recently. Click any row to open its console.
+<!-- TODO screenshot: Runs page, the list of recent runs -->
+
+Every recipe run, newest first, with its status and how long it took. Click one to open its console.
 
 ### Run Console
 
 ![EMOS Runs Console](../_static/images/emos_recipe_runs.png)
 
-The live view of a running recipe. Output streams in real time, with colour and a follow-tail toggle so you can scroll back without losing your place. Closing the browser tab does **not** stop the recipe — there's a **Stop** button for that.
-
-The status pill at the top tells you whether the recipe is starting up, running, finished, failed, or was cancelled.
+The live view of a run. Output arrives as it happens, in colour, with a filter box and a level filter for when there is a lot of it, and a tail button to jump back to the end. The pill at the top says whether the recipe is starting, running, finished, failed, or was stopped, and while it runs there is a **Stop** button. Closing the tab does not stop the recipe.
 
 ### System
 
 ![EMOS System View](../_static/images/emos_system_view.png)
 
-This is the page you'll want when you need to invite a phone or another laptop to the same robot. It shows:
+Everything about the robot itself. When a robot plugin is installed, the page opens with the robot: its picture, model and vendor, and the sensors, other feeds, actions and events the plugin exposes. Sensor plugins get a card each. Below that come the install details (version, mode, ROS distribution, the recipe and log directories), what the robot can do (Docker, pixi, pulling and running recipes), and its connectivity, with a button to check again.
 
-- The robot's name and how to reach it (mDNS name, IP addresses).
-- A **QR code** to scan from another device — opens the same Pair screen on that device.
-- A list of paired browsers (you can revoke any of them).
-- Robot install info (mode, ROS distribution, version) and a button to copy any field.
-- The **active robot**, when a [plugin](#plugins) is installed: its picture, model, vendor, and the actions and events it exposes. Your robot keeps its unique EMOS name as the title — the plugin's name is shown as the model alongside it.
+The last card, **This browser**, shows the address to use from another device on the same network, and a **Sign out** button that forgets this browser's pairing.
 
 ## Inviting another phone or laptop
 
-Open the **System** page on a device that's already paired, and either:
-
-- Have the new device scan the QR code, or
-- Type the code into the new device's browser at the same URL.
-
-Both devices end up paired against the same robot.
-
-## I lost the pairing code
-
-The robot doesn't keep the code in readable form on disk for security reasons. To issue a new one:
-
-```bash
-emos config rotate-pairing
-```
-
-Already-paired browsers stay paired — this just creates a fresh code for the next device that wants in.
+Pairing happens per browser, and there are two ways to bring another device in. Have it scan the QR code that `emos serve` prints, which fills the code in for it, or open the dashboard address on the new device and type the code. If the code is long gone, `emos config rotate-pairing` prints a fresh one. Browsers that are already paired stay paired.
 
 ## Make the dashboard start automatically
 
-If you'd rather not run `emos serve` by hand each time, ask the robot to run it at boot:
+The installer offers this, but you can turn it on at any later time:
 
 ```bash
-sudo emos serve install-service
+emos serve install-service
 ```
 
-The `emos install` flow already offers to do this for you. To turn it off later:
+Run it as your user, not with `sudo`; it escalates on its own where it must. From then on the dashboard comes up at boot as a systemd service, and `emos serve` only prints the access details instead of starting a second one. To turn it off again:
 
 ```bash
-sudo emos serve uninstall-service
+emos serve uninstall-service
 ```
 
 ## Naming your robot
 
-Every robot is given a friendly name on first boot — `rugged-juniper`, `swift-eagle`, that kind of thing. It survives reboots and reinstalls so you can always type `http://<name>.local:8765` and find it. To pick your own:
+The friendly name the robot gave itself survives reboots and reinstalls, so `https://<name>.local:8765` keeps working. To pick a name of your own:
 
 ```bash
 emos config set name happy-robot
 sudo systemctl restart emos-dashboard.service   # if running at boot
 ```
 
-## Manage paired devices
+Names are lowercase letters, digits and dashes.
 
-To see who has access to your robot:
+## Security
 
-```bash
-emos config tokens
-```
+The dashboard is meant to be reachable only on the robot's local network, and it is protected in two ways: every connection is encrypted, and every request needs a paired browser.
 
-To remove a single device by its label or short ID:
+### The certificate
 
-```bash
-emos config revoke-token phone
-```
-
-To revoke everyone at once and start over:
+The dashboard serves HTTPS with a certificate the robot creates for itself the first time `emos serve` or `emos run` runs, kept in `~/emos/.ui-security/`. Because no public authority signed it, browsers warn about it on first contact. The warning is about trust, not encryption: the connection is encrypted either way. To make sure you are talking to your robot and not to something in between, compare the fingerprint the browser shows under its certificate details with the one from the robot:
 
 ```bash
-emos config rotate-pairing   # fresh code; existing tokens still valid
+emos config tls-fingerprint
 ```
 
-```{tip}
-You can also see and revoke paired devices from the dashboard's **System** page.
+Once they match, continue past the warning. To stop the warning from coming back, import `~/emos/.ui-security/tls.crt` into the browser's trust store: in Firefox under *Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import*, ticking "Trust this CA to identify websites"; in Chrome and Edge through the operating system's store (`update-ca-certificates` on Linux, Keychain Access on macOS, `certmgr.msc` on Windows).
+
+The certificate lists the robot's name and the network addresses it had when it was created. After the robot moves to another network, or you rename it, make a new one and restart the dashboard:
+
+```bash
+emos config tls-regenerate
+sudo systemctl restart emos-dashboard.service
 ```
 
-## A note on browser security warnings
+Recipe web UIs use the same certificate, so a browser that trusts the dashboard trusts them too.
 
-The dashboard runs over plain `http://` by default, on your local network only. That's the right default for a home or workshop — your robot is reachable to devices on your Wi-Fi but not to the wider internet, and the pairing code is what gates access.
+### Paired browsers
 
-If you'd like the lock icon in the browser address bar, there's an opt-in HTTPS mode using a self-signed certificate — see [HTTPS (Optional)](cli.md#https-optional) in the CLI reference for setup, fingerprint verification, and how to add the certificate to your browser's trust store so the warning goes away permanently.
+A paired browser holds a token that is valid for about 90 days. You can see who is paired and revoke any of them from the robot:
+
+```bash
+emos config tokens                     # list paired browsers
+emos config revoke-token phone         # by label, or by the short id
+emos config rotate-pairing             # fresh pairing code; paired browsers stay paired
+emos config reset                      # revoke everyone and start over
+```
+
+A running dashboard picks up a rotated code straight away. Requests to the dashboard's port over plain HTTP are redirected to HTTPS; `emos serve --no-tls` and `--no-auth` exist for development on a laptop and nothing else.
 
 ```{seealso}
-[CLI Reference](cli.md) for the commands the dashboard runs under the hood. Advanced users who want to integrate with their own tools can look at [`internal/server/openapi.yaml`](https://github.com/automatika-robotics/emos/blob/main/stack/emos-cli/internal/server/openapi.yaml) for the dashboard's REST API.
+[CLI Reference](cli.md) for the commands behind the dashboard. Advanced users who want to integrate with their own tools can look at [`internal/server/openapi.yaml`](https://github.com/automatika-robotics/emos/blob/main/stack/emos-cli/internal/server/openapi.yaml) for the dashboard's REST API.
 ```
 
 ## Trouble?
 
 ```{seealso}
-[Troubleshooting](troubleshooting.md) — the **Dashboard** section covers the common bumps: lost pairing code, can't open `emos.local`, the dashboard says "not installed" even though I installed something, and similar.
+[Troubleshooting](troubleshooting.md) covers the common bumps: a lost pairing code, `emos.local` not resolving, the certificate warning coming back, and a dashboard that says "not installed" even though EMOS is installed.
 ```

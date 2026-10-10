@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/automatika-robotics/emos-cli/internal/config"
@@ -53,9 +54,11 @@ func TestHandleInfoWithInstall(t *testing.T) {
 	s := newTestServer(t, false)
 	s.opts.DeviceName = "swift-eagle"
 	s.cfg = &config.EMOSConfig{
-		Mode:       config.ModeNative,
-		ROSDistro:  "jazzy",
-		LicenseKey: "secret",
+		Mode:      config.ModeNative,
+		ROSDistro: "jazzy",
+	}
+	if err := config.SaveLicense(&config.License{Key: "secret", PluginSlug: "emos-plugin-lite3"}); err != nil {
+		t.Fatal(err)
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/info", nil)
@@ -78,8 +81,8 @@ func TestHandleInfoWithInstall(t *testing.T) {
 		t.Fatalf("license_present = %v, want true", body["license_present"])
 	}
 	// The raw license must never be returned over the wire.
-	if v, ok := body["license_key"]; ok {
-		t.Fatalf("license_key leaked in /info body: %v", v)
+	if strings.Contains(rec.Body.String(), "secret") {
+		t.Fatalf("the license key leaked in the /info body: %s", rec.Body.String())
 	}
 }
 

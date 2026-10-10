@@ -6,7 +6,7 @@
 
 - <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`smart_toy;1.2em;sd-text-primary` Production-Ready Physical Agents</span> -- Designed for autonomous systems in dynamic, real-world environments. Components are built around ROS2 Lifecycle Nodes with deterministic startup, shutdown, and error-recovery. Health monitoring, fallback behaviors, and graceful degradation are built in from the ground up.
 
-- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`autorenew;1.2em;sd-text-primary` Self-Referential and Event-Driven</span> -- Agents can start, stop, or reconfigure their own components based on internal and external events. Switch from cloud to local inference, swap planners based on vision input, or adjust behavior on the fly. In the spirit of [Godel machines](https://en.wikipedia.org/wiki/G%C3%B6del_machine), agents become capable of introspecting and modifying their own execution graph at runtime.
+- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`autorenew;1.2em;sd-text-primary` Self-Referential and Event-Driven</span> -- Agents can start, stop, or reconfigure their own components based on internal and external events. Switch from cloud to local inference, swap planners based on vision input, or adjust behavior on the fly. Decision models turn what the robot hears and sees into typed answers with probabilities, in one forward pass, so an event can act on them. In the spirit of [Godel machines](https://en.wikipedia.org/wiki/G%C3%B6del_machine), agents become capable of introspecting and modifying their own execution graph at runtime.
 
 - <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`hub;1.2em;sd-text-primary` Semantic Memory & Agentic Planning</span> -- Hierarchical spatio-temporal memory and semantic routing for arbitrarily complex agentic information flow. The graph-backed [Memory](memory.md) component keeps an episodic, entity-aware record of what the robot perceives *and* of its own internal state, while [Cortex](cortex.md) turns plain-language goals into ordered calls against every component in the graph -- no bloated GenAI frameworks required.
 
@@ -29,6 +29,13 @@ Robots that listen, see, and speak -- microphone in, visually-grounded answer ou
 :link-type: doc
 
 One sentence in, the right capability fires. *"How tall is Everest?"* wakes the LLM. *"What do you see?"* wakes the VLM. *"Take me to the kitchen."* dispatches the navigation stack. Behavior emerges from intent.
+:::
+
+:::{grid-item-card} {material-regular}`rule;1.2em;sd-text-primary` Robots That Decide in Milliseconds
+:link: ../recipes/foundation/decision-models
+:link-type: doc
+
+*"Was that meant for me?"* *"Is the task done?"* *"Which room is this?"* A decision model answers typed questions in one forward pass, with a probability an event can act on, and never generates a word.
 :::
 
 :::{grid-item-card} {material-regular}`precision_manufacturing;1.2em;sd-text-primary` Robots That Pick Up What You Mean

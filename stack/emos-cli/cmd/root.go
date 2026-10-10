@@ -11,10 +11,12 @@ var rootCmd = &cobra.Command{
 	Short: "EmbodiedOS Management CLI",
 	Long:  "EMOS CLI manages the EmbodiedOS container, recipes, and mapping on your robot.",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Arguments are validated before this runs.
+		cmd.SilenceUsage = true
 		config.Init()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		ui.Banner(config.Version)
+		banner()
 		cmd.Help()
 	},
 }
@@ -23,7 +25,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Show the current CLI version",
 	Run: func(cmd *cobra.Command, args []string) {
-		ui.Banner(config.Version)
+		banner()
 		ui.StatusCard(config.Version)
 		printUpdateAvailable()
 	},
@@ -45,5 +47,6 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(mapCmd)
 	rootCmd.AddCommand(pluginCmd)
+	rootCmd.AddCommand(licenseCmd)
 	// serveCmd registers in init() within serve.go
 }

@@ -30,13 +30,17 @@
   let title = $derived(
     ('display_name' in recipe && recipe.display_name) || recipe.name
   );
-  let description = $derived(local?.description || (state === 'remote' ? 'In the catalog — pull to install on this device.' : ''));
+  let description = $derived(
+    recipe.description || (state === 'remote' ? 'In the catalog — pull to install on this device.' : ''),
+  );
+  // The version of the recipe: the installed one, or the one this robot gets from the catalog
+  let version = $derived('version' in recipe ? recipe.version : undefined);
+  let unlicensed = $derived(local ? undefined : (recipe as RemoteRecipe).unlicensed);
 
-  // Tags from manifest if present (e.g. ["agent","mllm","vision"]).
+  // Tags: the catalog's for a remote recipe, the manifest's for an installed one.
   let tags = $derived.by(() => {
-    if (!local?.manifest) return [] as string[];
-    const t = (local.manifest as any).tags;
-    return Array.isArray(t) ? t.slice(0, 3) : [];
+    const t = local ? (local.manifest as any)?.tags : (recipe as RemoteRecipe).tags;
+    return Array.isArray(t) ? (t as string[]).slice(0, 3) : [];
   });
 </script>
 
@@ -48,7 +52,9 @@
   <div class="flex items-start justify-between gap-3">
     <div class="min-w-0 flex-1">
       <h3 class="text-base font-medium truncate">{title}</h3>
-      <div class="text-xs text-emos-text-3 truncate font-mono">{recipe.name}</div>
+      <div class="text-xs text-emos-text-3 truncate font-mono">
+        {recipe.name}{#if version}<span class="ml-2 font-sans">· {version}</span>{/if}
+      </div>
     </div>
     {#if state === 'installed'}
       <span class="pill pill-good"><CheckCircle2 size={12} /> installed</span>
@@ -69,6 +75,10 @@
     <div class="flex flex-wrap gap-1.5 mt-1">
       {#each tags as t}<span class="pill text-[0.7rem]">{t}</span>{/each}
     </div>
+  {/if}
+
+  {#if unlicensed}
+    <div class="text-xs text-emos-text-3">A version made for the {unlicensed} is available with a license.</div>
   {/if}
 
   {#if state === 'pulling' && job}
@@ -96,6 +106,7 @@
       <button class="btn btn-primary" onclick={onPull} disabled={busy}>
         <Download size={14} /> Get
       </button>
+      <a class="btn btn-ghost" use:link href={'/catalog/' + encodeURIComponent(recipe.name)}>Details</a>
     {:else if state === 'pulling'}
       <button class="btn btn-ghost" disabled><Loader2 size={14} class="animate-spin" /> downloading</button>
     {/if}
@@ -109,6 +120,7 @@
   .line-clamp-3 {
     display: -webkit-box;
     -webkit-line-clamp: 3;
+    line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }

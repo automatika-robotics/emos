@@ -26,7 +26,7 @@ type Options struct {
 	DeviceName  string // human-friendly device name, used by mDNS + dashboard UI
 	DisableMDNS bool   // skip zeroconf publication
 	DisableAuth bool   // dev only: accept all requests
-	EnableTLS   bool   // opt-in HTTPS via a self-signed cert; off by default
+	DisableTLS  bool   // dev only: plain HTTP instead of HTTPS with the robot's certificate
 	UI          fs.FS  // embedded SPA; nil disables the UI
 	Logger      *slog.Logger
 }
@@ -34,6 +34,14 @@ type Options struct {
 // Server bundles every subsystem the daemon needs. Handlers are methods on
 // Server so they can read `s.runtime`, `s.jobs`, `s.auth` without DI plumbing.
 type Server struct {
+	// wg tracks the run goroutines (preflight + cleanup) so shutdown can
+	// join them.
+	wg sync.WaitGroup
+
+	// workMu makes claiming the recipe slot and taking the plugin lock
+	// mutually exclusive, so a run and a plugin change never both start.
+	workMu sync.Mutex
+
 	cfg    *config.EMOSConfig
 	opts   Options
 	log    *slog.Logger
@@ -48,6 +56,8 @@ type Server struct {
 	startedAt time.Time
 
 	httpServer *http.Server
+	redirect   *http.Server       // answers plain HTTP on the TLS port
+	endStreams context.CancelFunc // cancels every request's context at shutdown
 	mdns       *mdnsRegistrations
 	tlsInfo    *tlsca.Info // nil when serving plain HTTP
 
@@ -106,7 +116,7 @@ func New(opts Options) (*Server, error) {
 		sseTickets: newSSETicketStore(),
 		startedAt:  time.Now(),
 	}
-	if opts.EnableTLS {
+	if !opts.DisableTLS {
 		info, err := tlsca.Ensure(opts.DeviceName)
 		if err != nil {
 			return nil, fmt.Errorf("tls: %w", err)
@@ -117,8 +127,8 @@ func New(opts Options) (*Server, error) {
 	return s, nil
 }
 
-// TLSInfo returns the active TLS certificate info, or nil when running
-// in --no-tls mode. Used by the CLI to print the cert fingerprint.
+// TLSInfo returns the active TLS certificate info, or nil with --no-tls. Used
+// by the CLI to print the cert fingerprint.
 func (s *Server) TLSInfo() *tlsca.Info { return s.tlsInfo }
 
 // Scheme returns "https" or "http" depending on whether TLS is active.
@@ -150,19 +160,16 @@ func (s *Server) Run(ctx context.Context) error {
 		s.mdns = mdnsRegs
 	}
 
-	s.httpServer = &http.Server{
-		Addr:              s.opts.Addr,
-		Handler:           s.router,
-		ReadHeaderTimeout: 10 * time.Second,
-		// Route the stdlib's internal log output (TLS handshake errors,
-		// "URL query contains semicolon", etc.) through slog so noisy
-		// LAN probes don't flood stderr at INFO.
-		ErrorLog: stdlog.New(&slogErrorWriter{log: s.log}, "", 0),
+	ln, err := net.Listen("tcp", s.opts.Addr)
+	if err != nil {
+		return err
 	}
+	s.httpServer = s.newHTTPServer()
 	if s.tlsInfo != nil {
-		s.httpServer.TLSConfig = &tls.Config{
-			Certificates: []tls.Certificate{s.tlsInfo.TLSCert},
-			MinVersion:   tls.VersionTLS12,
+		s.redirect = &http.Server{
+			Handler:           http.HandlerFunc(redirectToHTTPS),
+			ReadHeaderTimeout: 10 * time.Second,
+			ErrorLog:          s.httpServer.ErrorLog,
 		}
 	}
 
@@ -172,13 +179,15 @@ func (s *Server) Run(ctx context.Context) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		s.log.Info("dashboard listening", "addr", s.opts.Addr, "scheme", s.Scheme())
+		s.log.Info("dashboard listening", "addr", ln.Addr().String(), "scheme", s.Scheme())
 		var err error
 		if s.tlsInfo != nil {
+			tlsConns, plainConns := splitTLS(ln)
+			go s.redirect.Serve(plainConns)
 			// Cert + key are already in TLSConfig, so the file paths can be empty.
-			err = s.httpServer.ListenAndServeTLS("", "")
+			err = s.httpServer.ServeTLS(tlsConns, "", "")
 		} else {
-			err = s.httpServer.ListenAndServe()
+			err = s.httpServer.Serve(ln)
 		}
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
@@ -194,11 +203,96 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	return s.stop()
+}
 
+// newHTTPServer builds the dashboard's HTTP server. Every request's context
+// derives from one that s.endStreams cancels.
+func (s *Server) newHTTPServer() *http.Server {
+	base, endStreams := context.WithCancel(context.Background())
+	s.endStreams = endStreams
+	srv := &http.Server{
+		Addr:              s.opts.Addr,
+		Handler:           s.router,
+		ReadHeaderTimeout: 10 * time.Second,
+		BaseContext:       func(net.Listener) context.Context { return base },
+		// Route the stdlib's internal log output through slog so noisy
+		// LAN probes don't flood stderr at INFO.
+		ErrorLog: stdlog.New(&slogErrorWriter{log: s.log}, "", 0),
+	}
+	if s.tlsInfo != nil {
+		srv.TLSConfig = &tls.Config{
+			Certificates: []tls.Certificate{s.tlsInfo.TLSCert},
+			MinVersion:   tls.VersionTLS12,
+		}
+	}
+	return srv
+}
+
+// httpShutdownTimeout bounds the wait for in-flight requests at shutdown.
+const httpShutdownTimeout = 5 * time.Second
+
+// stop shuts the daemon down: ends streaming responses, waits for in-flight
+// requests, then stops the active run and joins its goroutines.
+func (s *Server) stop() error {
 	s.mdns.Shutdown()
-	return s.httpServer.Shutdown(shutdownCtx)
+
+	// A run or job log stream stays open for as long as what it follows, so
+	// Shutdown would otherwise wait out its whole timeout on any open tab.
+	s.endStreams()
+	ctx, cancel := context.WithTimeout(context.Background(), httpShutdownTimeout)
+	defer cancel()
+	err := s.httpServer.Shutdown(ctx)
+	if s.redirect != nil {
+		s.redirect.Close()
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		// A slow request is not a failed stop; it must not fail the unit.
+		s.log.Warn("shutdown: requests still in flight were abandoned")
+		err = nil
+	}
+
+	// With no request in flight nothing can start another run.
+	s.drainRuns(runDrainTimeout)
+	return err
+}
+
+// runDrainTimeout bounds the shutdown wait for the active run to stop and its
+// goroutines to finish. The recipe is killed after runStopGrace, which leaves
+// time for the cleanup to run.
+const runDrainTimeout = 25 * time.Second
+
+// goTracked runs fn on a goroutine registered with the shutdown WaitGroup.
+func (s *Server) goTracked(fn func()) {
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		fn()
+	}()
+}
+
+// drainRuns cancels the active run, if any, and joins the tracked run
+// goroutines so strategy.Cleanup() gets to execute before the process
+// exits. A goroutine stuck mid-preflight past its next cancel checkpoint is logged
+// and abandoned rather than hanging the stop.
+func (s *Server) drainRuns(timeout time.Duration) {
+	deadline := time.After(timeout)
+	if cur := s.runtime.Current(); cur != nil {
+		s.log.Info("shutdown: stopping active run", "id", cur.ID, "recipe", cur.Recipe)
+		if err := s.runtime.Cancel(cur.ID); err != nil {
+			s.log.Warn("shutdown: cancel run", "err", err)
+		}
+	}
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-deadline:
+		s.log.Warn("shutdown: run goroutines did not finish in time; exiting anyway")
+	}
 }
 
 // PairingCode returns the freshly-generated pairing code (one-time per process)
@@ -223,9 +317,7 @@ func (s *Server) refreshUpdatesLoop(ctx context.Context) {
 }
 
 // tryRefreshUpdates performs a single best-effort GitHub releases lookup.
-// Skipped entirely when connectivity is known-offline (avoids burning a
-// fetch on a slow-failing DNS during early boot, when network-online
-// hasn't actually settled yet).
+// Skipped entirely when connectivity is known-offline.
 func (s *Server) tryRefreshUpdates(ctx context.Context) {
 	if !s.conn.Online(ctx) {
 		s.log.Debug("update check skipped: offline")

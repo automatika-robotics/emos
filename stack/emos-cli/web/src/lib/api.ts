@@ -1,6 +1,4 @@
-// Typed fetch wrapper around the EMOS REST API. Hand-written rather than
-// generated from openapi.yaml; the surface is small enough that the
-// type-safety win from a generator wouldn't outweigh the build-step cost.
+// Typed fetch wrapper around the EMOS REST API.
 
 import { getToken, clearToken } from './auth';
 
@@ -29,6 +27,7 @@ export class ApiException extends Error {
 
 export interface Info {
   version: string;
+  channel?: 'stable' | 'dev'; // dev = nightly builds, sticky until the stable installer is run again
   name: string;            // human-friendly device identity (e.g. "epic-otter")
   started_at: string;
   uptime: string;
@@ -48,6 +47,20 @@ export interface Info {
   // the first successful refresh; absent on offline boots.
   latest_version?: string;
   update_available?: boolean;
+}
+
+// The license stored on the robot. The key is never sent.
+export interface License {
+  licensed: boolean;
+  holder?: string;
+  robot?: string;
+  plugin_slug?: string;
+  tier?: string;
+  serial_number?: string;
+  activated_at?: string;
+  verified_at?: string;
+  support_url?: string;   // licensed installs
+  sales_email?: string;   // unlicensed installs
 }
 
 export interface Capabilities {
@@ -79,29 +92,58 @@ export interface RobotInfo {
   source: string;
 }
 
-// CatalogPlugin is a robot-plugin registry entry (GET /plugins/remote).
+// PluginRole: a robot runs one robot plugin plus any number of sensor plugins.
+export type PluginRole = 'robot' | 'sensor';
+
+// CatalogPlugin is a plugin registry entry (GET /plugins/remote).
 export interface CatalogPlugin {
   slug: string;
   name: string;
   vendor: string;
+  role: PluginRole;
   description: string;
   tags: string[];
   entry_point: string;
 }
 
-// ActivePlugin is the installed plugin plus its cached describe() tree.
-export interface ActivePlugin {
+// PluginDescribe is the part of a plugin's cached describe() tree the
+// dashboard reads.
+export interface PluginDescribe {
+  role?: string;
+  metadata?: { name?: string; vendor?: string; version?: string; description?: string };
+  feedbacks?: { key: string; msg_type?: string }[];
+  actions?: { name: string }[];
+  events?: { name: string }[];
+}
+
+// InstalledPlugin is one installed plugin plus its cached describe() tree.
+export interface InstalledPlugin {
   slug: string;
   entry_point: string;
+  role: PluginRole;
   repo: string;
   ref?: string;
-  describe?: unknown;
+  image_url?: string;
+  sources?: string[];     // driver packages built from source alongside it
+  describe?: PluginDescribe;
+  installed_at: string;
+}
+
+// pluginName is how the dashboard names a plugin: its declared name, else its slug.
+export const pluginName = (p: InstalledPlugin): string => p.describe?.metadata?.name ?? p.slug;
+
+// InstalledPlugins is GET /plugins/installed: the robot (or null) and the
+// sensor plugins mounted alongside it.
+export interface InstalledPlugins {
+  robot: InstalledPlugin | null;
+  sensors: InstalledPlugin[];
 }
 
 export interface LocalRecipe {
   name: string;
   display_name?: string;
   description?: string;
+  version?: string;      // the installed version: generic, Lite3, Lite3 + HIKMICRO
   path: string;
   has_recipe_py: boolean;
   manifest?: Record<string, unknown>;
@@ -110,12 +152,18 @@ export interface LocalRecipe {
 export interface RemoteRecipe {
   name: string;          // slug — used for /pull and /run
   display_name?: string; // human-readable label
+  description?: string;
+  tags?: string[];
+  version: string;       // the version this robot gets: generic, Lite3, Lite3 + HIKMICRO
+  unlicensed?: string;   // the robot a version is made for, offered with a license
 }
 
 export interface ExtractedTopic {
   name: string;
   msg_type: string;
   is_sensor: boolean;
+  use_plugin?: boolean; // carried by a plugin: the robot plugin, or plugin_id
+  plugin_id?: string;
 }
 
 export interface RecipeDetail extends LocalRecipe {
@@ -188,6 +236,7 @@ export const api = {
   health: () => request<{ status: string; version: string; uptime: string }>('/health'),
   info: () => request<Info>('/info'),
   capabilities: () => request<Capabilities>('/capabilities'),
+  license: () => request<License>('/license'),
   connectivity: (refresh = false) =>
     request<Connectivity>(refresh ? '/connectivity?refresh=1' : '/connectivity'),
 
@@ -215,13 +264,14 @@ export const api = {
     request<{ job_id: string }>(`/recipes/${encodeURIComponent(name)}/pull`, { method: 'POST' }),
 
   pluginsRemote: () => request<CatalogPlugin[]>('/plugins/remote'),
-  pluginActive: () => request<ActivePlugin>('/plugins/active'),
+  pluginsInstalled: () => request<InstalledPlugins>('/plugins/installed'),
   pluginInstall: (slug: string) =>
     request<{ job_id: string }>(`/plugins/${encodeURIComponent(slug)}/install`, { method: 'POST' }),
-  pluginRemove: () => request<void>('/plugins/active', { method: 'DELETE' }),
+  pluginRemove: (slug: string) =>
+    request<{ job_id: string }>(`/plugins/${encodeURIComponent(slug)}`, { method: 'DELETE' }),
 
   runs: () => request<Run[]>('/runs'),
-  runStart: (recipe: string, opts: { rmw?: string; skip_sensor_check?: boolean } = {}) =>
+  runStart: (recipe: string, opts: { rmw?: string } = {}) =>
     request<Run>('/runs', { method: 'POST', body: JSON.stringify({ recipe, ...opts }) }),
   runGet: (id: string) => request<Run>(`/runs/${encodeURIComponent(id)}`),
   runCancel: (id: string) =>

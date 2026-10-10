@@ -205,6 +205,11 @@
     </div>
   </div>
 
+  <p class="text-sm text-emos-text-3 max-w-2xl">
+    A <strong>recipe</strong> is a behaviour for your robot. Pull one from the catalog or drop
+    your own into the recipes folder, then run it from here.
+  </p>
+
   {#if tab === 'installed'}
     {#if installedFiltered.length}
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -1,17 +1,57 @@
 package runner
 
+import (
+	"errors"
+	"fmt"
+	"io"
+	"os/exec"
+
+	"github.com/automatika-robotics/emos-cli/internal/config"
+)
+
 // RuntimeStrategy defines the interface for mode-specific recipe execution.
-//
-// ExecRecipe runs the recipe synchronously (used by the CLI `emos run` path).
-// StartRecipe starts the recipe in the background and returns a handle the
-// caller can Wait on or Cancel (used by the `emos serve` daemon).
 type RuntimeStrategy interface {
 	PrepareEnvironment() error
-	SetRMWImpl(rmw string) error
-	ConfigureZenoh(recipeName string, manifest *recipeManifest) error
-	LaunchRobotHardware() error
-	VerifySensorTopics(sensors []ExtractedTopic, distro string) error
-	ExecRecipe(recipeName string, manifest *recipeManifest, logFile string) error
-	StartRecipe(recipeName string, manifest *recipeManifest, logFile string) (*RunHandle, error)
+	// Command returns a process that runs shell in the mode's ROS environment.
+	Command(shell string) *exec.Cmd
+	// RecipesDir is the recipes directory as a Command sees it.
+	RecipesDir() string
+	// StartRecipe starts the recipe in its own process group, writing its
+	// output to out, and returns a handle to wait on or stop it.
+	StartRecipe(recipeName string, out io.Writer) (*RunHandle, error)
 	Cleanup() error
+}
+
+var errNotInstalled = errors.New("no EMOS installation found — run 'emos install' first")
+
+// newStrategy returns the strategy for cfg's install mode. rmw is set as the
+// RMW implementation of everything the run starts; empty leaves the
+// environment's. The recipe UI's state directory and the robot's certificate
+// are set in every mode.
+func newStrategy(cfg *config.EMOSConfig, rmw string) (RuntimeStrategy, error) {
+	if !cfg.IsInstalled() {
+		return nil, errNotInstalled
+	}
+	var env []string
+	if rmw != "" {
+		env = append(env, "RMW_IMPLEMENTATION="+rmw)
+	}
+	uiDir := config.UISecurityDir
+	if cfg.Mode == config.ModeOSSContainer {
+		uiDir = uiSecurityRoot
+	}
+	uiEnv, err := uiEnv(uiDir)
+	if err != nil {
+		return nil, err
+	}
+	env = append(env, uiEnv...)
+	switch cfg.Mode {
+	case config.ModeOSSContainer:
+		return NewContainerStrategy(env), nil
+	case config.ModeNative:
+		return NewNativeStrategy(env), nil
+	case config.ModePixi:
+		return NewPixiStrategy(cfg.PixiProjectDir, env), nil
+	}
+	return nil, fmt.Errorf("unknown install mode: %s", cfg.Mode)
 }

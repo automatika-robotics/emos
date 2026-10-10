@@ -22,11 +22,12 @@ why-emos
 getting-started/installation
 getting-started/quickstart
 getting-started/dashboard
-getting-started/cli
 getting-started/running-recipes
 getting-started/plugins
-getting-started/troubleshooting
+getting-started/mapping
 recipes/overview
+getting-started/cli
+getting-started/troubleshooting
 ```
 
 ```{toctree}
@@ -40,6 +41,7 @@ recipes/foundation/prompt-engineering
 recipes/foundation/semantic-map
 recipes/foundation/goto-navigation
 recipes/foundation/tool-calling
+recipes/foundation/decision-models
 recipes/foundation/semantic-routing
 recipes/foundation/complete-agent
 ```
@@ -52,9 +54,11 @@ recipes/planning-and-manipulation/index
 recipes/planning-and-manipulation/cortex-agent
 recipes/planning-and-manipulation/cortex-memory
 recipes/planning-and-manipulation/cortex-navigation
+recipes/planning-and-manipulation/cortex-writes-its-own-tools
 recipes/planning-and-manipulation/planning-models
 recipes/planning-and-manipulation/vla-manipulation
 recipes/planning-and-manipulation/event-driven-vla
+recipes/planning-and-manipulation/moveit-manipulation
 ```
 
 ```{toctree}
@@ -64,6 +68,8 @@ recipes/planning-and-manipulation/event-driven-vla
 recipes/navigation/index
 recipes/navigation/simulation-quickstarts
 recipes/navigation/point-navigation
+recipes/navigation/real-robot-navigation
+recipes/navigation/multi-waypoint-mission
 recipes/navigation/path-recording
 recipes/navigation/motion-testing
 recipes/navigation/vision-tracking-rgb
@@ -84,6 +90,7 @@ recipes/events-and-resilience/external-reflexes
 recipes/events-and-resilience/cross-component-events
 recipes/events-and-resilience/composed-events
 recipes/events-and-resilience/context-aware-actions
+recipes/events-and-resilience/motion-detection
 ```
 
 ```{toctree}
@@ -94,6 +101,7 @@ concepts/architecture
 concepts/components
 concepts/topics
 concepts/events-and-actions
+concepts/routines
 concepts/status-and-fallbacks
 concepts/launcher
 concepts/robot-plugins
@@ -122,6 +130,7 @@ navigation/planning
 navigation/control
 navigation/drive-manager
 navigation/mapping
+navigation/mission-manager
 navigation/motion-server
 ```
 

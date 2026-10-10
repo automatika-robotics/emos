@@ -1,16 +1,40 @@
 <script lang="ts">
-  import { Wifi, WifiOff, RefreshCw, KeyRound, ArrowUpCircle } from 'lucide-svelte';
-  import { useInfo, useCapabilities, useConnectivity, useRobot } from '$lib/queries';
-  import { api } from '$lib/api';
+  import { Wifi, WifiOff, RefreshCw, KeyRound, ArrowUpCircle, Bot, Radar } from 'lucide-svelte';
+  import { useInfo, useCapabilities, useConnectivity, useRobot, usePluginsInstalled } from '$lib/queries';
+  import { api, pluginName, type InstalledPlugin } from '$lib/api';
   import { clearToken } from '$lib/auth';
   import { navigate } from '$lib/router';
   import { confirm as confirmDialog } from '$lib/dialog';
   import { onMount } from 'svelte';
+  import HardwareCard from '$components/HardwareCard.svelte';
+  import LicenseCard from '$components/LicenseCard.svelte';
 
   const info = useInfo();
   const caps = useCapabilities();
   const conn = useConnectivity();
   const robot = useRobot();
+  const plugins = usePluginsInstalled();
+
+  // What the System page shows for an installed plugin, robot or sensor.
+  const view = (p: InstalledPlugin) => {
+    const d = p.describe ?? {};
+    return {
+      slug: p.slug,
+      name: pluginName(p),
+      vendor: d.metadata?.vendor,
+      description: d.metadata?.description,
+      image: p.image_url,
+      feeds: (d.feedbacks ?? []).map((f) => f.key).filter(Boolean),
+      actions: (d.actions ?? []).map((a) => a.name).filter(Boolean),
+      events: (d.events ?? []).map((e) => e.name).filter(Boolean),
+    };
+  };
+  let robotPlugin = $derived($plugins.data?.robot ? view($plugins.data.robot) : null);
+  let sensorPlugins = $derived(($plugins.data?.sensors ?? []).map(view));
+
+  // The robot's feeds, split into what it senses and the rest (status, battery, ...).
+  let robotSensors = $derived(new Set($robot.data?.sensors ?? []));
+  let robotOtherFeeds = $derived((robotPlugin?.feeds ?? []).filter((f) => !robotSensors.has(f)));
 
   let dashUrl = $state<string>('');
   onMount(() => {
@@ -29,6 +53,14 @@
     navigate('/pair');
   }
 </script>
+{#snippet pills(label: string, items: string[], tone: string = '')}
+  {#if items.length}
+    <div class="text-sm">
+      <span class="text-emos-text-3">{label}: </span>
+      {#each items as it (it)}<span class="pill mr-1 {tone}">{it}</span>{/each}
+    </div>
+  {/if}
+{/snippet}
 
 <section class="space-y-6">
   <div>
@@ -36,10 +68,63 @@
     <h2 class="text-2xl font-semibold tracking-tight">System</h2>
   </div>
 
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+  <!-- The robot -->
+  <div class="text-xs uppercase tracking-wider text-emos-text-3 flex items-center gap-1"><Bot size={12} /> Robot</div>
+  {#if $robot.data}
+    <HardwareCard
+      large
+      icon={Bot}
+      image={$robot.data.image_url}
+      title={$robot.data.model ?? $robot.data.name ?? 'Robot'}
+      subtitle={[$robot.data.vendor, $robot.data.serial, $robot.data.kinematics].filter(Boolean).join(' · ')}
+      description={robotPlugin?.description}
+      footer={robotPlugin ? 'Described by the installed robot plugin.' : `Described by the robot ${$robot.data.source}.`}
+    >
+      {#if robotPlugin}
+        {@render pills('sensors', $robot.data.sensors ?? [], 'pill-good')}
+        {@render pills('other feeds', robotOtherFeeds)}
+        {@render pills('actions', robotPlugin.actions)}
+        {@render pills('events', robotPlugin.events)}
+      {:else}
+        {@render pills('sensors', $robot.data.sensors ?? [], 'pill-good')}
+        {@render pills('actions', $robot.data.actions ?? [])}
+        {@render pills('events', $robot.data.events ?? [])}
+      {/if}
+    </HardwareCard>
+  {:else}
+    <div class="surface p-5 text-sm text-emos-text-3">
+      No robot identity is exposed by this device. Generic dashboard.
+      Install a robot plugin to populate this.
+    </div>
+  {/if}
+
+  <!-- Its sensors -->
+  {#if sensorPlugins.length}
+    <div class="text-xs uppercase tracking-wider text-emos-text-3 flex items-center gap-1"><Radar size={12} /> Sensors</div>
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      {#each sensorPlugins as s (s.slug)}
+        <HardwareCard
+          icon={Radar}
+          image={s.image}
+          title={s.name}
+          subtitle={s.vendor}
+          description={s.description}
+          footer="Described by the installed sensor plugin."
+        >
+          {@render pills('feeds', s.feeds, 'pill-good')}
+          {@render pills('actions', s.actions)}
+          {@render pills('events', s.events)}
+        </HardwareCard>
+      {/each}
+    </div>
+  {/if}
+
+  <!-- The device it runs on -->
+  <div class="text-xs uppercase tracking-wider text-emos-text-3">Device</div>
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
     <div class="surface p-5 space-y-2">
       <div class="text-xs uppercase tracking-wider text-emos-text-3">EMOS</div>
-      <div class="grid grid-cols-2 gap-y-1 text-sm">
+      <div class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
         <div class="text-emos-text-3">version</div>
         <div class="font-mono flex items-center gap-2">
           <span>{$info.data?.version ?? '—'}</span>
@@ -55,6 +140,13 @@
             </a>
           {/if}
         </div>
+        {#if $info.data?.channel === 'dev'}
+          <div class="text-emos-text-3">channel</div>
+          <div class="flex items-center gap-2">
+            <span class="pill text-[0.7rem]">dev</span>
+            <span class="text-emos-text-3 text-xs">nightly builds; to move to stable, run the installer without EMOS_CHANNEL, then <code>emos update</code></span>
+          </div>
+        {/if}
         <div class="text-emos-text-3">uptime</div><div class="font-mono">{$info.data?.uptime ?? '—'}</div>
         <div class="text-emos-text-3">install</div><div>{$info.data?.mode ?? '—'}</div>
         <div class="text-emos-text-3">ros</div><div>{$info.data?.ros_distro ?? '—'}</div>
@@ -66,48 +158,8 @@
     </div>
 
     <div class="surface p-5 space-y-2">
-      <div class="text-xs uppercase tracking-wider text-emos-text-3">Robot</div>
-      {#if $robot.data}
-        {#if $robot.data.image_url}
-          <img
-            src={$robot.data.image_url}
-            alt={$robot.data.model ?? $robot.data.name ?? 'robot'}
-            class="mx-auto max-h-40 object-contain py-2"
-            loading="lazy"
-          />
-        {/if}
-        <div class="grid grid-cols-2 gap-y-1 text-sm">
-          {#if $robot.data.name}<div class="text-emos-text-3">name</div><div>{$robot.data.name}</div>{/if}
-          {#if $robot.data.vendor}<div class="text-emos-text-3">vendor</div><div>{$robot.data.vendor}</div>{/if}
-          {#if $robot.data.model}<div class="text-emos-text-3">model</div><div>{$robot.data.model}</div>{/if}
-          {#if $robot.data.serial}<div class="text-emos-text-3">serial</div><div class="font-mono">{$robot.data.serial}</div>{/if}
-          {#if $robot.data.kinematics}<div class="text-emos-text-3">kinematics</div><div>{$robot.data.kinematics}</div>{/if}
-          {#if $robot.data.plugin}<div class="text-emos-text-3">entry point</div><div class="font-mono truncate" title={$robot.data.plugin}>{$robot.data.plugin}</div>{/if}
-          <div class="text-emos-text-3">source</div><div>{$robot.data.source}</div>
-        </div>
-        {#if $robot.data.actions?.length}
-          <div class="text-sm pt-1">
-            <span class="text-emos-text-3">actions: </span>
-            {#each $robot.data.actions as a (a)}<span class="pill mr-1">{a}</span>{/each}
-          </div>
-        {/if}
-        {#if $robot.data.events?.length}
-          <div class="text-sm">
-            <span class="text-emos-text-3">events: </span>
-            {#each $robot.data.events as e (e)}<span class="pill mr-1">{e}</span>{/each}
-          </div>
-        {/if}
-      {:else}
-        <p class="text-sm text-emos-text-3">
-          No robot identity is exposed by this device. Generic dashboard.
-          Licensed deployments will populate this card automatically.
-        </p>
-      {/if}
-    </div>
-
-    <div class="surface p-5 space-y-2">
       <div class="text-xs uppercase tracking-wider text-emos-text-3">Capabilities</div>
-      <div class="grid grid-cols-2 gap-y-1 text-sm">
+      <div class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
         <div class="text-emos-text-3">docker</div><div>{$caps.data?.docker_available ? 'yes' : 'no'}</div>
         <div class="text-emos-text-3">pixi</div><div>{$caps.data?.pixi_available ? 'yes' : 'no'}</div>
         <div class="text-emos-text-3">pull recipes</div><div>{$caps.data?.can_pull_recipes ? 'yes' : 'no'}</div>
@@ -141,6 +193,8 @@
       </p>
     </div>
   </div>
+
+  <LicenseCard />
 
   <div class="surface p-5 space-y-3">
     <div class="text-xs uppercase tracking-wider text-emos-text-3">This browser</div>

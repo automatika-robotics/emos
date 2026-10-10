@@ -150,7 +150,7 @@ All composed events support these parameters:
 
 | Parameter | Description | Default |
 |---|---|---|
-| `on_change` | Trigger only when the condition *transitions* to True (edge-triggered) | `False` |
+| `on_change` | Trigger only when the condition *transitions* to True (edge-triggered). A condition that is already true at the first evaluation counts as a transition. | `False` |
 | `handle_once` | Fire only once during the system's lifetime | `False` |
 | `keep_event_delay` | Minimum seconds between consecutive triggers (debounce) | `0` |
 

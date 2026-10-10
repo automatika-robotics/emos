@@ -1,7 +1,8 @@
 <script lang="ts">
   import { link, navigate } from '$lib/router';
   import { Play, Trash2, ArrowLeft, Cable, Loader2 } from 'lucide-svelte';
-  import { useRecipeDetail, useRuns, useStartRun, useDeleteRecipe } from '$lib/queries';
+  import { useRecipeDetail, useRuns, useStartRun, useDeleteRecipe, usePluginsInstalled } from '$lib/queries';
+  import { pluginName, type ExtractedTopic } from '$lib/api';
   import { renderMarkdown } from '$lib/markdown';
   import { confirm as confirmDialog } from '$lib/dialog';
   import Empty from '$components/Empty.svelte';
@@ -10,11 +11,20 @@
   // App.svelte remounts this component when the route changes, so reading
   // params once at init is correct AND avoids re-creating the query
   // subscription on every $derived re-evaluation.
+  // svelte-ignore state_referenced_locally
   const name = params?.name ?? '';
   const detail = useRecipeDetail(name);
   const runs = useRuns();
   const startRun = useStartRun();
   const remove = useDeleteRecipe();
+  const plugins = usePluginsInstalled();
+
+  // What a recipe's topics need in place to carry data.
+  const topicNeeds = (topics: ExtractedTopic[]) => ({
+    robot: topics.some((t) => t.use_plugin && !t.plugin_id),
+    named: topics.some((t) => t.use_plugin && t.plugin_id),
+    drivers: topics.some((t) => !t.use_plugin && t.is_sensor),
+  });
 
   let activeRun = $derived(
     ($runs.data ?? []).find((r) => r.status === 'running' || r.status === 'preparing')
@@ -56,7 +66,14 @@
           <h2 class="text-2xl font-semibold tracking-tight truncate">
             {r.display_name || r.name}
           </h2>
-          <div class="text-xs text-emos-text-3 font-mono mt-1">{r.name}</div>
+          <div class="text-xs text-emos-text-3 font-mono mt-1">
+            {r.name}{#if r.version}<span class="ml-2 font-sans">· {r.version}</span>{/if}
+          </div>
+          {#if Array.isArray((r.manifest as any)?.tags) && (r.manifest as any).tags.length}
+            <div class="flex flex-wrap gap-1.5 mt-2">
+              {#each (r.manifest as any).tags as t}<span class="pill text-[0.7rem]">{t}</span>{/each}
+            </div>
+          {/if}
           {#if r.description}
             <div class="md-content mt-4 max-w-3xl">
               {@html renderMarkdown(r.description)}
@@ -83,6 +100,8 @@
 
     <!-- Topics -->
     {#if r.topics?.length}
+      {@const needs = topicNeeds(r.topics)}
+      {@const installed = $plugins.data}
       <div class="surface p-6 space-y-3">
         <div class="flex items-center gap-2 text-sm font-medium">
           <Cable size={16} class="text-emos-accent" />
@@ -95,7 +114,11 @@
                 <div class="font-mono text-sm truncate">{t.name}</div>
                 <div class="text-xs text-emos-text-3 truncate">{t.msg_type}</div>
               </div>
-              {#if t.is_sensor}
+              {#if t.use_plugin}
+                <span class="pill pill-good text-[0.7rem] truncate">
+                  {t.plugin_id ? `plugin ${t.plugin_id}` : 'robot plugin'}
+                </span>
+              {:else if t.is_sensor}
                 <span class="pill pill-good text-[0.7rem]">sensor</span>
               {:else}
                 <span class="pill text-[0.7rem]">topic</span>
@@ -103,6 +126,31 @@
             </div>
           {/each}
         </div>
+        <ul class="space-y-1 text-sm text-emos-text-3">
+          {#if needs.robot && installed}
+            {#if installed.robot}
+              <li>Robot plugin topics come from the installed robot plugin, {pluginName(installed.robot)}.</li>
+            {:else}
+              <li class="text-emos-warn">
+                Robot plugin topics need a robot plugin, and none is installed.
+                <a use:link href="/plugins" class="underline">Install one</a>.
+              </li>
+            {/if}
+          {/if}
+          {#if needs.named && installed}
+            {#if installed.sensors.length}
+              <li>Topics via a named plugin come from the sensor plugin the recipe attaches with that id.</li>
+            {:else}
+              <li class="text-emos-warn">
+                Topics via a named plugin need a sensor plugin, and none is installed.
+                <a use:link href="/plugins" class="underline">Install one</a>.
+              </li>
+            {/if}
+          {/if}
+          {#if needs.drivers}
+            <li>ROS sensor topics have to be published by a ROS driver for the sensor, or by a node the recipe starts.</li>
+          {/if}
+        </ul>
       </div>
     {/if}
   {/if}

@@ -28,7 +28,7 @@ launcher.bringup()
 
 ## Step 2: Open the System Graph
 
-Run the recipe and open the launcher Web UI in a browser (default: `http://localhost:5001`). You'll see the standard Dynamic Web UI with the components' settings panels and any inputs/outputs you've registered. The new **System Graph** tab sits alongside those panels.
+Run the recipe and open the launcher Web UI in a browser (default: `https://localhost:5001`). You'll see the standard Dynamic Web UI with the components' settings panels and any inputs/outputs you've registered. The new **System Graph** tab sits alongside those panels.
 
   <p align="center">
   <picture align="center">

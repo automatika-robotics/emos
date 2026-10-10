@@ -119,3 +119,41 @@ func TestDistroOr_NilConfigSafe(t *testing.T) {
 		t.Errorf("distroOr(nil, kilted) = %q, want kilted", got)
 	}
 }
+
+func TestRemoveConfig_KeepsTheLicenseAndNothingElse(t *testing.T) {
+	origDir, origCfg, origLic := config.ConfigDir, config.ConfigFile, config.LicenseFile
+	t.Cleanup(func() { config.ConfigDir, config.ConfigFile, config.LicenseFile = origDir, origCfg, origLic })
+	config.ConfigDir = filepath.Join(t.TempDir(), ".config", "emos")
+	config.ConfigFile = filepath.Join(config.ConfigDir, "config.json")
+	config.LicenseFile = filepath.Join(config.ConfigDir, "license.json")
+
+	if err := config.SaveConfig(&config.EMOSConfig{Mode: config.ModePixi, ROSDistro: "jazzy"}); err != nil {
+		t.Fatal(err)
+	}
+	want := &config.License{Key: "ABCDE-FGHJK-LMNPQ-RSTUV", PluginSlug: "emos-plugin-lite3"}
+	if err := config.SaveLicense(want); err != nil {
+		t.Fatal(err)
+	}
+
+	removeConfig()
+
+	if config.LoadConfig() != nil {
+		t.Error("the config must be gone after an uninstall")
+	}
+	got := config.LoadLicense()
+	if got == nil || got.Key != want.Key || got.PluginSlug != want.PluginSlug {
+		t.Errorf("licence after an uninstall = %+v, want %+v", got, want)
+	}
+	if entries, _ := os.ReadDir(config.ConfigDir); len(entries) != 1 {
+		t.Errorf("only the licence should be left, found %d entries", len(entries))
+	}
+
+	// Without a licence the directory goes entirely.
+	if err := config.RemoveLicense(); err != nil {
+		t.Fatal(err)
+	}
+	removeConfig()
+	if _, err := os.Stat(config.ConfigDir); !os.IsNotExist(err) {
+		t.Errorf("config directory should be gone, stat err = %v", err)
+	}
+}

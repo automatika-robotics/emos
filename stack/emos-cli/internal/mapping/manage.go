@@ -126,7 +126,7 @@ func (d *Declaration) Use(name string, run Runner) error {
 // returned is where the archive still is.
 func (d *Declaration) Export(name, dest string, run Runner) (string, error) {
 	if d.Kind == KindNative {
-		return d.exportNative(name, dest, false, "")
+		return d.exportNative(name, dest, false)
 	}
 	if err := d.checkLocal(); err != nil {
 		return "", err

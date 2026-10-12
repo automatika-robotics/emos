@@ -78,7 +78,7 @@ func init() {
 		"directory to put the archive in (default ~/emos/map-archives)")
 	exportCmd.Flags().BoolVar(&mapExportDebug, "debug", false,
 		"pack everything support needs instead, for a map EMOS built itself: the backend's "+
-			"configuration and working data, the raw sensor data of a debug session, and the session's log")
+			"configuration and working data, and the raw sensor data and log of a debug session")
 	mapCmd.AddCommand(exportCmd)
 	mapCmd.AddCommand(&cobra.Command{
 		Use:   "import <archive>",
@@ -664,6 +664,9 @@ func runNativeMapNew(cfg *config.EMOSConfig, decl *mapping.Declaration, name str
 		cancelStop()
 	}
 	if opts.Debug {
+		if err := session.SaveLog(logFile); err != nil {
+			ui.Warn("The session's log could not be kept with the map: " + err.Error())
+		}
 		reportDebug(session.Dir)
 	}
 	if err != nil {
@@ -806,7 +809,7 @@ func runDebugExport(decl *mapping.Declaration, name, dest string) error {
 	var export *mapping.DebugExport
 	err := ui.Spinner(fmt.Sprintf("Packing '%s' for support", name), func() error {
 		var e error
-		export, e = decl.ExportDebug(name, dest, config.LogsDir)
+		export, e = decl.ExportDebug(name, dest)
 		return e
 	})
 	if err != nil {
@@ -817,11 +820,6 @@ func runDebugExport(decl *mapping.Declaration, name, dest string) error {
 		size = " (" + formatBytes(uint64(info.Size())) + ")"
 	}
 	ui.Success(fmt.Sprintf("Packed '%s' for support: %s%s", name, export.Archive, size))
-	if export.Log != "" {
-		ui.Faint("With the session's log, " + filepath.Base(export.Log) + ".")
-	} else {
-		ui.Faint("No session log for it was found in " + config.LogsDir + ".")
-	}
 	if !export.RawData {
 		ui.Faint("It holds no raw sensor data: record some with 'emos map new --debug'.")
 	}

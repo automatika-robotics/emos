@@ -41,6 +41,9 @@ const (
 // directory.
 const DebugBag = "debug/bag"
 
+// DebugLog is where a debug session's log is kept, in the map's directory.
+const DebugLog = "debug/session.log"
+
 // NativeOptions are how a mapping session EMOS runs itself is run.
 type NativeOptions struct {
 	// Env is where the map is made, one of Environments, or empty for the
@@ -196,6 +199,16 @@ func (s *NativeSession) Ready() <-chan struct{} { return s.ready }
 // Done closes when the session has ended, whether or not it was asked to.
 func (s *NativeSession) Done() <-chan struct{} { return s.proc.Done() }
 
+// SaveLog keeps a copy of the session's log, written at path, with the map at
+// DebugLog.
+func (s *NativeSession) SaveLog(path string) error {
+	dst := filepath.Join(s.Dir, DebugLog)
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	return copyFile(path, dst)
+}
+
 // Stop asks the session to stop and returns the map it saved. A session that
 // has not exited after stopTimeout, the same grace a vendor's tool gets, is
 // killed. Cancelling ctx kills it at once
@@ -329,7 +342,7 @@ func (d *Declaration) useNative(name string) error {
 }
 
 // exportNative packs a map into dest and returns the archive's path.
-func (d *Declaration) exportNative(name, dest string, debug bool, log string) (string, error) {
+func (d *Declaration) exportNative(name, dest string, debug bool) (string, error) {
 	target, err := d.Find(name)
 	if err != nil {
 		return "", err
@@ -346,7 +359,7 @@ func (d *Declaration) exportNative(name, dest string, debug bool, log string) (s
 		return "", fmt.Errorf("%s already exists", archive)
 	}
 	partial := archive + ".partial"
-	if err := zipMap(target, partial, debug, log); err != nil {
+	if err := zipMap(target, partial, debug); err != nil {
 		_ = os.Remove(partial)
 		return "", err
 	}
@@ -362,19 +375,11 @@ type zipEntry struct {
 }
 
 // zipMap writes a map's files into a new zip at path, each under the map's
-// name: its top-level files, or with debug every file under its directory and
-// the session log under logs/.
-func zipMap(m *Map, path string, debug bool, log string) error {
+// name: its top-level files, or with debug every file under its directory.
+func zipMap(m *Map, path string, debug bool) error {
 	files, err := mapFiles(m.Path, debug)
 	if err != nil {
 		return err
-	}
-	if log != "" {
-		info, err := os.Stat(log)
-		if err != nil {
-			return err
-		}
-		files = append(files, zipEntry{"logs/" + filepath.Base(log), log, info})
 	}
 	out, err := os.Create(path)
 	if err != nil {

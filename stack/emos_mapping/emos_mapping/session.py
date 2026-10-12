@@ -93,13 +93,6 @@ def origin_offset(
     return float(lidar_imu[0][2])
 
 
-def debug_recorder(bag: str, topics: List[str]) -> List[str]:
-    """The command recording a debug session's raw sensor data into bag"""
-    return [
-        "ros2", "bag", "record", "--storage", "mcap", "--output", bag, "--topics", *topics
-    ]
-
-
 def stop_recorder(
     recorder: subprocess.Popen, grace: float = 5.0, closing: float = 30.0
 ) -> None:
@@ -263,7 +256,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         topics += DEBUG_EXTRA_TOPICS
         bag = os.path.join(directory, DEBUG_BAG)
         os.makedirs(os.path.dirname(bag))
-        recorder = subprocess.Popen(debug_recorder(bag, topics))
+        recorder = subprocess.Popen(
+            ["ros2", "bag", "record", "--storage", "mcap", "--output", bag, "--topics", *topics]
+        )
         metadata["debug"] = {"bag": DEBUG_BAG, "topics": topics}
         print(f"Recording the raw sensor data to {bag}", flush=True)
     builder.metadata = metadata

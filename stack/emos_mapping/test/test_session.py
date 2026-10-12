@@ -11,7 +11,6 @@ from ros_sugar.robot.mapping import NativeMapping  # noqa: E402
 
 from emos_mapping.session import (  # noqa: E402
     SESSION_IMU_TOPIC,
-    debug_recorder,
     imu_offset,
     main,
     map_directory,
@@ -107,14 +106,6 @@ def test_an_environment_emos_has_no_settings_for_is_refused(capsys):
         main(["--plugin", "p:P", "--name", "x", "--env", "underwater"])
     assert exited.value.code == 2
     assert "invalid choice: 'underwater'" in capsys.readouterr().err
-
-
-def test_debug_mode_records_the_sensors_the_session_maps_with():
-    command = debug_recorder("/maps/office/debug/bag", ["/rslidar_points", "/emos_mapping/imu", "/tf_static"])
-    assert command[:3] == ["ros2", "bag", "record"]
-    assert command[command.index("--output") + 1] == "/maps/office/debug/bag"
-    assert command[command.index("--storage") + 1] == "mcap"
-    assert command[command.index("--topics") + 1 :] == ["/rslidar_points", "/emos_mapping/imu", "/tf_static"]
 
 
 def recorder(ignores_interrupt):

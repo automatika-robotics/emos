@@ -10,6 +10,7 @@ from emos_mapping.backend import (
     ENVIRONMENTS,
     GLIM_NODE,
     MAP_TOPIC,
+    NO_IMU_TOPIC,
     apply_glim_settings,
     glim_node,
     read_dump,
@@ -70,6 +71,23 @@ def test_gpu_and_imu_free_variants(tmp_path):
     assert cfg["config_global_mapping"] == "config_global_mapping_gpu.json"
     cfg = load(os.path.join(write_glim_config(str(tmp_path / "noimu"), "/p", None), "config.json"))["global"]
     assert cfg["config_odometry"] == "config_odometry_ct.json"
+
+
+def test_without_an_imu_glim_maps_lidar_only_with_modules_made_for_it(tmp_path):
+    """The CPU and GPU sub and global mapping expect IMU estimates; the
+    LiDAR-only ones keep enough points for a 2D grid once loosened"""
+    directory = write_glim_config(str(tmp_path / "noimu"), "/p", None, gpu=True)
+    cfg = load(os.path.join(directory, "config.json"))["global"]
+    assert cfg["config_odometry"] == "config_odometry_ct.json"
+    assert cfg["config_sub_mapping"] == "config_sub_mapping_passthrough.json"
+    assert cfg["config_global_mapping"] == "config_global_mapping_pose_graph.json"
+    sub = load(os.path.join(directory, "config_sub_mapping_passthrough.json"))["sub_mapping"]
+    assert sub["min_dist_in_voxel"] == 0.1 and sub["submap_target_num_points"] == -1
+    # GLIM aborts on an empty topic name, IMU or not
+    assert load(os.path.join(directory, "config_ros.json"))["glim_ros"]["imu_topic"] == NO_IMU_TOPIC
+    # With an IMU, the LiDAR-only module keeps GLIM's own settings
+    with_imu = write_glim_config(str(tmp_path / "imu"), "/p", "/i")
+    assert load(os.path.join(with_imu, "config_sub_mapping_passthrough.json"))["sub_mapping"]["min_dist_in_voxel"] == 0.2
 
 
 def test_glim_is_launched_with_the_session_paths():

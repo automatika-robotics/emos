@@ -195,7 +195,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         base_frame=plugin.base_frame,
     )
     settings, left_out = apply_glim_settings(
-        config_dir, [ENVIRONMENTS.get(args.env, {}), declaration.custom_settings]
+        config_dir,
+        [ENVIRONMENTS.get(args.env, {}), getattr(declaration, "custom_settings", {})],
     )
     if left_out:
         print(

@@ -42,6 +42,11 @@ class GridSpec:
     # Largest step between a tile's floor and the floors around it. A tile
     # stepping further holds a table top or a ceiling, not the floor.
     max_floor_step: float = 0.3
+    # Widest gap closed once the cloud is sliced, in cells.
+    # NOTE: A sparse LiDAR leaves unseen cells inside open floor and
+    # breaks along walls: unknown cells within it of free floor are freed, and
+    # breaks in walls up to it are bridged. 0 leaves the grid as sliced.
+    gap_cells: int = 2
 
 
 @define(frozen=True)
@@ -300,8 +305,46 @@ def build_grid(
     data = np.full(height * width, UNKNOWN, dtype=np.uint8)
     data[floor_counts >= 1] = FREE
     data[obstacle_counts >= spec.min_points] = OCCUPIED
+    data = close_gaps(data.reshape(height, width), spec.gap_cells)
     # Rows are built bottom-up; the image has the top of the map first.
-    return Grid(data.reshape(height, width)[::-1].copy(), (float(x0), float(y0)), res)
+    return Grid(data[::-1].copy(), (float(x0), float(y0)), res)
+
+
+def close_gaps(data: np.ndarray, gap_cells: int) -> np.ndarray:
+    """Free the unknown cells inside free space and bridge the breaks in walls
+    of a grid, up to gap_cells across.
+
+    A morphological closing of each class: grown by half the gap, then shrunk
+    back, which fills what is narrower than the gap and changes nothing else.
+    Only unknown cells are freed, and walls win over free cells.
+    """
+    if gap_cells <= 0:
+        return data
+    half = max(1, gap_cells // 2)
+    out = data.copy()
+    out[_closing(data == FREE, half) & (data == UNKNOWN)] = FREE
+    out[_closing(data == OCCUPIED, half)] = OCCUPIED
+    return out
+
+
+def _closing(mask: np.ndarray, k: int) -> np.ndarray:
+    """Dilate by a (2k+1)-cell square, then erode by it. Beyond the grid counts
+    as empty, so nothing is filled in from outside it."""
+    return _square(_square(mask, k, np.logical_or), k, np.logical_and)
+
+
+def _square(mask: np.ndarray, k: int, combine) -> np.ndarray:
+    """OR (dilation) or AND (erosion) of each cell's (2k+1)-cell square, one
+    axis at a time"""
+    for axis in (0, 1):
+        n = mask.shape[axis]
+        pad = [(k, k) if a == axis else (0, 0) for a in (0, 1)]
+        padded = np.pad(mask, pad, constant_values=False)
+        result = np.take(padded, np.arange(n), axis=axis)
+        for d in range(1, 2 * k + 1):
+            result = combine(result, np.take(padded, np.arange(d, d + n), axis=axis))
+        mask = result
+    return mask
 
 
 # --- Preview -----------------------------------------------------------------

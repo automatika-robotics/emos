@@ -194,6 +194,59 @@ def test_the_floor_span_measures_a_tilt():
     assert flat.span < 0.05
 
 
+LITE3_GRID = dict(resolution=0.10, z_min=0.15, z_max=0.80)
+
+
+def test_breaks_in_a_wall_are_bridged_but_a_doorway_stays_open():
+    """A sparse LiDAR leaves a wall dotted; a gap the robot could pass is no break"""
+    g = -LIDAR_HEIGHT
+    # Two breaks of one empty 10 cm cell, then a 0.8 m doorway. The ends sit
+    # mid-cell, so each break is the cells between them.
+    segments = [(-3.0, -1.95), (-1.75, -0.95), (-0.75, 0.05), (0.85, 3.0)]
+    pts = np.vstack([surface(-3, 3, -2, 2, g, step=0.04)]
+                    + [wall(a, b, 1.5, 1.5, g, g + 1.0, step=0.02) for a, b in segments])
+    grid = build_grid(pts, GridSpec(**LITE3_GRID), Ground(g, "expected"))
+    for break_x in (-1.85, -0.85):
+        assert grid.cell(break_x, 1.5) == OCCUPIED, break_x
+    assert grid.cell(0.45, 1.5) != OCCUPIED  # the middle of the doorway
+    sliced = build_grid(pts, GridSpec(**LITE3_GRID, gap_cells=0), Ground(g, "expected"))
+    assert sliced.cell(-1.85, 1.5) != OCCUPIED
+
+
+def test_unseen_cells_in_open_floor_are_freed_but_a_large_unseen_area_is_not():
+    g = -LIDAR_HEIGHT
+    floor = surface(-3, 3, -3, 3, g, step=0.04)
+    pinhole = (np.abs(floor[:, 0] - 0.05) < 0.06) & (np.abs(floor[:, 1] - 0.05) < 0.06)
+    patch = (np.abs(floor[:, 0] - 1.5) < 0.6) & (np.abs(floor[:, 1] - 1.5) < 0.6)
+    pts = floor[~pinhole & ~patch]
+    grid = build_grid(pts, GridSpec(**LITE3_GRID), Ground(g, "expected"))
+    assert grid.cell(0.05, 0.05) == FREE  # a pin-hole, under 2 cells
+    assert grid.cell(1.5, 1.5) == UNKNOWN  # 1.2 m across: never seen, never freed
+    sliced = build_grid(pts, GridSpec(**LITE3_GRID, gap_cells=0), Ground(g, "expected"))
+    assert sliced.cell(0.05, 0.05) == UNKNOWN
+
+
+def test_the_gap_closed_follows_the_resolution():
+    """2 cells: 10 cm on a 5 cm grid, 20 cm on a 10 cm one. 4 cells stay open."""
+    g = -LIDAR_HEIGHT
+
+    def broken_wall(cells, res):
+        """A wall along y = 1 with a break of `cells` empty cells at x = 0;
+        its ends sit mid-cell either side"""
+        end = cells / 2 * res + res / 2
+        return np.vstack([surface(-2, 2, -2, 2, g, step=0.02),
+                          wall(-2, -end, 1.0, 1.0, g, g + 1.0, step=0.01),
+                          wall(end, 2, 1.0, 1.0, g, g + 1.0, step=0.01)])
+
+    for res in (0.05, 0.10):
+        spec = GridSpec(resolution=res, z_min=0.15, z_max=0.80)
+        inside = res / 5  # a point in the empty cell right of x = 0
+        assert build_grid(broken_wall(2, res), spec, Ground(g, "expected")).cell(inside, 1.0) == OCCUPIED, res
+        assert build_grid(broken_wall(4, res), spec, Ground(g, "expected")).cell(inside, 1.0) != OCCUPIED, res
+        raw = build_grid(broken_wall(2, res), GridSpec(resolution=res, z_min=0.15, z_max=0.80, gap_cells=0), Ground(g, "expected"))
+        assert raw.cell(inside, 1.0) != OCCUPIED, res  # the break is there before closing
+
+
 def test_artifact_files_are_what_map_server_and_pcl_read(tmp_path):
     pts = room()
     grid = build_grid(pts, GridSpec(), Ground(-LIDAR_HEIGHT, "expected"))

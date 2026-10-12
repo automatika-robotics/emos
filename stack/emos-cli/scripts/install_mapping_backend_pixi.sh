@@ -14,12 +14,11 @@ GTSAM_REPO="https://github.com/borglab/gtsam"
 GTSAM_REF="4.3a1"
 GTSAM_POINTS_REPO="https://github.com/koide3/gtsam_points"
 GTSAM_POINTS_REF="v1.2.2"
-# GLIM and its ROS wrapper follow master, which upstream moves together: each
-# build takes their latest commits
+# GLIM and its ROS wrapper on master, at the commits EMOS was tested with.
 GLIM_REPO="https://github.com/koide3/glim"
-GLIM_REF="master"
+GLIM_REF="1a197c999e4865f5cab7c9cd25474128413ebbca"
 GLIM_ROS_REPO="https://github.com/koide3/glim_ros2"
-GLIM_ROS_REF="master"
+GLIM_ROS_REF="4d4ec524ccf1b02aa09b0af2af767ecc54343798"
 
 CUDA_ROOT="${EMOS_MAPPING_CUDA:-}"
 

@@ -619,7 +619,7 @@ func TestExportRefusesANonActiveMapWhenTheToolTakesNoName(t *testing.T) {
 	d := vendorDecl(store)
 	d.Vendor.Export = []string{"drmap", "pack"}
 	rec := &recorder{}
-	if _, err := d.Export("b-20260102-100000", "", rec.run); err == nil {
+	if _, err := d.Export("b-20260102-100000", "", false, rec.run); err == nil {
 		t.Error("exporting a non-active map should be refused, not silently wrong")
 	}
 	if len(rec.ran) != 0 {
@@ -642,7 +642,7 @@ func TestExportReportsTheArchiveThatAppeared(t *testing.T) {
 	}
 
 	dest := t.TempDir()
-	archive, err := d.Export("a-20260101-100000", dest, rec.run)
+	archive, err := d.Export("a-20260101-100000", dest, false, rec.run)
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
@@ -665,7 +665,7 @@ func TestExportRunsTheDeclaredCommandAsIs(t *testing.T) {
 	d.Vendor.RequiresRoot = true
 	d.Vendor.Export = []string{"drmap", "pack"}
 	rec := &recorder{}
-	if _, err := d.Export("a-20260101-100000", "", rec.run); err != nil {
+	if _, err := d.Export("a-20260101-100000", "", false, rec.run); err != nil {
 		t.Fatalf("Export: %v", err)
 	}
 	if !equal(rec.ran[0], d.Vendor.Export) {
@@ -678,7 +678,7 @@ func TestExportAnyMapWhenTheToolTakesAPath(t *testing.T) {
 	d := vendorDecl(store)
 	d.Vendor.Export = []string{"drmap", "pack", "{path}"}
 	rec := &recorder{}
-	if _, err := d.Export("b", "", rec.run); err != nil {
+	if _, err := d.Export("b", "", false, rec.run); err != nil {
 		t.Fatalf("a tool that is told which map to pack can export a non-active one: %v", err)
 	}
 	if got := rec.ran[0][2]; got != filepath.Join(store, "b") {
@@ -698,7 +698,7 @@ func TestExportNeverOverwritesAnArchive(t *testing.T) {
 		os.WriteFile(filepath.Join(out, "map.zip"), []byte("new"), 0o644)
 	}}
 
-	archive, err := d.Export("a", dest, rec.run)
+	archive, err := d.Export("a", dest, false, rec.run)
 	if err == nil {
 		t.Fatal("an archive of the same name in dest must not be replaced")
 	}
@@ -719,7 +719,7 @@ func TestExportIgnoresDirectoriesInTheExportDir(t *testing.T) {
 	rec := &recorder{after: func() {
 		os.MkdirAll(filepath.Join(out, "unrelated"), 0o755)
 	}}
-	archive, err := d.Export("a", "", rec.run)
+	archive, err := d.Export("a", "", false, rec.run)
 	if err != nil || archive != "" {
 		t.Errorf("Export = %q, %v; a new directory is not an archive", archive, err)
 	}

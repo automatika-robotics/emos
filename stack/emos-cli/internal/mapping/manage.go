@@ -124,9 +124,14 @@ func (d *Declaration) Use(name string, run Runner) error {
 // archive lands so it is moved into dest, somewhere predictable and
 // provider-independent. Empty dest leaves it. When the move fails, the path
 // returned is where the archive still is.
-func (d *Declaration) Export(name, dest string, run Runner) (string, error) {
+//
+// With debug, for a map EMOS built itself, the archive holds raw data and logs.
+func (d *Declaration) Export(name, dest string, debug bool, run Runner) (string, error) {
 	if d.Kind == KindNative {
-		return d.exportNative(name, dest, false)
+		return d.exportNative(name, dest, debug)
+	}
+	if debug {
+		return "", fmt.Errorf("a debug export is for maps EMOS builds itself; this robot maps with its own software")
 	}
 	if err := d.checkLocal(); err != nil {
 		return "", err

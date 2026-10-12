@@ -725,10 +725,16 @@ func runMapExport(cmd *cobra.Command, args []string) error {
 	if dest == "" {
 		dest = config.MapArchivesDir
 	}
-	if mapExportDebug {
-		return runDebugExport(decl, name, dest)
+	var archive string
+	export := func() (e error) {
+		archive, e = decl.Export(name, dest, mapExportDebug, mapping.SystemRunner)
+		return e
 	}
-	archive, err := decl.Export(name, dest, mapping.SystemRunner)
+	if mapExportDebug {
+		err = ui.Spinner(fmt.Sprintf("Packing '%s' for support", name), export)
+	} else {
+		err = export()
+	}
 	if err != nil && archive != "" {
 		ui.Error(err.Error())
 		ui.Faint(fmt.Sprintf("The archive is still at %s.", archive))
@@ -742,35 +748,26 @@ func runMapExport(cmd *cobra.Command, args []string) error {
 		ui.Faint("The robot's tool chose where to put the archive; check its output above.")
 		return nil
 	}
+	if mapExportDebug {
+		size := ""
+		if info, err := os.Stat(archive); err == nil && info.Size() >= 1<<30 {
+			size = fmt.Sprintf(" (%.1f GB)", float64(info.Size())/(1<<30))
+		} else if err == nil {
+			size = fmt.Sprintf(" (%.0f MB)", float64(info.Size())/(1<<20))
+		}
+		ui.Success(fmt.Sprintf("Packed '%s' for support: %s%s", name, archive, size))
+		if m, err := decl.Find(name); err == nil {
+			if _, err := os.Stat(filepath.Join(m.Path, mapping.DebugBag)); err != nil {
+				ui.Faint("It holds no raw sensor data: record some with 'emos map new --debug'.")
+			}
+		}
+		ui.Faint("This archive is for support. 'emos map import' takes the plain export.")
+		return nil
+	}
 	ui.Success(fmt.Sprintf("Exported '%s' to %s", name, archive))
 	if decl.Kind == mapping.KindNative {
 		ui.Faint("It holds the map's files; the mapping backend's working data stays on the robot.")
 	}
-	return nil
-}
-
-// runDebugExport packs a map with everything support needs to look into it.
-func runDebugExport(decl *mapping.Declaration, name, dest string) error {
-	var export *mapping.DebugExport
-	err := ui.Spinner(fmt.Sprintf("Packing '%s' for support", name), func() error {
-		var e error
-		export, e = decl.ExportDebug(name, dest)
-		return e
-	})
-	if err != nil {
-		return explain(err)
-	}
-	size := ""
-	if info, err := os.Stat(export.Archive); err == nil && info.Size() >= 1<<30 {
-		size = fmt.Sprintf(" (%.1f GB)", float64(info.Size())/(1<<30))
-	} else if err == nil {
-		size = fmt.Sprintf(" (%.0f MB)", float64(info.Size())/(1<<20))
-	}
-	ui.Success(fmt.Sprintf("Packed '%s' for support: %s%s", name, export.Archive, size))
-	if !export.RawData {
-		ui.Faint("It holds no raw sensor data: record some with 'emos map new --debug'.")
-	}
-	ui.Faint("This archive is for support. 'emos map import' takes the plain export.")
 	return nil
 }
 

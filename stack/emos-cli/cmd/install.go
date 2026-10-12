@@ -82,11 +82,14 @@ func chooseInstall() (func() error, error) {
 	fmt.Println()
 	fmt.Println("  How would you like to install EMOS?")
 
-	choice := ui.Select("Select installation mode:", []string{
+	choice, err := ui.Select("Select installation mode:", []string{
 		"Container Install         (No ROS required - runs in Docker)",
 		"Native Install            (Requires existing ROS 2 installation)",
 		"Pixi Install              (Self-contained ROS via pixi - no system ROS needed)",
 	})
+	if err != nil {
+		return nil, err
+	}
 	return []func() error{installOSSContainer, installNative, installPixi}[choice], nil
 }
 
@@ -131,24 +134,19 @@ func installLicensedRobot(cmd *cobra.Command, lic *config.License) {
 	}
 }
 
-func selectDistro() string {
+func selectDistro() (string, error) {
 	if installDistroFlag != "" {
-		return installDistroFlag
+		return installDistroFlag, nil
 	}
-	choice := ui.Select("Select ROS 2 distribution:", []string{
+	choice, err := ui.Select("Select ROS 2 distribution:", []string{
 		"Jazzy (Recommended)",
 		"Humble",
 		"Kilted",
 	})
-	switch choice {
-	case 0:
-		return "jazzy"
-	case 1:
-		return "humble"
-	case 2:
-		return "kilted"
+	if err != nil {
+		return "", err
 	}
-	return "jazzy"
+	return []string{"jazzy", "humble", "kilted"}[choice], nil
 }
 
 func installOSSContainer() error {
@@ -160,7 +158,10 @@ func installOSSContainer() error {
 	}
 	ui.Success("Docker detected.")
 
-	distro := selectDistro()
+	distro, err := selectDistro()
+	if err != nil {
+		return err
+	}
 	image := config.PublicImageTag(distro)
 
 	// Check for existing container
@@ -249,7 +250,10 @@ func installNative() error {
 		for i, inst := range installs {
 			options[i] = fmt.Sprintf("%s  (%s)", capitalize(inst.Distro), inst.Path)
 		}
-		idx := ui.Select("Select ROS 2 distribution:", options)
+		idx, err := ui.Select("Select ROS 2 distribution:", options)
+		if err != nil {
+			return err
+		}
 		chosen = installs[idx]
 	}
 

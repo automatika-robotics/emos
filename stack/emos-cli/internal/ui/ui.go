@@ -197,25 +197,9 @@ func Spinner(title string, fn func() error) error {
 	}
 }
 
-// Select displays an interactive arrow-key menu and returns the 0-based index of the chosen option.
-func Select(prompt string, options []string) int {
-	var result int
-	opts := make([]huh.Option[int], len(options))
-	for i, opt := range options {
-		opts[i] = huh.NewOption(opt, i)
-	}
-	huh.NewSelect[int]().
-		Title(prompt).
-		Options(opts...).
-		Value(&result).
-		WithTheme(huhTheme()).
-		Run()
-	return result
-}
-
-// Choose displays an arrow-key menu and returns the 0-based index of the
+// Select displays an arrow-key menu and returns the 0-based index of the
 // chosen option, or an error when the user cancels with Ctrl+C.
-func Choose(prompt string, options []string) (int, error) {
+func Select(prompt string, options []string) (int, error) {
 	var result int
 	opts := make([]huh.Option[int], len(options))
 	for i, opt := range options {

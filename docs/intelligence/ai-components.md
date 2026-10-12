@@ -14,10 +14,10 @@ Most of them wrap a model, and where the model runs is a separate choice: a clou
   - What it does
 
 * - **LLM**
-  - Runs a large language model on text: reasoning, instruction following, dialogue and tool calling. It can draw on a vector database for context and falls back to a local model when its server is out of reach.
+  - Runs a large language model on text: reasoning, instruction following, dialogue and tool calling. It can draw on a vector database for context and falls back to a local model when its server is out of reach. It can remember the conversation, when `chat_history` is on, and has two actions for it: `reset_history` starts a new conversation and `get_history` returns the current one as text.
 
 * - **VLM**
-  - The same for images and text together, on a multimodal model. Beyond describing a scene and answering questions about it, it runs task models for pointing, grounding and affordance, and with a depth source it turns what it grounds into 3D boxes. Its `describe` and `run_task` actions let an event or Cortex ask a question or run a task on the current frame. Also known as **MLLM**.
+  - The same for images and text together, on a multimodal model. Beyond describing a scene and answering questions about it, it runs task models for pointing, grounding and affordance, and with a depth source it turns what it grounds into 3D boxes. Its `describe` and `run_task` actions let an event or Cortex ask a question or run a task on the current frame, and it can remember the conversation just like the LLM. Also known as **MLLM**.
 
 * - **Vision**
   - Object detection and tracking on images, with classes, boxes and confidences, from a model server or a small on-board classifier. Given depth, from an RGBD camera, a depth image or a point cloud, it publishes metric 3D boxes in the frame you choose, which is what MoveIt and Memory consume.

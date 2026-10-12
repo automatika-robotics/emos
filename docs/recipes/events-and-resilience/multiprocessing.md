@@ -82,6 +82,7 @@ from agents.config import (
     SemanticRouterConfig,
     TextToSpeechConfig,
     VisionConfig,
+    VLMConfig,
 )
 from agents.models import OllamaModel, TransformersTTS, VisionModel, Whisper
 from agents.ros import Action, FixedInput, Launcher, MemLayer, Route, Topic
@@ -148,6 +149,7 @@ mllm = VLM(
     inputs=[mllm_query, image0, detections_topic],
     outputs=[query_answer],
     model_client=qwen_vl_client,
+    config=VLMConfig(chat_history=True),
     trigger=mllm_query,
     component_name="visual_q_and_a",
 )

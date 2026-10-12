@@ -14,14 +14,14 @@ For the introductory walkthrough, start with [Cortex: The Agentic Harness](../re
 
 A recipe without Cortex earns each behaviour by wiring it: a vision component publishes detections, an event matches a class, an LLM step parses what the user said into a typed goal, and every link is yours to write and keep working. A recipe with Cortex has the same components and none of the wiring:
 
-| Without Cortex                                                           | With Cortex                                                                                                                   |
-| :----------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------- |
-| One event and action pair per behaviour, wired in the recipe.            | No behavioural wiring. Cortex plans the behaviour at run time from the goal it is given.                                       |
-| Each capability needs a handler that knows when to trigger it.           | Each capability is an action on its component, and Cortex finds them all when it activates.                                   |
-| User input goes through a bespoke LLM step into a typed goal.            | User input is a sentence sent to Cortex's action server.                                                                      |
-| Recovery is wired per component.                                         | A confirmation before each step handles the step, and replanning handles the plan.                                            |
-| You write the orchestration.                                             | You write the components. Cortex does the orchestration.                                                                      |
-| A capability the recipe lacks is code you write first.                   | When allowed, the planner writes the action or condition a task needs, as it needs it.                                        |
+| Without Cortex                                                 | With Cortex                                                                                 |
+| :------------------------------------------------------------- | :------------------------------------------------------------------------------------------ |
+| One event and action pair per behaviour, wired in the recipe.  | No behavioural wiring. Cortex plans the behaviour at run time from the goal it is given.    |
+| Each capability needs a handler that knows when to trigger it. | Each capability is an action on its component, and Cortex finds them all when it activates. |
+| User input goes through a bespoke LLM step into a typed goal.  | User input is a sentence sent to Cortex's action server.                                    |
+| Recovery is wired per component.                               | A confirmation before each step handles the step, and replanning handles the plan.          |
+| You write the orchestration.                                   | You write the components. Cortex does the orchestration.                                    |
+| A capability the recipe lacks is code you write first.         | When allowed, the planner writes the action or condition a task needs, as it needs it.      |
 
 ---
 
@@ -35,17 +35,19 @@ The planner works with two sets of tools. The planning tools are for finding thi
 
 On each round the model does one of three things. It can call planning tools to find out what it needs, in which case the results are appended to the conversation and planning continues. It can call execution tools, which commits the plan as an ordered list of steps and ends the planning phase. Or it can answer in text alone, which is published on `output` and ends the task. The planner gets up to `max_planning_steps` rounds of research before it has to commit, and a plan longer than `max_execution_steps` is cut at that length.
 
+All the rounds of a task, including any replanning, happen in one conversation with the model. Like any other model component, Cortex keeps the conversation within the model's context window. By default every task starts with a new conversation. If `session_history` is set, the planner also remembers that many earlier tasks. For each one it keeps the task, the calls it made, what they returned and how the task ended, so a follow-up like "now set the LED to the opposite colour" can be understood. A task that consists of just the reset phrase, "chat reset" by default, clears this memory.
+
 ### Execution
 
 The steps run in order. Before each one, Cortex makes a short confirmation call in which the model decides what to do with the step by calling exactly one tool:
 
-| The model calls      | Effect                                                                                                                                                                              |
-| :------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `execute_step`       | Run the step as planned.                                                                                                                                                            |
+| The model calls      | Effect                                                                                                                                                                                               |
+| :------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `execute_step`       | Run the step as planned.                                                                                                                                                                             |
 | the step's own tool  | Run the step with its arguments filled in, for instance a placeholder like `<output from step 1>` bound to what step 1 returned. A step whose arguments hold a placeholder can only be run this way. |
-| `skip_step`          | Leave this step out and go on.                                                                                                                                                      |
-| `abort_plan`         | Stop the plan, and the task ends as aborted.                                                                                                                                        |
-| `continue_executing` | Hold the step while an action started earlier is still running.                                                                                                                    |
+| `skip_step`          | Leave this step out and go on.                                                                                                                                                                       |
+| `abort_plan`         | Stop the plan, and the task ends as aborted.                                                                                                                                                         |
+| `continue_executing` | Hold the step while an action started earlier is still running.                                                                                                                                      |
 
 If the confirmation call fails, or the model answers without calling a tool, the step is not run. It is recorded as failed, with the consequences described below.
 
@@ -65,15 +67,15 @@ If the plan did not reach its end, because a step failed or because a goal was s
 
 Cortex does not search the recipe itself. The launcher builds a registry of everything in the recipe that can be asked to do something by name, from every component in every process, and hands it to Cortex, which turns the entries into tools when it activates. You register nothing.
 
-| Source                                          | Tool                                                                                                                                                                  |
-| :---------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A component action or fallback with a description | `<component>-<method>`, for example `vision-take_picture` or `tts-say`. The description is what the planner reads, so a method without one is not offered.          |
-| A component's action server                     | `send_goal_to_<component>_<server>`, with the goal's fields as parameters and a `wait_to_finish` flag, true by default. Both the main server of a component run as an action server and any it reports besides. |
-| A component's service                           | `send_request_to_<component>_<service>`, the same way.                                                                                                                |
-| A plugin's actions                              | `<plugin id>-<action>`, for example `lite3-stand_up`, with the plugin's own description.                                                                             |
-| A routine the Monitor hosts                     | `routine-<name>`, plus `pause_routine`, `resume_routine` and `abort_routine`.                                                                                        |
-| Cortex itself                                   | `inspect_component` for planning, and `update_parameter` and `wait` for execution.                                                                                   |
-| A function the planner wrote                    | `scratch-<name>`, with the parameters of its signature, once `enable_scratch_functions` is on. See [Functions the planner writes](#functions-the-planner-writes). |
+| Source                                            | Tool                                                                                                                                                                                                            |
+| :------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A component action or fallback with a description | `<component>-<method>`, for example `vision-take_picture` or `tts-say`. The description is what the planner reads, so a method without one is not offered.                                                      |
+| A component's action server                       | `send_goal_to_<component>_<server>`, with the goal's fields as parameters and a `wait_to_finish` flag, true by default. Both the main server of a component run as an action server and any it reports besides. |
+| A component's service                             | `send_request_to_<component>_<service>`, the same way.                                                                                                                                                          |
+| A plugin's actions                                | `<plugin id>-<action>`, for example `lite3-stand_up`, with the plugin's own description.                                                                                                                        |
+| A routine the Monitor hosts                       | `routine-<name>`, plus `pause_routine`, `resume_routine` and `abort_routine`.                                                                                                                                   |
+| Cortex itself                                     | `inspect_component` for planning, and `update_parameter` and `wait` for execution.                                                                                                                              |
+| A function the planner wrote                      | `scratch-<name>`, with the parameters of its signature, once `enable_scratch_functions` is on. See [Functions the planner writes](#functions-the-planner-writes).                                               |
 
 Lifecycle methods such as `start`, `stop` and `restart` are left out, since the Monitor manages those, and so are Cortex's own actions.
 
@@ -131,10 +133,10 @@ An instruction like "whenever the battery is low, go to the dock" is not a step 
 
 Sometimes a task needs something the recipe does not have, such as a way to send an email or a reading that no component publishes. With `CortexConfig(enable_scratch_functions=True)`, the planner is allowed to write the missing piece itself as a Python function and use it straight away. The tools for this are `write_function`, `list_functions`, `read_function` and `remove_function`. A written function is one of two kinds:
 
-| Kind        | What the planner writes                                                                                                                                           | What it becomes                                                                   |
-| :---------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------- |
-| `action`    | `def <name>(<typed parameters>) -> tuple[bool, str]` with a docstring. It returns `(True, message)` or `(False, why)` and never raises.                            | The execution tool `scratch-<name>`, which a standing event can run as well.      |
-| `condition` | `def <name>() -> bool` with a docstring. It is quick, never blocks, and returns `False` rather than raising when it cannot tell.                                   | A condition that `add_event` polls at a `check_rate`, named `scratch-<name>`.     |
+| Kind        | What the planner writes                                                                                                                 | What it becomes                                                               |
+| :---------- | :-------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------- |
+| `action`    | `def <name>(<typed parameters>) -> tuple[bool, str]` with a docstring. It returns `(True, message)` or `(False, why)` and never raises. | The execution tool `scratch-<name>`, which a standing event can run as well.  |
+| `condition` | `def <name>() -> bool` with a docstring. It is quick, never blocks, and returns `False` rather than raising when it cannot tell.        | A condition that `add_event` polls at a `check_rate`, named `scratch-<name>`. |
 
 Every function is checked when it is written. If it does not parse, does not keep the signature of its kind, has no docstring, or uses a name it did not import, it is refused and the planner is told why. A function may import the standard library, read the process environment through `os.environ`, and call the recipe's existing actions through `run_action("<tool name>", **arguments)`, which returns `(success, message)` like any action. It cannot send a goal to an action server; that remains a step of the plan. Writing a name again replaces the function, but any event that was installed with the earlier version keeps using it until the event is removed and added again. A condition that raises, returns something other than a bool, or takes longer than its polling period counts as not met, and the problem is reported once in the log.
 
@@ -173,29 +175,30 @@ cortex = Cortex(
 )
 ```
 
-| Argument       | Purpose                                                                                                                                                                   |
-| :------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `actions`      | Custom actions to offer as execution tools.                                                                                                                               |
-| `routines`     | Routines to host and offer as skills.                                                                                                                                     |
-| `output`       | The topic Cortex publishes to when a goal can be answered in text alone. Wire it into TextToSpeech to give the robot a voice, or into the web interface to show replies.  |
-| `model_client` | The client of the model used for planning and confirmation. Optional with `enable_local_model=True`.                                                                      |
-| `db_client`    | A vector database client. When set, Cortex queries it before each planning call and puts the result in front of the planner.                                              |
-| `config`       | A `CortexConfig`, which extends `LLMConfig`.                                                                                                                              |
+| Argument       | Purpose                                                                                                                                                                  |
+| :------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `actions`      | Custom actions to offer as execution tools.                                                                                                                              |
+| `routines`     | Routines to host and offer as skills.                                                                                                                                    |
+| `output`       | The topic Cortex publishes to when a goal can be answered in text alone. Wire it into TextToSpeech to give the robot a voice, or into the web interface to show replies. |
+| `model_client` | The client of the model used for planning and confirmation. Optional with `enable_local_model=True`.                                                                     |
+| `db_client`    | A vector database client. When set, Cortex queries it before each planning call and puts the result in front of the planner.                                             |
+| `config`       | A `CortexConfig`, which extends `LLMConfig`.                                                                                                                             |
 
-| `CortexConfig` field         | Default | Effect                                                                     |
-| :--------------------------- | :------ | :------------------------------------------------------------------------- |
-| `max_planning_steps`         | 10      | Rounds of research before the planner must commit.                         |
-| `max_execution_steps`        | 10      | The longest plan that is run.                                              |
-| `confirmation_temperature`   | 0.3     | Sampling temperature of the confirmation call.                             |
-| `confirmation_max_tokens`    | 500     | Length budget of the confirmation call.                                    |
-| `monitoring_interval`        | 2.0 s   | How often running goals and routines are reported to the planner.          |
-| `compile_routines`           | true    | Run consecutive compilable steps as one routine.                           |
-| `step_timeout`               | 60 s    | Time allowed for a component or plugin action inside a compiled run.       |
-| `enable_events`              | false   | Offer the standing-instruction tools.                                      |
-| `enable_scratch_functions`   | false   | Let the planner write its own actions and event conditions.                |
-| `scratch_notes`              | empty   | What the planner is told about the environment its functions run in.      |
+| `CortexConfig` field       | Default | Effect                                                               |
+| :------------------------- | :------ | :------------------------------------------------------------------- |
+| `max_planning_steps`       | 10      | Rounds of research before the planner must commit.                   |
+| `max_execution_steps`      | 10      | The longest plan that is run.                                        |
+| `session_history`          | 0       | How many earlier tasks the planner remembers.                        |
+| `confirmation_temperature` | 0.3     | Sampling temperature of the confirmation call.                       |
+| `confirmation_max_tokens`  | 500     | Length budget of the confirmation call.                              |
+| `monitoring_interval`      | 2.0 s   | How often running goals and routines are reported to the planner.    |
+| `compile_routines`         | true    | Run consecutive compilable steps as one routine.                     |
+| `step_timeout`             | 60 s    | Time allowed for a component or plugin action inside a compiled run. |
+| `enable_events`            | false   | Offer the standing-instruction tools.                                |
+| `enable_scratch_functions` | false   | Let the planner write its own actions and event conditions.          |
+| `scratch_notes`            | empty   | What the planner is told about the environment its functions run in. |
 
-The fields of `LLMConfig` apply too, among them `enable_local_model`, `enable_rag`, `collection_name`, `n_results`, `temperature` and `max_new_tokens`, whose default for Cortex is 1000.
+The fields of `LLMConfig` apply too, among them `enable_local_model`, `enable_rag`, `collection_name`, `n_results`, `temperature` and `max_new_tokens`, whose default for Cortex is 1000. Two of them cannot be changed: `chat_history` is always on, because planning is a conversation, and `stream` is always off. `history_budget` works as in any other model component. With Ollama or a local model it is worked out from the model's context window.
 
 Cortex always runs as an action server, so `run_type` is not yours to set. Its action type is `VisionLanguageAction` and the goal carries the task as a string.
 

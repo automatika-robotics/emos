@@ -77,6 +77,12 @@ The trigger parameter lets the component know that it has to perform its functio
 
 The VLM component takes as input a text topic (the output of the SpeechToText component) and an image topic, assuming we have a camera device onboard the robot publishing this topic. And just like before we need to provide a model client, this time with a VLM model. This time we will use the OllamaClient along with *qwen2.5vl:latest* model, an opensource multimodal LLM from the Qwen family, available on Ollama. Furthermore, we will configure our VLM component using `VLMConfig`. We will set `stream=True` to make the VLM output text be published as a stream for downstream components that consume this output. In EMOS, streaming output can be chunked using a `break_character` in the config (Default: '.'). This way the downstream TextToSpeech component can start generating audio as soon as the first sentence is produced by the LLM.
 
+We also set `chat_history=True`. By default a component does not remember the conversation. Every request it sends to the model contains only the system prompt and the current input. With `chat_history` on, the component also sends the conversation so far, so the user can ask a follow-up question. After "what is on the table?" they can ask "what colour is it?" and the model knows what "it" refers to.
+
+The conversation is not kept forever. The component keeps the last ten turns, which can be changed with `history_size`. It also makes sure that the whole request fits in the model's context window. When the model runs on Ollama, the client knows the size of the window and the component works out its budget from it. Pictures are sent only with the turn they belong to. An earlier turn keeps a note saying that it had a picture, but the picture itself is not sent again. If the robot should be able to answer questions about something it saw a few turns ago, set `history_images` to the number of recent turns whose pictures should be sent along. Turns that are dropped from the conversation are forgotten. If you would rather keep a summary of them, set `history_compaction="summarize"`. The component then asks the model to summarize the dropped turns and keeps that summary at the start of the conversation.
+
+To start a new conversation, say "chat reset". The phrase can be changed with `history_reset_phrase`. It is matched without case and without trailing punctuation, so the "Chat reset." that comes out of speech recognition works too. The system prompt stays in place. A recipe can also do this from an event or a routine by calling the component's `reset_history` action.
+
 ```{note}
 Ollama is one of the most popular local LLM serving projects. Learn about setting up Ollama [here](https://ollama.com).
 ```
@@ -97,7 +103,7 @@ text_answer = Topic(name="text1", msg_type="String")
 qwen_vl = OllamaModel(name="qwen_vl", checkpoint="qwen2.5vl:latest")
 qwen_client = OllamaClient(qwen_vl)
 
-mllm_config = VLMConfig(stream=True)  # Other inference specific parameters can be provided here
+mllm_config = VLMConfig(stream=True, chat_history=True)  # Other inference specific parameters can be provided here
 
 # Define an VLM component
 mllm = VLM(
@@ -201,7 +207,7 @@ text_answer = Topic(name="text1", msg_type="String")
 
 qwen_vl = OllamaModel(name="qwen_vl", checkpoint="qwen2.5vl:latest")
 qwen_client = OllamaClient(qwen_vl)
-mllm_config = VLMConfig(stream=True)  # Other inference specific parameters can be provided here
+mllm_config = VLMConfig(stream=True, chat_history=True)  # Other inference specific parameters can be provided here
 
 mllm = VLM(
     inputs=[text_query, image0],

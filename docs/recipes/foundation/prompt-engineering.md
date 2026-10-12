@@ -32,7 +32,7 @@ Browse all supported detection models on the [HuggingFace object-detection page]
 ```python
 from agents.models import VisionModel
 from agents.clients import RoboMLRESPClient, RoboMLHTTPClient
-from agents.config import VisionConfig
+from agents.config import VisionConfig, VLMConfig
 
 # Add an object detection model
 object_detection = VisionModel(name="object_detection",
@@ -77,6 +77,7 @@ mllm = VLM(
     inputs=[text_query, image0, detections_topic],
     outputs=[text_answer],
     model_client=qwen_client,
+    config=VLMConfig(chat_history=True),
     trigger=text_query,
     component_name="mllm_component"
 )
@@ -92,7 +93,7 @@ mllm.set_component_prompt(
 )
 ```
 
-The detections render as their labels, one per object, so the model sees something like "chair, chair, person" in place of `{{ detections }}`.
+The detections render as their labels, one per object, so the model sees something like "chair, chair, person" in place of `{{ detections }}`. We have also turned on `chat_history`, so the component remembers the conversation. Note that it remembers the question and the answer, not the full prompt. The list of detections is rendered into the prompt for one call and is not sent again with later turns. That way the model never sees a stale list of objects next to a new image.
 
 ```{caution}
 The names of the topics used in the jinja2 template are the same as the name parameters set when creating the Topic objects.
@@ -122,7 +123,7 @@ from agents.components import Vision, VLM
 from agents.models import VisionModel, TransformersMLLM
 from agents.clients import RoboMLRESPClient, RoboMLHTTPClient
 from agents.ros import Topic, Launcher
-from agents.config import VisionConfig
+from agents.config import VisionConfig, VLMConfig
 
 image0 = Topic(name="image_raw", msg_type="Image")
 detections_topic = Topic(name="detections", msg_type="Detections")
@@ -152,6 +153,7 @@ mllm = VLM(
     inputs=[text_query, image0, detections_topic],
     outputs=[text_answer],
     model_client=qwen_client,
+    config=VLMConfig(chat_history=True),
     trigger=text_query,
     component_name="mllm_component"
 )

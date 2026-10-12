@@ -134,12 +134,14 @@ cortex_output = Topic(name="cortex_output", msg_type="String")
 cortex = Cortex(
     output=cortex_output,
     model_client=planner_client,
-    config=CortexConfig(max_planning_steps=5, max_execution_steps=10),
+    config=CortexConfig(max_planning_steps=5, max_execution_steps=10, session_history=3),
     component_name="cortex",
 )
 ```
 
 **That's all.** No `actions=[…]` list -- the capability components contribute their own actions. No prompt -- the built-in prompt plus the discovered tool descriptions are the prompt. No fallback wiring -- Cortex confirms each step before executing it and replans on failure.
+
+The third setting, `session_history`, lets the planner remember earlier tasks. By default it does not: every task starts with an empty conversation, and whatever the planner learnt while planning the last task is gone. With `session_history=3` it remembers the last three tasks. For each one it keeps the task itself, the calls it made, what they returned and how the task ended. This is what makes a follow-up like "undo that" work. Sending "chat reset" as a task clears this memory. The planner does nothing else for that task and reports success.
 
 ---
 
@@ -164,7 +166,7 @@ cortex = Cortex(
     ],
     output=cortex_output,
     model_client=planner_client,
-    config=CortexConfig(max_planning_steps=5, max_execution_steps=10),
+    config=CortexConfig(max_planning_steps=5, max_execution_steps=10, session_history=3),
     component_name="cortex",
 )
 ```
@@ -206,6 +208,7 @@ Open the Web UI at `https://localhost:5001`, accept the self-signed certificate 
 | *"start tracking the person"* | One step: `vision-track(label="person")`. The Vision component's `@component_action` starts continuous tracking on the named label (results stream on the `trackings` topic) and returns `(True, message)`, and the planner sees the message immediately. |
 | *"take a picture, describe it, then track whatever's in front of you"* | Three steps, sequenced. The third step's argument is bound from the second step's output -- Cortex resolves `<output from step 2>` placeholders at runtime. |
 | *"toggle the LED"* | One step: the custom `toggle_led` action you registered. |
+| *"undo that"*, right after the LED | One step. The planner sees in its session history that `toggle_led` was just called, and calls it again. |
 | *"are you ok?"* | No actions needed. The planner returns text only; the reply lands on the `cortex_output` topic. (If you want it spoken, your prompt can nudge the planner to always end with a `tts-say` call.) |
 
 Or send a goal from another terminal directly to Cortex's action server:

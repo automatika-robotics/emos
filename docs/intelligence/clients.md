@@ -44,6 +44,8 @@ Some clients need an extra package, listed in the table. When it is missing, the
   - HTTP client for a ChromaDB server, started with `pip install chromadb` and `chroma run --path /db_path`.
 ```
 
+The clients also differ in what they can do for a component that keeps a conversation. Such a component trims the conversation so that it fits in the model's context window, and it can only do that when it knows how big the window is. The Ollama client and the built-in local models tell it, so nothing needs to be configured. An OpenAI-compatible server or RoboML gives no such figure, so with `GenericHTTPClient` or a RoboML client the size has to be set in the component's config, as `history_budget`, or the conversation is only limited by its number of turns. RoboML has two more limits of its own: it takes images with the current message only, so earlier turns reach it without their pictures, and over its websocket client the turns dropped from a conversation cannot be summarized, so they are simply forgotten.
+
 ## Keys and certificates
 
 A client that reaches a cloud API needs a key, and the key never goes into the recipe. `GenericHTTPClient` reads it from an environment variable, `OPENAI_API_KEY` unless `api_key_env` names another, in the process the component runs in, so the key is neither written into the recipe nor serialised with it. Naming a variable that is not set fails at once rather than at the first request.

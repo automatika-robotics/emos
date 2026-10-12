@@ -74,6 +74,7 @@ llm = LLM(
     outputs=[llm_out],
     model_client=qwen_client,
     trigger=llm_in,
+    config=LLMConfig(chat_history=True),
     component_name="generic_llm",
 )
 
@@ -183,6 +184,8 @@ router = SemanticRouter(
 )
 ```
 
+The router does not keep a conversation. Each query is routed on its own, and the router ignores `chat_history` in its config. The generic LLM behind `llm_route` does keep one, which is why the recipe sets `chat_history=True` on it. A follow-up question that is routed there still makes sense to the model.
+
 The LLM mode also runs on the built-in local model: pass `config=LLMConfig(enable_local_model=True)` and leave `model_client` out, and the router deploys the local model when it configures.
 
 ## Option 2: Decision Mode
@@ -289,6 +292,7 @@ llm = LLM(
     outputs=[llm_out],
     model_client=qwen_client,
     trigger=llm_in,
+    config=LLMConfig(chat_history=True),
     component_name="generic_llm",
 )
 

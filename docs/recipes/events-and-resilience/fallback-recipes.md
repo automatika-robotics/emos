@@ -37,6 +37,7 @@ Install the required dependency for your component: `pip install llama-cpp-pytho
 from agents.components import LLM
 from agents.models import TransformersLLM
 from agents.clients import RoboMLHTTPClient
+from agents.config import LLMConfig
 from agents.ros import Launcher, Topic, Action
 
 # Primary: A powerful model hosted remotely (e.g., via RoboML)
@@ -58,6 +59,7 @@ llm_component = LLM(
     outputs=[llm_response],
     model_client=primary_client,
     trigger=user_query,
+    config=LLMConfig(chat_history=True),
     component_name="brain",
 )
 
@@ -132,7 +134,7 @@ llm_component = LLM(
     outputs=[llm_response],
     model_client=primary_client,
     component_name="brain",
-    config=LLMConfig(stream=True),
+    config=LLMConfig(stream=True, chat_history=True),
 )
 
 # Register the Backup Client
@@ -216,7 +218,7 @@ llm_component = LLM(
     outputs=[llm_response],
     model_client=primary_client,
     component_name="brain",
-    config=LLMConfig(stream=True),
+    config=LLMConfig(stream=True, chat_history=True),
 )
 
 # 4. Register the Backup Client

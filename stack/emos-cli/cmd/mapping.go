@@ -246,21 +246,25 @@ func runMapNew(cmd *cobra.Command, args []string) error {
 	return runVendorMapNew(decl, name)
 }
 
-// environmentChoices are the environments as the operator is asked for them,
-// in the order of mapping.Environments.
-var environmentChoices = []string{
-	"Indoors (rooms, corridors, warehouses)",
-	"Outdoors (yards, streets, open sites)",
+// environments are the places a map can be made in, as the operator is asked
+// for them, each with its value among mapping.Environments.
+var environments = []struct{ value, label string }{
+	{"indoor", "Indoors (rooms, corridors, warehouses)"},
+	{"outdoor", "Outdoors (yards, streets, open sites)"},
 }
 
 // askEnvironment asks where the map is made, for the mapping backend's
 // settings.
 func askEnvironment() (string, error) {
-	choice, err := ui.Choose("Where is this map?", environmentChoices)
+	labels := make([]string, len(environments))
+	for i, env := range environments {
+		labels[i] = env.label
+	}
+	choice, err := ui.Select("Where is this map?", labels)
 	if err != nil {
 		return "", err
 	}
-	return mapping.Environments[choice], nil
+	return environments[choice].value, nil
 }
 
 // confirmDebug tells the operator what a debug session records and asks

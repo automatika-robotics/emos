@@ -234,7 +234,7 @@ func runMapNew(cmd *cobra.Command, args []string) error {
 				return nil
 			}
 		}
-		if mapDebug && !confirmDebug(decl.Store()) {
+		if mapDebug && !confirmDebug() {
 			ui.Info("Cancelled.")
 			return nil
 		}
@@ -263,80 +263,25 @@ func askEnvironment() (string, error) {
 	return mapping.Environments[choice], nil
 }
 
-// lowDiskSpace is the free space below which a debug recording may fill the
-// disk before the operator stops it.
-const lowDiskSpace = 5 << 30
-
 // confirmDebug tells the operator what a debug session records and asks
 // whether to go on.
-func confirmDebug(store string) bool {
+func confirmDebug() bool {
 	ui.Header("DEBUG MODE")
 	ui.Warn("Debug mode records the raw LiDAR and IMU data with the map, for support to replay.")
 	ui.Warn("The recording is large: hundreds of MB for every minute of mapping. Keep the run to a few minutes.")
-	if free, err := freeSpace(store); err == nil {
-		ui.Info("Free space for maps: " + formatBytes(free))
-		if free < lowDiskSpace {
-			ui.Warn("That is little: the recording can fill the disk. Free some space or keep the run very short.")
-		}
-	}
 	ui.Faint("Most useful to support: the robot standing still until mapping is ready, then one slow loop back to the start.")
 	return ui.Confirm("Record the raw sensor data with this map?")
-}
-
-// freeSpace is the space left for an unprivileged user on the filesystem
-// holding path, or the nearest directory above it that exists.
-func freeSpace(path string) (uint64, error) {
-	for {
-		var fs syscall.Statfs_t
-		err := syscall.Statfs(path, &fs)
-		if err == nil {
-			return fs.Bavail * uint64(fs.Bsize), nil
-		}
-		parent := filepath.Dir(path)
-		if !errors.Is(err, syscall.ENOENT) || parent == path {
-			return 0, err
-		}
-		path = parent
-	}
-}
-
-// formatBytes is n in the largest of MB and GB it reaches.
-func formatBytes(n uint64) string {
-	if n >= 1<<30 {
-		return fmt.Sprintf("%.1f GB", float64(n)/(1<<30))
-	}
-	return fmt.Sprintf("%.0f MB", float64(n)/(1<<20))
-}
-
-// dirSize is the total size of the files under path.
-func dirSize(path string) (uint64, error) {
-	var total uint64
-	err := filepath.WalkDir(path, func(_ string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !entry.IsDir() {
-			info, err := entry.Info()
-			if err != nil {
-				return err
-			}
-			total += uint64(info.Size())
-		}
-		return nil
-	})
-	return total, err
 }
 
 // reportDebug tells the operator where a debug session left its recording,
 // whether or not it made a map: a failed map is when support needs it most.
 func reportDebug(dir string) {
 	bag := filepath.Join(dir, mapping.DebugBag)
-	size, err := dirSize(bag)
-	if err != nil || size == 0 {
+	if entries, err := os.ReadDir(bag); err != nil || len(entries) == 0 {
 		ui.Warn("Debug mode was on, but no raw sensor data was recorded. The session's log says why.")
 		return
 	}
-	ui.Info("Raw sensor data for support: " + bag + " (" + formatBytes(size) + ")")
+	ui.Info("Raw sensor data for support: " + bag)
 	ui.Faint("Pack it for support with 'emos map export --debug " + filepath.Base(dir) + "'.")
 }
 
@@ -816,8 +761,10 @@ func runDebugExport(decl *mapping.Declaration, name, dest string) error {
 		return explain(err)
 	}
 	size := ""
-	if info, err := os.Stat(export.Archive); err == nil {
-		size = " (" + formatBytes(uint64(info.Size())) + ")"
+	if info, err := os.Stat(export.Archive); err == nil && info.Size() >= 1<<30 {
+		size = fmt.Sprintf(" (%.1f GB)", float64(info.Size())/(1<<30))
+	} else if err == nil {
+		size = fmt.Sprintf(" (%.0f MB)", float64(info.Size())/(1<<20))
 	}
 	ui.Success(fmt.Sprintf("Packed '%s' for support: %s%s", name, export.Archive, size))
 	if !export.RawData {

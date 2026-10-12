@@ -14,12 +14,12 @@ GTSAM_REPO="https://github.com/borglab/gtsam"
 GTSAM_REF="4.3a1"
 GTSAM_POINTS_REPO="https://github.com/koide3/gtsam_points"
 GTSAM_POINTS_REF="v1.2.2"
-# v1.2.2 plus the build fix for fmt >= 11
-GLIM_REPO="https://github.com/aleph-ra/glim"
-GLIM_REF="v1.2.2-emos1"
-# v1.2.2 plus the fix for the map publisher reading past its submaps
+# GLIM and its ROS wrapper follow master, which upstream moves together: each
+# build takes their latest commits
+GLIM_REPO="https://github.com/koide3/glim"
+GLIM_REF="master"
 GLIM_ROS_REPO="https://github.com/koide3/glim_ros2"
-GLIM_ROS_REF="4d4ec524ccf1b02aa09b0af2af767ecc54343798"
+GLIM_ROS_REF="master"
 
 CUDA_ROOT="${EMOS_MAPPING_CUDA:-}"
 
@@ -36,20 +36,28 @@ log() {
     esac
 }
 
-# fetch <name> <repo> <ref>: check out exactly ref, a tag or a commit.
+# fetch <name> <repo> <ref>: check out ref, a tag, a commit or a branch. A
+# branch is followed: it is checked out at the commit it is on now, so a build
+# after the branch moved fetches the newer one.
 fetch() {
     local dir="$WORK/src/$1"
     local pinned="$dir/.git/emos_ref"
-    if [ -f "$pinned" ] && [ "$(cat "$pinned")" = "$3" ]; then
+    local ref="$3" head
+    head=$(git ls-remote "$2" "refs/heads/$3" | cut -f1)
+    if [ -n "$head" ]; then
+        ref="$head"
+    fi
+    if [ -f "$pinned" ] && [ "$(cat "$pinned")" = "$ref" ]; then
         return 0
     fi
     if [ ! -d "$dir/.git" ]; then
         git init -q "$dir"
         git -C "$dir" remote add origin "$2"
     fi
-    git -C "$dir" fetch -q --depth 1 origin "$3"
+    git -C "$dir" fetch -q --depth 1 origin "$ref"
     git -C "$dir" checkout -q --detach FETCH_HEAD
-    echo "$3" > "$pinned"
+    echo "$ref" > "$pinned"
+    log INFO "$1: $3${head:+ at ${head:0:7}}"
 }
 
 # build <name> [cmake args...]: build one source tree into the workspace

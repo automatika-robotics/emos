@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	pathpkg "path"
 	"path/filepath"
@@ -327,9 +328,8 @@ func (d *Declaration) useNative(name string) error {
 	return nil
 }
 
-// exportNative packs a map's files into <dest>/<name>.zip and returns its
-// path. The backend's working data stays behind.
-func (d *Declaration) exportNative(name, dest string) (string, error) {
+// exportNative packs a map into dest and returns the archive's path.
+func (d *Declaration) exportNative(name, dest string, debug bool, log string) (string, error) {
 	target, err := d.Find(name)
 	if err != nil {
 		return "", err
@@ -337,24 +337,44 @@ func (d *Declaration) exportNative(name, dest string) (string, error) {
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		return "", err
 	}
-	archive := filepath.Join(dest, target.Name+".zip")
+	suffix := ".zip"
+	if debug {
+		suffix = "-debug.zip"
+	}
+	archive := filepath.Join(dest, target.Name+suffix)
 	if _, err := os.Lstat(archive); err == nil {
 		return "", fmt.Errorf("%s already exists", archive)
 	}
 	partial := archive + ".partial"
-	if err := zipMapFiles(target, partial); err != nil {
+	if err := zipMap(target, partial, debug, log); err != nil {
 		_ = os.Remove(partial)
 		return "", err
 	}
 	return archive, os.Rename(partial, archive)
 }
 
-// zipMapFiles writes the files of a map directory into a new zip at path, each
-// under the map's name.
-func zipMapFiles(m *Map, path string) error {
-	entries, err := os.ReadDir(m.Path)
+// zipEntry is a file to pack: its name in the archive, under the map's name,
+// and where it is on disk.
+type zipEntry struct {
+	name string
+	path string
+	info fs.FileInfo
+}
+
+// zipMap writes a map's files into a new zip at path, each under the map's
+// name: its top-level files, or with debug every file under its directory and
+// the session log under logs/.
+func zipMap(m *Map, path string, debug bool, log string) error {
+	files, err := mapFiles(m.Path, debug)
 	if err != nil {
 		return err
+	}
+	if log != "" {
+		info, err := os.Stat(log)
+		if err != nil {
+			return err
+		}
+		files = append(files, zipEntry{"logs/" + filepath.Base(log), log, info})
 	}
 	out, err := os.Create(path)
 	if err != nil {
@@ -362,25 +382,21 @@ func zipMapFiles(m *Map, path string) error {
 	}
 	defer out.Close()
 	zw := zip.NewWriter(out)
-	for _, entry := range entries {
-		if !entry.Type().IsRegular() {
-			continue
-		}
-		info, err := entry.Info()
+	for _, f := range files {
+		header, err := zip.FileInfoHeader(f.info)
 		if err != nil {
 			return err
 		}
-		header, err := zip.FileInfoHeader(info)
-		if err != nil {
-			return err
-		}
-		header.Name = m.Name + "/" + entry.Name()
+		header.Name = m.Name + "/" + f.name
 		header.Method = zip.Deflate
+		if strings.HasSuffix(f.name, ".mcap") || strings.HasSuffix(f.name, ".db3") {
+			header.Method = zip.Store // recorded sensor data is not deflated
+		}
 		w, err := zw.CreateHeader(header)
 		if err != nil {
 			return err
 		}
-		if err := copyInto(w, filepath.Join(m.Path, entry.Name())); err != nil {
+		if err := copyInto(w, f.path); err != nil {
 			return err
 		}
 	}
@@ -388,6 +404,37 @@ func zipMapFiles(m *Map, path string) error {
 		return err
 	}
 	return out.Close()
+}
+
+// mapFiles lists a map directory's regular files, those at its top level or
+// with all every file under it, named by their path relative to the directory.
+func mapFiles(dir string, all bool) ([]zipEntry, error) {
+	var files []zipEntry
+	err := filepath.WalkDir(dir, func(file string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			if !all && file != dir {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !entry.Type().IsRegular() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(dir, file)
+		if err != nil {
+			return err
+		}
+		files = append(files, zipEntry{filepath.ToSlash(rel), file, info})
+		return nil
+	})
+	return files, err
 }
 
 func copyInto(w io.Writer, path string) error {

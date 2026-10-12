@@ -1,9 +1,7 @@
 package mapping
 
 import (
-	"archive/zip"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,9 +21,7 @@ type DebugExport struct {
 
 // ExportDebug packs everything support needs to look into a map EMOS built
 // itself: the whole map directory, with GLIM's configuration and dump and a
-// debug session's raw sensor data, and the session's log from logsDir. It is
-// '<name>-debug.zip' in dest, which 'emos map import' does not take: only the
-// map files are a map.
+// debug session's raw sensor data, and the session's log from logsDir.
 func (d *Declaration) ExportDebug(name, dest, logsDir string) (*DebugExport, error) {
 	if d.Kind != KindNative {
 		return nil, fmt.Errorf("a debug export is for maps EMOS builds itself; this robot maps with its own software")
@@ -34,89 +30,14 @@ func (d *Declaration) ExportDebug(name, dest, logsDir string) (*DebugExport, err
 	if err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(dest, 0o755); err != nil {
-		return nil, err
-	}
-	export := &DebugExport{
-		Archive: filepath.Join(dest, target.Name+"-debug.zip"),
-		Log:     sessionLog(logsDir, target.Name),
-	}
-	if _, err := os.Lstat(export.Archive); err == nil {
-		return nil, fmt.Errorf("%s already exists", export.Archive)
-	}
+	export := &DebugExport{Log: sessionLog(logsDir, target.Name)}
 	if info, err := os.Stat(filepath.Join(target.Path, DebugBag)); err == nil && info.IsDir() {
 		export.RawData = true
 	}
-	partial := export.Archive + ".partial"
-	if err := zipMapTree(target, export.Log, partial); err != nil {
-		_ = os.Remove(partial)
+	if export.Archive, err = d.exportNative(name, dest, true, export.Log); err != nil {
 		return nil, err
 	}
-	return export, os.Rename(partial, export.Archive)
-}
-
-// zipMapTree writes every regular file under a map directory into a new zip
-// at path, under the map's name, and the session log under its logs/.
-func zipMapTree(m *Map, log, path string) error {
-	out, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	zw := zip.NewWriter(out)
-	add := func(file, entry string, info fs.FileInfo) error {
-		header, err := zip.FileInfoHeader(info)
-		if err != nil {
-			return err
-		}
-		header.Name = entry
-		header.Method = zipMethod(entry)
-		w, err := zw.CreateHeader(header)
-		if err != nil {
-			return err
-		}
-		return copyInto(w, file)
-	}
-	err = filepath.WalkDir(m.Path, func(file string, entry fs.DirEntry, err error) error {
-		if err != nil || !entry.Type().IsRegular() {
-			return err
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(m.Path, file)
-		if err != nil {
-			return err
-		}
-		return add(file, m.Name+"/"+filepath.ToSlash(rel), info)
-	})
-	if err != nil {
-		return err
-	}
-	if log != "" {
-		info, err := os.Stat(log)
-		if err != nil {
-			return err
-		}
-		if err := add(log, m.Name+"/logs/"+filepath.Base(log), info); err != nil {
-			return err
-		}
-	}
-	if err := zw.Close(); err != nil {
-		return err
-	}
-	return out.Close()
-}
-
-// zipMethod is how an entry is packed. Recorded sensor data is stored as it
-// is: raw point clouds hardly deflate (by some 7 %), and deflating gigabytes
-// would only keep the CPU busy.
-func zipMethod(entry string) uint16 {
-	if strings.HasSuffix(entry, ".mcap") || strings.HasSuffix(entry, ".db3") {
-		return zip.Store
-	}
-	return zip.Deflate
+	return export, nil
 }
 
 // The stamps on a map directory, '<name>-20060102-150405', and on the log the

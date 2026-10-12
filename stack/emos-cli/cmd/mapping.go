@@ -51,7 +51,7 @@ func init() {
 			"for the mapping backend's settings; asked when unset")
 	newCmd.Flags().BoolVar(&mapDebug, "debug", false,
 		"also record the raw LiDAR and IMU data with a map EMOS builds itself, "+
-			"for support to replay; it is large")
+			"for debugging replay; it is large")
 	newCmd.Flags().StringVar(&mapRMW, "rmw", "",
 		"RMW implementation for a map EMOS builds itself ("+runner.RMWChoices+"); "+
 			"unset keeps the environment's, or ROS's default")
@@ -77,7 +77,7 @@ func init() {
 	exportCmd.Flags().StringVarP(&mapExportDir, "output", "o", "",
 		"directory to put the archive in (default ~/emos/map-archives)")
 	exportCmd.Flags().BoolVar(&mapExportDebug, "debug", false,
-		"pack everything support needs instead, for a map EMOS built itself: the backend's "+
+		"pack everything for debugging instead, for a map EMOS built itself: the backend's "+
 			"configuration and working data, and the raw sensor data and log of a debug session")
 	mapCmd.AddCommand(exportCmd)
 	mapCmd.AddCommand(&cobra.Command{
@@ -267,22 +267,22 @@ func askEnvironment() (string, error) {
 // whether to go on.
 func confirmDebug() bool {
 	ui.Header("DEBUG MODE")
-	ui.Warn("Debug mode records the raw LiDAR and IMU data with the map, for support to replay.")
+	ui.Warn("Debug mode records the raw LiDAR and IMU data with the map, for debugging replay.")
 	ui.Warn("The recording is large: hundreds of MB for every minute of mapping. Keep the run to a few minutes.")
-	ui.Faint("Most useful to support: the robot standing still until mapping is ready, then one slow loop back to the start.")
+	ui.Faint("Most useful for debugging: the robot standing still until mapping is ready, then one slow loop back to the start.")
 	return ui.Confirm("Record the raw sensor data with this map?")
 }
 
 // reportDebug tells the operator where a debug session left its recording,
-// whether or not it made a map: a failed map is when support needs it most.
+// whether or not it made a map
 func reportDebug(dir string) {
 	bag := filepath.Join(dir, mapping.DebugBag)
 	if entries, err := os.ReadDir(bag); err != nil || len(entries) == 0 {
 		ui.Warn("Debug mode was on, but no raw sensor data was recorded. The session's log says why.")
 		return
 	}
-	ui.Info("Raw sensor data for support: " + bag)
-	ui.Faint("Pack it for support with 'emos map export --debug " + filepath.Base(dir) + "'.")
+	ui.Info("Raw sensor data for debugging: " + bag)
+	ui.Faint("Pack it for debugging with 'emos map export --debug " + filepath.Base(dir) + "'.")
 }
 
 // trackingTimeout is how long the operator waits for the backend to track the
@@ -731,7 +731,7 @@ func runMapExport(cmd *cobra.Command, args []string) error {
 		return e
 	}
 	if mapExportDebug {
-		err = ui.Spinner(fmt.Sprintf("Packing '%s' for support", name), export)
+		err = ui.Spinner(fmt.Sprintf("Packing '%s' for debugging", name), export)
 	} else {
 		err = export()
 	}
@@ -755,13 +755,13 @@ func runMapExport(cmd *cobra.Command, args []string) error {
 		} else if err == nil {
 			size = fmt.Sprintf(" (%.0f MB)", float64(info.Size())/(1<<20))
 		}
-		ui.Success(fmt.Sprintf("Packed '%s' for support: %s%s", name, archive, size))
+		ui.Success(fmt.Sprintf("Packed '%s' for debugging: %s%s", name, archive, size))
 		if m, err := decl.Find(name); err == nil {
 			if _, err := os.Stat(filepath.Join(m.Path, mapping.DebugBag)); err != nil {
 				ui.Faint("It holds no raw sensor data: record some with 'emos map new --debug'.")
 			}
 		}
-		ui.Faint("This archive is for support. 'emos map import' takes the plain export.")
+		ui.Faint("This archive is for debugging. 'emos map import' takes the plain export.")
 		return nil
 	}
 	ui.Success(fmt.Sprintf("Exported '%s' to %s", name, archive))

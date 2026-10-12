@@ -55,6 +55,17 @@ def templates_dir() -> str:
         )
 
 
+# Settings Without an IMU
+LIDAR_ONLY_MODULES = {
+    "config_odometry": "config_odometry_ct.json",
+    "config_sub_mapping": "config_sub_mapping_passthrough.json",
+    "config_global_mapping": "config_global_mapping_pose_graph.json",
+}
+LIDAR_ONLY_SUB_MAPPING = {"min_dist_in_voxel": 0.1, "submap_target_num_points": -1}
+# Add a dummy IMU topic name as GLIM refuses an empty IMU topic name even when it maps without an IMU
+NO_IMU_TOPIC = "/emos_mapping/no_imu"
+
+
 def write_glim_config(
     directory: str,
     points_topic: str,
@@ -76,23 +87,27 @@ def write_glim_config(
 
     variant = "gpu" if gpu else "cpu"
     config = _read(os.path.join(directory, "config.json"))
-    config["global"].update(
-        {
-            # use lidar odometery when available, else glim's default
-            "config_odometry": "config_odometry_ct.json"
-            if imu_topic is None
-            else f"config_odometry_{variant}.json",
-            "config_sub_mapping": f"config_sub_mapping_{variant}.json",
-            "config_global_mapping": f"config_global_mapping_{variant}.json",
-        }
-    )
+    if imu_topic is None:
+        config["global"].update(LIDAR_ONLY_MODULES)
+        name = os.path.join(directory, LIDAR_ONLY_MODULES["config_sub_mapping"])
+        sub_mapping = _read(name)
+        sub_mapping["sub_mapping"].update(LIDAR_ONLY_SUB_MAPPING)
+        _write(name, sub_mapping)
+    else:
+        config["global"].update(
+            {
+                "config_odometry": f"config_odometry_{variant}.json",
+                "config_sub_mapping": f"config_sub_mapping_{variant}.json",
+                "config_global_mapping": f"config_global_mapping_{variant}.json",
+            }
+        )
     _write(os.path.join(directory, "config.json"), config)
 
     ros = _read(os.path.join(directory, "config_ros.json"))
     ros["glim_ros"].update(
         {
             "points_topic": points_topic,
-            "imu_topic": imu_topic or "",
+            "imu_topic": imu_topic or NO_IMU_TOPIC,
             "base_frame_id": base_frame or "",
             "publish_imu2lidar": False,
             "extension_modules": ["librviz_viewer.so"],

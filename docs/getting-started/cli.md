@@ -298,15 +298,15 @@ Builds and manages maps of the robot's environment. How a robot maps is declared
 
 ```bash
 emos map setup [--rebuild]             # install the mapping backend EMOS builds maps with (pixi only)
-emos map new [name] [--rmw ...]        # build a new map by driving the robot
+emos map new [name] [--env ...] [--debug] [--rmw ...]   # build a new map by driving the robot
 emos map list                          # the maps on this robot, the active one marked
 emos map use <name>                    # make a map the one the robot localizes against
-emos map export [name] [-o dir]        # package a map for copying off the robot
+emos map export [name] [-o dir] [--debug]   # package a map for copying off the robot, or for debugging
 emos map import <archive>              # unpack an exported map
 emos map rm <name>                     # delete a map
 ```
 
-`emos map new` needs a terminal: you drive the robot with its own controller and press Enter when you have finished. Native maps live in `~/emos/maps`, exported archives in `~/emos/map-archives`, and the session's output in `~/emos/logs/map-<name>_<timestamp>.log`. Building maps with EMOS itself is not available in container mode.
+`emos map new` needs a terminal: you drive the robot with its own controller and press Enter when you have finished. For a map EMOS builds itself, `--env indoor` or `--env outdoor` says where the site is, which the command otherwise asks, and `--debug` also records the raw LiDAR and IMU data with the map. `emos map export --debug` packs such a map with that recording, the backend's configuration and working data and the session's log, for debugging; `emos map import` takes the plain export only. Native maps live in `~/emos/maps`, exported archives in `~/emos/map-archives`, and the session's output in `~/emos/logs/map-<name>_<timestamp>.log`. Building maps with EMOS itself is not available in container mode.
 
 ### `emos completion`
 

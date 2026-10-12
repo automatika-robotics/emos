@@ -130,6 +130,26 @@ The robot maps with EMOS's own backend, which is built on demand. Run `emos map 
 
 Building maps with EMOS itself needs a pixi or native install on the robot.
 
+### "Mapping is not tracking the robot after 60 s"
+
+The backend needs the robot to stand still for the first seconds of a session, which is when it finds which way is down from the IMU, and it reports that it is tracking the robot once it has. If that never comes, either the robot was moving from the start or a sensor is not publishing; the session's log shows a warning when the LiDAR has published nothing. You can drive on, but the map is likely to come out tilted, so it is usually better to stop, check the sensors and start again.
+
+### "Mapping warning: no floor was found in the map"
+
+The occupancy grid is a slice of the 3D map at the height of the floor, and the builder could not find a floor anywhere in the points, so it sliced at a single height instead: the one the plugin's sensor mounts imply, or an estimate from the points. It happens when the LiDAR sees little of the ground, or when the map is so tilted that no level patch remains. Look at the grid before navigating on it, and if it is wrong, map again with the robot still until mapping is ready.
+
+### "Mapping warning: the floor's height varies by … across the map"
+
+The floor was found, but at heights that differ by more than a map of one storey should show, which means the 3D map is tilted or has drifted along the way. The grid follows the floor from place to place, so it may still be usable, but check it before navigating on it. A map that drifted is improved by closing more loops and driving more slowly on the next attempt.
+
+### "Mapping warning: GLIM left no map in …"
+
+The backend did not write its map when the session ended, so the grid was built from the last map it published while running, which is thinned out and misses the last few metres driven. The session's log says what stopped the backend from finishing.
+
+### "Debug mode was on, but no raw sensor data was recorded"
+
+The session was started with `--debug` but nothing was recorded. The recorder failed to start or the sensors published nothing; the session's log says which.
+
 ### "The mapping backend produced no map"
 
 GLIM had nothing to build a map from: it received no LiDAR frames during the session, or it failed before the session ended. The CLI prints the session's last lines under the message, and the whole log is in `~/emos/logs`. Check that the LiDAR, and the IMU if the robot maps with one, are publishing. A session that ends without a map leaves an empty map directory behind; `emos map list` shows it and `emos map rm` removes it.

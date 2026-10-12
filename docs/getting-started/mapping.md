@@ -24,10 +24,10 @@ The backend is built automatically for pixi installs only. On a native install t
 emos map new office
 ```
 
-Mapping is interactive, so run it from a terminal. Once the session is up, the CLI tells you to drive; use the robot's own controller and take it around the area you want mapped.
+Mapping is interactive, so run it from a terminal. When EMOS builds the map itself, the first thing it asks is whether the site is indoors or outdoors, because the backend is tuned differently for rooms and corridors than for open ground, and if you would rather not be asked, `--env indoor` or `--env outdoor` answers in advance. Once the session is up, keep the robot still until the CLI says that mapping is ready. The backend spends those first seconds working out which way is down, and a robot that moves before it has finished ends up with a tilted map. After that, take the robot around the area you want mapped with its own controller.
 
 ```{tip}
-Two things make a good map. Close loops: come back to places you have already scanned rather than driving one long line, or the map will not line up with itself. And finish in an area you have already covered.
+Three things make a good map. Move slowly and turn gently, since fast turns blur the scans. Close loops: come back to places you have already scanned rather than driving one long line, or the map will not line up with itself. And finish in an area you have already covered.
 ```
 
 Press Enter when you are done. The CLI stops the session, saves the map and reports where it is:
@@ -41,6 +41,22 @@ Press Enter when you are done. The CLI stops the session, saves the map and repo
 A map that EMOS built itself carries a timestamp in its name. A robot that maps with its own software names the map the way that software does, and may still be processing it when the command returns; `emos map list` shows when it is ready.
 
 Everything the session printed is kept in `~/emos/logs/map-<name>_<timestamp>.log`. The `--rmw` flag works the same as for `emos run`.
+
+### Recording a session for debugging
+
+Sometimes a map comes out wrong and nothing in the log explains why. The most useful thing you can do then is map the place again with the session recorded, so that whoever looks into it can replay exactly what the backend saw instead of guessing from the result.
+
+```bash
+emos map new office --debug
+```
+
+A debug session builds the map as usual and, alongside it, records the raw LiDAR and IMU data as it arrives. Such a recording grows quickly, which is why a debug session is best kept short, with the robot standing still until mapping is ready and then driven once, slowly, around a loop that brings it back to where it started. When the session ends, the recording and its log are kept together in a `debug` directory inside the map, and the whole map can be handed over in one piece:
+
+```bash
+emos map export --debug office-20260925-101530
+```
+
+This packs the map, its recording and log and the backend's own files into one archive that you can attach to a report. An archive made this way is meant for debugging only, and `emos map import` will not take it. The plain export is what moves a map from one robot to another.
 
 ## Manage maps
 

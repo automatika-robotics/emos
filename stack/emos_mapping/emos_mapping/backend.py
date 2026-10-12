@@ -133,17 +133,6 @@ ENVIRONMENTS: Dict[str, Dict[str, Dict[str, Any]]] = {
 }
 
 
-def glim_roles() -> Tuple[str, ...]:
-    """The configuration roles GLIM's config.json names, ``ros`` to
-    ``global_mapping``: the keys a layer of settings is given by."""
-    selected = _read(os.path.join(templates_dir(), "config.json"))["global"]
-    return tuple(
-        key[len("config_") :]
-        for key, name in selected.items()
-        if key.startswith("config_") and name
-    )
-
-
 def apply_glim_settings(
     directory: str, layers: Sequence[Dict[str, Dict[str, Any]]]
 ) -> Tuple[Dict[str, Dict[str, Any]], Tuple[str, ...]]:
@@ -151,12 +140,11 @@ def apply_glim_settings(
 
     Each layer maps a role (``preprocess``, ``odometry`` ...) to its keys,
     and a later layer wins. A role is the file config.json selects for it,
-    and a key is set only where that file has it: each module (CPU, GPU,
-    LiDAR-only) names its own resolutions, so one layer serves them all.
+    and a key is set in every section of that file that has it.
 
-    :return: The settings set, by role, and the ``role.key`` names the
-        selected files do not have.
-    :raises ValueError: For a role config.json does not name.
+    :return: The settings set, by role, and the names the selected files do
+        not have: ``role.key``, or ``role.*`` for a role config.json does not
+        name.
     """
     selected = _read(os.path.join(directory, "config.json"))["global"]
     files: Dict[str, Dict[str, Any]] = {}
@@ -166,13 +154,16 @@ def apply_glim_settings(
         for role, keys in layer.items():
             name = selected.get(f"config_{role}")
             if not name:
-                raise ValueError(f"GLIM has no configuration role '{role}'")
+                if f"{role}.*" not in missing:
+                    missing.append(f"{role}.*")
+                continue
             if role not in files:
                 files[role] = _read(os.path.join(directory, name))
-            (section,) = files[role].values()
             for key, value in keys.items():
-                if key in section:
+                sections = [s for s in files[role].values() if key in s]
+                for section in sections:
                     section[key] = value
+                if sections:
                     applied.setdefault(role, {})[key] = value
                 elif f"{role}.{key}" not in missing:
                     missing.append(f"{role}.{key}")

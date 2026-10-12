@@ -27,7 +27,6 @@ from .backend import (
     backend_has_cuda,
     backend_version,
     glim_node,
-    glim_roles,
     write_glim_config,
 )
 from .builder import MapBuilder, MapBuilderConfig
@@ -178,15 +177,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         gpu = backend_has_cuda()
     except PackageNotFoundError:
         print("the mapping backend (GLIM) is not installed", file=sys.stderr)
-        return 2
-
-    unknown = sorted(set(declaration.custom_settings) - set(glim_roles()))
-    if unknown:
-        print(
-            f"cannot map with {args.plugin}: its GLIM settings name roles GLIM "
-            f"does not have: {', '.join(unknown)}",
-            file=sys.stderr,
-        )
         return 2
 
     if args.debug and shutil.which("ros2") is None:

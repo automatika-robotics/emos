@@ -12,7 +12,6 @@ from emos_mapping.backend import (
     MAP_TOPIC,
     apply_glim_settings,
     glim_node,
-    glim_roles,
     read_dump,
     strip_json_comments,
     write_glim_config,
@@ -129,12 +128,20 @@ def test_outdoors_keeps_glims_own_settings(tmp_path):
     assert load(os.path.join(directory, "config_preprocess.json"))["preprocess"]["distance_far_thresh"] == 100.0
 
 
-def test_settings_for_a_role_glim_does_not_have_are_refused(tmp_path):
-    assert set(glim_roles()) >= {"sensors", "preprocess", "odometry", "sub_mapping", "global_mapping", "ros"}
-    assert "path" not in glim_roles()
+def test_settings_for_a_role_glim_does_not_have_are_left_out(tmp_path):
     directory = write_glim_config(str(tmp_path / "c"), "/p", "/i")
-    with pytest.raises(ValueError, match="no configuration role 'mapping'"):
-        apply_glim_settings(directory, [{"mapping": {"x": 1}}])
+    before = {name: os.path.getmtime(os.path.join(directory, name)) for name in os.listdir(directory)}
+    assert apply_glim_settings(directory, [{"mapping": {"x": 1}}]) == ({}, ("mapping.*",))
+    assert {name: os.path.getmtime(os.path.join(directory, name)) for name in os.listdir(directory)} == before
+
+
+def test_a_key_lands_in_every_section_of_a_file_that_has_it(tmp_path):
+    """The viewer file has two sections, standard and interactive"""
+    directory = write_glim_config(str(tmp_path / "c"), "/p", "/i")
+    applied, left_out = apply_glim_settings(directory, [{"viewer": {"point_size": 0.05, "no_such": 1}}])
+    viewer = load(os.path.join(directory, "config_viewer.json"))
+    assert viewer["standard_viewer"]["point_size"] == 0.05 and viewer["interactive_viewer"]["point_size"] == 0.05
+    assert applied == {"viewer": {"point_size": 0.05}} and left_out == ("viewer.no_such",)
 
 
 def test_the_backend_version_is_read_from_glims_manifest(tmp_path, monkeypatch):

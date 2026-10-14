@@ -113,11 +113,14 @@ controller.direct_sensor = False   # local perception from the mapper's grid
 The plugin brings the robot's vocabulary with it. The Lite3 reports a low battery, an obstacle ahead of its front ultrasound, a disturbed balance and a fall, and its actions are its motion-host behaviours: sit or stand, the three gaits, a stop, and a few tricks. They register like any other event and action, and they sit naturally next to the stack's own events:
 
 ```python
+from kompass.ros import Action
 from ros_sugar.actions import stop
 
 launcher.on(robot.events.low_battery(15.0), robot.actions.sit_stand())
-launcher.on(robot.events.fallen(), stop(component=controller))
+launcher.on(robot.events.fallen(), [stop(component=controller), Action(method=planner.cancel_main_goal)])
 ```
+
+Here a fall stops the controller and cancels the goal the planner is working on, so the robot does not set off again on its own once it is back on its feet.
 
 Build them after the plugin is attached, since attaching binds the identity the events resolve against.
 
@@ -238,7 +241,7 @@ launcher.add_pkg(
     multiprocessing=True,
 )
 launcher.on(robot.events.low_battery(15.0), robot.actions.sit_stand())
-launcher.on(robot.events.fallen(), stop(component=controller))
+launcher.on(robot.events.fallen(), [stop(component=controller), Action(method=planner.cancel_main_goal)])
 
 # --- Localization from the plugin, for every component ---
 launcher.inputs(location=Topic(name="odometry_filtered", msg_type="Odometry", use_plugin=True))

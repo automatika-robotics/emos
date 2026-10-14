@@ -72,8 +72,11 @@ driver = DriveManager(
     component_name="drive_manager",
     config=DriveManagerConfig(critical_zone_distance=0.05, critical_zone_angle=90.0, slowdown_zone_distance=0.3),
 )
+driver.inputs(sensor_data=[Topic(name="lidar", msg_type="PointCloud2", use_plugin=True)])
 driver.outputs(robot_command=Topic(name="Twist", msg_type="Twist", use_plugin=True))
 ```
+
+The safety zones need a sensor to check, so the drive manager reads the same cloud as the mapper.
 
 While the recipe runs, the plugin keeps the robot under external control with a heartbeat, and when the recipe ends, however it ends, it hands the robot back to its handset.
 
@@ -214,6 +217,7 @@ driver = DriveManager(
     component_name="drive_manager",
     config=DriveManagerConfig(critical_zone_distance=0.05, critical_zone_angle=90.0, slowdown_zone_distance=0.3),
 )
+driver.inputs(sensor_data=[Topic(name="lidar", msg_type="PointCloud2", use_plugin=True)])
 driver.outputs(robot_command=Topic(name="Twist", msg_type="Twist", use_plugin=True))
 
 # --- The launcher, with the robot attached ---

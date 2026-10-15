@@ -19,19 +19,15 @@ var lsCmd = &cobra.Command{
 }
 
 func runLs(cmd *cobra.Command, args []string) error {
-	entries, err := os.ReadDir(config.RecipesDir)
-	if err != nil {
+	names := installedRecipeNames()
+	if len(names) == 0 {
 		ui.Faint("No recipes found in " + config.RecipesDir)
 		return nil
 	}
 	cfg := config.LoadConfig()
 
 	var rows [][]string
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
+	for _, name := range names {
 		description, version := "-", "-"
 
 		manifestPath := filepath.Join(config.RecipesDir, name, "manifest.json")
@@ -51,11 +47,6 @@ func runLs(cmd *cobra.Command, args []string) error {
 		}
 
 		rows = append(rows, []string{name, description, version})
-	}
-
-	if len(rows) == 0 {
-		ui.Faint("No recipes found in " + config.RecipesDir)
-		return nil
 	}
 
 	fmt.Println()

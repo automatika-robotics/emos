@@ -12,9 +12,10 @@ import (
 var rmwFlag string
 
 var runCmd = &cobra.Command{
-	Use:   "run <recipe_name>",
-	Short: "Execute an automation recipe",
-	Args:  cobra.ExactArgs(1),
+	Use:               "run <recipe_name>",
+	Short:             "Execute an automation recipe",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeRecipeNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		banner()
 		if err := refuseWhilePluginsBusy("a recipe"); err != nil {

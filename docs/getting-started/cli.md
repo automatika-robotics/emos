@@ -18,6 +18,7 @@ The `emos` CLI installs and updates EMOS, manages recipes, plugins and maps, and
 | `emos ls`           | List locally installed recipes                              |
 | `emos info <name>`  | Show the topics a recipe uses and what provides them        |
 | `emos run <name>`   | Run a recipe (foreground, blocking)                         |
+| `emos edit <name>`  | Open a recipe in your editor                                |
 | `emos plugin <cmd>` | Install and manage robot and sensor plugins                 |
 | `emos map <cmd>`    | Build and manage maps of the robot's environment            |
 | `emos completion`   | Shell completion scripts                                    |
@@ -272,6 +273,14 @@ What happens:
 
 Press Ctrl+C once to stop the recipe gracefully and twice to kill it. The CLI reports whether the recipe finished, was stopped, or exited with an error, and exits with a non-zero status in the last case.
 
+### `emos edit`
+
+```bash
+emos edit <recipe_name>
+```
+
+Opens `~/emos/recipes/<name>/recipe.py` in your editor: `$VISUAL`, then `$EDITOR`, then `nano`, then `vi`.
+
 ### `emos plugin`
 
 Plugins are ROS packages that adapt hardware to the EMOS stack. A robot runs one robot plugin plus any number of sensor plugins. See [Plugins](plugins.md) for the full guide.
@@ -314,7 +323,7 @@ emos map rm <name>                     # delete a map
 source <(emos completion bash)         # or zsh, fish, powershell
 ```
 
-Generates the shell completion script.
+Generates the shell completion script. With it loaded, `emos edit`, `emos info` and `emos run` complete the installed recipe names.
 
 ## HTTPS
 

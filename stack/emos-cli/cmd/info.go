@@ -19,7 +19,8 @@ var infoCmd = &cobra.Command{
 including whether a plugin or a ROS topic provides each one.
 
 Accepts either a recipe name (looked up in ~/emos/recipes/) or a direct path to a .py file.`,
-	Args: cobra.ExactArgs(1),
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeRecipeNamesOrFiles,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		banner()
 		return runInfo(args[0])

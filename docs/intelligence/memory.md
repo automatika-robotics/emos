@@ -6,10 +6,6 @@
 
 Memory accumulates a typed graph of everything the robot perceives -- detections, scene descriptions, sensor strings, internal-state readings -- indexed simultaneously by **meaning** (HNSW), **location** (R-tree), and **time** (SQLite indexes). Episodes group observations into task spans. Consolidation collapses old observations into searchable gists. Entity nodes track persistent objects across episodes via semantic-spatial merging. And **interoception** -- the robot's own internal state -- is a first-class memory dimension alongside world observations, not a separate metrics pipeline.
 
-```{important}
-`Memory` is the supported successor to **MapEncoding**, deprecated since EmbodiedAgents 0.7.1. The two are not API-compatible: Memory replaces a flat vector-DB store with episodic consolidation, entity tracking, and an interoception surface. See [Migration](#migration-from-mapencoding) below.
-```
-
 ```{seealso}
 For a hands-on intro to Memory by itself, see [Spatio-Temporal Memory](../recipes/foundation/semantic-map.md). For the deep pairing with Cortex (the agentic harness), see [Memory and Cortex](../recipes/planning-and-manipulation/cortex-memory.md). For eMEM internals, see the [eMEM repository](https://github.com/automatika-robotics/emem).
 ```
@@ -165,8 +161,6 @@ scene_layer = MemLayer(
 )
 ```
 
-`MapLayer` is preserved as a backwards-compatible alias of `MemLayer`.
-
 ### Construction
 
 ```python
@@ -252,28 +246,6 @@ memory.register_tools_on(llm, tools=["semantic_search", "locate", "get_current_c
 The entire memory state lives in two files: the SQLite DB at `db_path` and an HNSW index file alongside it. **Reboot the robot, point the next session at the same paths, and the agent picks up where it left off.** Episodes from yesterday are still in the graph; entities are still merged; gists are still searchable. Cross-session continuity is the default, not a feature you opt into.
 
 This is what makes eMEM-on-Cortex behave as a cognitive system rather than a session-scoped vector DB.
-
----
-
-## Migration from MapEncoding
-
-| MapEncoding | Memory |
-|---|---|
-| `MapEncoding` component | `Memory` component |
-| `MapLayer` | `MemLayer` (alias preserved) |
-| Flat vector DB (Chroma) | Graph + episodic + entity index, eMEM-backed |
-| `db_client=ChromaClient(...)` | `model_client=...`, `embedding_client=...` |
-| `map_topic=OccupancyGrid` (required) | None -- Memory uses real-world coords from Odometry directly |
-| `MapConfig(map_name=…)` | `MemoryConfig(db_path=…)` |
-| `MapLayer(pre_defined=[(position, text), ...])` | `MemLayer(prior_memories=[PriorMemory(text=..., position=...), ...])` |
-| `temporal_change`, `resolution_multiple` on a layer | Gone. Layers are treated as static in time, and consolidation handles what changes. |
-| Free-form text retrieval via tool calling | Ten typed retrieval tools auto-registered with Cortex |
-| No interoception | `is_internal_state=True` on a layer surfaces it via `body_status` |
-| No episode structure | `start_episode` / `end_episode`, hierarchical nesting, automatic consolidation |
-| No entity tracking | Persistent `EntityNode` with semantic-spatial auto-merge |
-| Session-scoped | Cross-session persistent (single `.db` file) |
-
-Existing recipes built on `MapEncoding` still load with a deprecation warning. New recipes should use `Memory`.
 
 ---
 

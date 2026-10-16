@@ -42,6 +42,16 @@ func Status(name string) string {
 	return out
 }
 
+// ImageLabel returns the value of a label on a local image, empty when the
+// image or the label is absent.
+func ImageLabel(image, label string) string {
+	out, err := run("image", "inspect", "-f", "{{ index .Config.Labels \""+label+"\" }}", image)
+	if err != nil {
+		return ""
+	}
+	return out
+}
+
 func Start(name string) error {
 	_, err := run("start", name)
 	return err
@@ -55,17 +65,6 @@ func Stop(name string) error {
 func Remove(name string) error {
 	_, err := run("rm", "-f", name)
 	return err
-}
-
-func Login(registry, user, token string) error {
-	cmd := docker("login", registry, "-u", user, "--password-stdin")
-	cmd.Stdin = strings.NewReader(token)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("docker login failed: %s", strings.TrimSpace(stderr.String()))
-	}
-	return nil
 }
 
 func Pull(image string) error {
@@ -103,13 +102,6 @@ func Run(name, image string, extraArgs ...string) error {
 	return err
 }
 
-func RunWithArgs(name, image string, args []string) error {
-	fullArgs := append([]string{"run"}, args...)
-	fullArgs = append(fullArgs, "--name", name, image)
-	_, err := run(fullArgs...)
-	return err
-}
-
 // ephemeralArgs builds the `docker run --rm` argument list shared by the
 // streaming and capturing variants. The image entrypoint sources the ROS stack before execing the command.
 func ephemeralArgs(image, command string) []string {
@@ -144,33 +136,6 @@ func Exec(name, command string) (string, error) {
 
 func ExecDetached(name, command string) error {
 	_, err := run("exec", "-d", name, "bash", "-c", command)
-	return err
-}
-
-func ExecInteractive(name, command string) error {
-	cmd := docker("exec", "-it", name, "bash", "-c", command)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-func Cp(name, src, dst string) error {
-	_, err := run("cp", src, name+":"+dst)
-	return err
-}
-
-func CpFrom(name, src, dst string) error {
-	_, err := run("cp", name+":"+src, dst)
-	return err
-}
-
-func Top(name string) (string, error) {
-	return run("top", name)
-}
-
-func Restart(name string) error {
-	_, err := run("restart", name)
 	return err
 }
 

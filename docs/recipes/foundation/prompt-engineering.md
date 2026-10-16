@@ -32,7 +32,7 @@ Browse all supported detection models on the [HuggingFace object-detection page]
 ```python
 from agents.models import VisionModel
 from agents.clients import RoboMLRESPClient, RoboMLHTTPClient
-from agents.config import VisionConfig
+from agents.config import VisionConfig, VLMConfig
 
 # Add an object detection model
 object_detection = VisionModel(name="object_detection",
@@ -57,7 +57,7 @@ Notice that we passed in an optional config to the component. Component configs 
 
 ## Setting up the VLM Component
 
-For the VLM component, we will provide an additional text input topic, which will listen to our queries. The output of the component will be another text topic. We will use the RoboML HTTP client with the multimodal LLM Idefics2 by the good folks at HuggingFace for this example.
+For the VLM component, we will provide an additional text input topic, which will listen to our queries. The output of the component will be another text topic. We will use the RoboML HTTP client with Qwen2.5-VL, served through the Transformers wrapper, for this example.
 
 ```python
 from agents.models import TransformersMLLM
@@ -67,8 +67,8 @@ text_query = Topic(name="text0", msg_type="String")
 text_answer = Topic(name="text1", msg_type="String")
 
 # Define a model client (working with roboml in this case)
-idefics = TransformersMLLM(name="idefics_model", checkpoint="HuggingFaceM4/idefics2-8b")
-idefics_client = RoboMLHTTPClient(idefics)
+qwen_vl = TransformersMLLM(name="qwen_vl", checkpoint="Qwen/Qwen2.5-VL-3B-Instruct")
+qwen_client = RoboMLHTTPClient(qwen_vl)
 
 # Define a VLM component
 # We can pass in the detections topic which we defined previously directly as an optional input
@@ -76,7 +76,8 @@ idefics_client = RoboMLHTTPClient(idefics)
 mllm = VLM(
     inputs=[text_query, image0, detections_topic],
     outputs=[text_answer],
-    model_client=idefics_client,
+    model_client=qwen_client,
+    config=VLMConfig(chat_history=True),
     trigger=text_query,
     component_name="mllm_component"
 )
@@ -91,6 +92,8 @@ mllm.set_component_prompt(
     Answer the following about this image: {{ text0 }}"""
 )
 ```
+
+The detections render as their labels, one per object, so the model sees something like "chair, chair, person" in place of `{{ detections }}`. We have also turned on `chat_history`, so the component remembers the conversation. Note that it remembers the question and the answer, not the full prompt. The list of detections is rendered into the prompt for one call and is not sent again with later turns. That way the model never sees a stale list of objects next to a new image.
 
 ```{caution}
 The names of the topics used in the jinja2 template are the same as the name parameters set when creating the Topic objects.
@@ -120,7 +123,7 @@ from agents.components import Vision, VLM
 from agents.models import VisionModel, TransformersMLLM
 from agents.clients import RoboMLRESPClient, RoboMLHTTPClient
 from agents.ros import Topic, Launcher
-from agents.config import VisionConfig
+from agents.config import VisionConfig, VLMConfig
 
 image0 = Topic(name="image_raw", msg_type="Image")
 detections_topic = Topic(name="detections", msg_type="Detections")
@@ -143,13 +146,14 @@ vision = Vision(
 text_query = Topic(name="text0", msg_type="String")
 text_answer = Topic(name="text1", msg_type="String")
 
-idefics = TransformersMLLM(name="idefics_model", checkpoint="HuggingFaceM4/idefics2-8b")
-idefics_client = RoboMLHTTPClient(idefics)
+qwen_vl = TransformersMLLM(name="qwen_vl", checkpoint="Qwen/Qwen2.5-VL-3B-Instruct")
+qwen_client = RoboMLHTTPClient(qwen_vl)
 
 mllm = VLM(
     inputs=[text_query, image0, detections_topic],
     outputs=[text_answer],
-    model_client=idefics_client,
+    model_client=qwen_client,
+    config=VLMConfig(chat_history=True),
     trigger=text_query,
     component_name="mllm_component"
 )
@@ -169,6 +173,6 @@ launcher.bringup()
 ---
 
 ```{tip}
-**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+**Promote this recipe to production.** While you are shaping it, run the script directly with `python recipe.py`. Once it is solid, drop it at `~/emos/recipes/<name>/recipe.py` and start it with `emos run <name>`, or from the dashboard. Either way every run is logged under `~/emos/logs`, and an operator gets a card to launch it from a browser. [Running Recipes](../../getting-started/running-recipes.md) covers the two ways of running a recipe and what differs per install mode.
 ```
 

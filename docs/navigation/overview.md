@@ -17,7 +17,7 @@ While metric navigation has matured, deploying robots extensively in dynamic env
 
 - <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`bolt;1.2em;sd-text-primary` Adaptive Event-Driven Core</span> -- The stack reconfigures itself on the fly based on environmental context. Use *Pure Pursuit* on open roads, switch to *DWA* indoors, fall back to a docking controller near the station -- all triggered by events, not brittle Behavior Trees. Adapt to external world events ("Crowd Detected", "Entering Warehouse"), not just internal robot states.
 
-- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`speed;1.2em;sd-text-primary` GPU-Accelerated, Vendor-Agnostic</span> -- Core algorithms in C++ with SYCL-based GPU support. Runs natively on **Nvidia, AMD, Intel, and other** GPUs without vendor lock-in -- the first navigation framework to support cross-GPU acceleration. Up to **3,106x speedups** over CPU-based approaches.
+- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`speed;1.2em;sd-text-primary` GPU-Accelerated, Vendor-Agnostic</span> -- Core algorithms in C++ with SYCL-based GPU support. Runs natively on **Nvidia, AMD, Intel, Arm Mali and other** GPUs without vendor lock-in -- the first navigation framework to support cross-GPU acceleration. Up to **3,106x speedups** over CPU-based approaches.
 
 - <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`psychology;1.2em;sd-text-primary` ML Models as First-Class Citizens</span> -- Event-driven design means ML model outputs can directly reconfigure the navigation stack. Use object detection to switch controllers, VLMs to answer abstract perception queries, or [EmbodiedAgents](https://github.com/automatika-robotics/embodied-agents) vision components for target tracking -- all seamlessly integrated through EMOS's unified architecture.
 
@@ -77,7 +77,7 @@ Global path planning using OMPL algorithms (RRT*, PRM, etc.).
 :link: control
 :link-type: doc
 
-Real-time local control with DWA, Stanley, DVZ, and Vision Follower plugins.
+Real-time local control with Pure Pursuit, DWA, Stanley, DVZ and the vision followers.
 :::
 
 :::{grid-item-card} {material-regular}`security;1.2em;sd-text-primary` Drive Manager
@@ -101,6 +101,13 @@ Real-time ego-centric occupancy grid from sensor data.
 Static global map management with 3D PCD support.
 :::
 
+:::{grid-item-card} {material-regular}`flag;1.2em;sd-text-primary` Mission Manager
+:link: mission-manager
+:link-type: doc
+
+Multi-waypoint missions as one action: drive, dwell, wait for a signal, pause and resume.
+:::
+
 :::{grid-item-card} {material-regular}`settings;1.2em;sd-text-primary` Robot Config
 :link: robot-config
 :link-type: doc
@@ -118,7 +125,7 @@ Kompass is designed to be flexible in terms of sensor configurations. However, a
 
 - {material-regular}`speed;1.2em;sd-text-primary` **Odometry Source** (e.g., wheel encoders, IMU or visual odometry)
 - {material-regular}`radar;1.2em;sd-text-primary` **Obstacle Detection Sensor** (e.g., 2D LiDAR **or** Depth Camera)
-- {material-regular}`my_location;1.2em;sd-text-primary` **Robot Pose Source** (e.g., localization system such as AMCL or visual SLAM)
+- {material-regular}`my_location;1.2em;sd-text-primary` **Robot Pose Source**, a localization system such as AMCL or visual SLAM. On a supported robot the [plugin](../concepts/robot-plugins.md) provides it, and the map it localizes against is built with [`emos map`](../getting-started/mapping.md).
 
 These provide the minimal data necessary for localization, mapping, and safe path execution.
 

@@ -21,6 +21,20 @@ Launch a full navigation stack in simulation with pre-built configs.
 Step-by-step stack setup -- robot config, planner, controller, motion server.
 :::
 
+:::{grid-item-card} {material-regular}`smart_toy;1.2em;sd-text-primary` Navigating a Real Robot
+:link: real-robot-navigation
+:link-type: doc
+
+The same stack on a real quadruped: localization, LiDAR and velocity commands through the robot's plugin, with the robot's own events and actions.
+:::
+
+:::{grid-item-card} {material-regular}`flag;1.2em;sd-text-primary` Multi-Waypoint Missions
+:link: multi-waypoint-mission
+:link-type: doc
+
+A patrol as one action: waypoints picked on the map, a dwell or a signal at each, paused and resumed from the browser.
+:::
+
 :::{grid-item-card} {material-regular}`history;1.2em;sd-text-primary` Path Recording & Replay
 :link: path-recording
 :link-type: doc

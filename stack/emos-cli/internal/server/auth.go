@@ -314,12 +314,7 @@ func bearerToken(r *http.Request) string {
 // persistLocked writes the auth state back to ~/.config/emos/config.json.
 // Caller must hold a.mu.
 func (a *Auth) persistLocked() error {
-	cfg := config.LoadConfig()
-	if cfg == nil {
-		cfg = &config.EMOSConfig{}
-	}
-	cfg.Auth = a.state
-	return config.SaveConfig(cfg)
+	return config.UpdateConfig(func(cfg *config.EMOSConfig) { cfg.Auth = a.state })
 }
 
 // --- crypto helpers ---

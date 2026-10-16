@@ -1,8 +1,9 @@
-VERSION ?= 0.7.6
+VERSION ?= 0.8.0
+SOURCE_REF ?=
 BINARY  := emos
 GO      ?= $(shell which go 2>/dev/null || echo /usr/local/go/bin/go)
 NPM     ?= $(shell which npm 2>/dev/null || echo /usr/bin/npm)
-LDFLAGS := -ldflags "-s -w -X github.com/automatika-robotics/emos-cli/internal/config.Version=$(VERSION)"
+LDFLAGS := -ldflags "-s -w -X github.com/automatika-robotics/emos-cli/internal/config.Version=$(VERSION) -X github.com/automatika-robotics/emos-cli/internal/config.SourceRef=$(SOURCE_REF)"
 
 WEB_DIR    := web
 WEB_DIST   := internal/webui/dist

@@ -6,10 +6,6 @@
 
 Memory accumulates a typed graph of everything the robot perceives -- detections, scene descriptions, sensor strings, internal-state readings -- indexed simultaneously by **meaning** (HNSW), **location** (R-tree), and **time** (SQLite indexes). Episodes group observations into task spans. Consolidation collapses old observations into searchable gists. Entity nodes track persistent objects across episodes via semantic-spatial merging. And **interoception** -- the robot's own internal state -- is a first-class memory dimension alongside world observations, not a separate metrics pipeline.
 
-```{important}
-`Memory` is the supported successor to **MapEncoding**, deprecated since EmbodiedAgents 0.7.1. The two are not API-compatible: Memory replaces a flat vector-DB store with episodic consolidation, entity tracking, and an interoception surface. See [Migration](#migration-from-mapencoding) below.
-```
-
 ```{seealso}
 For a hands-on intro to Memory by itself, see [Spatio-Temporal Memory](../recipes/foundation/semantic-map.md). For the deep pairing with Cortex (the agentic harness), see [Memory and Cortex](../recipes/planning-and-manipulation/cortex-memory.md). For eMEM internals, see the [eMEM repository](https://github.com/automatika-robotics/emem).
 ```
@@ -21,7 +17,7 @@ For a hands-on intro to Memory by itself, see [Spatio-Temporal Memory](../recipe
 
 - **Pixi:** `cd ~/.local/share/emos && pixi add --pypi emem`
 - **Native:** `pip install emem` into your ROS 2 Python environment
-- **Container:** `docker exec -it emos-container pip install emem` (ephemeral — bake it into a derived image to persist)
+- **Container:** `docker exec -it emos pip install emem` (ephemeral — bake it into a derived image to persist)
 ```
 
 ---
@@ -130,7 +126,7 @@ from agents.ros import MemLayer, Topic
 
 ### Layers
 
-A `MemLayer` is the smallest unit of input. Each layer subscribes to one topic; the topic's UI string representation is what gets stored.
+A `MemLayer` is the smallest unit of input. Each layer subscribes to one topic, and what that topic's callback renders as text is what gets stored, at the robot's position at the time. A layer on a `Detections3D` topic is the exception: it stores one observation per detected object, at the object's own position, so the boxes have to be published in the same world frame as the position topic.
 
 ```python
 detections = Topic(name="detections", msg_type="Detections")
@@ -148,9 +144,22 @@ battery_layer    = MemLayer(subscribes_to=battery, is_internal_state=True)
 | Field | Meaning |
 |---|---|
 | `subscribes_to` | The topic to ingest from. |
+| `prior_memories` | Observations the layer starts with, before anything arrives on the topic. Each is a `PriorMemory` with a text, an optional position in world-frame metres, and an optional timestamp; without them the origin and the time of seeding are used. |
 | `is_internal_state` | If `True`, observations are routed through `add_body_state` -- they're invisible to perception retrieval tools and surface only through the dedicated `body_status` tool. Used for interoception. |
 
-`MapLayer` is preserved as a backwards-compatible alias of `MemLayer`.
+Prior memories are how a layer is seeded with what the robot should already know, the places of the charging dock and the exits for instance:
+
+```python
+from agents.ros import MemLayer, PriorMemory
+
+scene_layer = MemLayer(
+    subscribes_to=scene,
+    prior_memories=[
+        PriorMemory(text="charging dock", position=(0.5, -2.0, 0.0)),
+        PriorMemory(text="main entrance", position=(12.0, 3.5, 0.0)),
+    ],
+)
+```
 
 ### Construction
 
@@ -237,26 +246,6 @@ memory.register_tools_on(llm, tools=["semantic_search", "locate", "get_current_c
 The entire memory state lives in two files: the SQLite DB at `db_path` and an HNSW index file alongside it. **Reboot the robot, point the next session at the same paths, and the agent picks up where it left off.** Episodes from yesterday are still in the graph; entities are still merged; gists are still searchable. Cross-session continuity is the default, not a feature you opt into.
 
 This is what makes eMEM-on-Cortex behave as a cognitive system rather than a session-scoped vector DB.
-
----
-
-## Migration from MapEncoding
-
-| MapEncoding | Memory |
-|---|---|
-| `MapEncoding` component | `Memory` component |
-| `MapLayer` | `MemLayer` (alias preserved) |
-| Flat vector DB (Chroma) | Graph + episodic + entity index, eMEM-backed |
-| `db_client=ChromaClient(...)` | `model_client=...`, `embedding_client=...` |
-| `map_topic=OccupancyGrid` (required) | None -- Memory uses real-world coords from Odometry directly |
-| `MapConfig(map_name=…)` | `MemoryConfig(db_path=…)` |
-| Free-form text retrieval via tool calling | Ten typed retrieval tools auto-registered with Cortex |
-| No interoception | `is_internal_state=True` on a layer surfaces it via `body_status` |
-| No episode structure | `start_episode` / `end_episode`, hierarchical nesting, automatic consolidation |
-| No entity tracking | Persistent `EntityNode` with semantic-spatial auto-merge |
-| Session-scoped | Cross-session persistent (single `.db` file) |
-
-Existing recipes built on `MapEncoding` still load with a deprecation warning. New recipes should use `Memory`.
 
 ---
 

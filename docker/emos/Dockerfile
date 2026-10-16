@@ -25,8 +25,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     portaudio19-dev \
     jq \
     ros-${ROS_DISTRO}-rmw-zenoh-cpp \
-    && (apt-get install -y --no-install-recommends libgeographiclib-dev \
-        || apt-get install -y --no-install-recommends libgeographic-dev) \
     && rm -rf /var/lib/apt/lists/*
 
 # Python dependencies (excluding kompass-core, installed via GPU script below)
@@ -49,50 +47,29 @@ RUN pip install --no-cache-dir --ignore-installed \
     'redis[hiredis]' \
     pyaudio \
     soundfile \
-    python-fasthtml \
-    monsterui \
+    'python-fasthtml>=0.12,<0.15' \
+    'monsterui>=1.0,<1.1' \
     huggingface-hub \
     sherpa-onnx \
     onnxruntime \
     grpcio \
     protobuf
 
-# llama-cpp-python needs scikit-build-core which requires packaging>=22.0.
-# On humble (pip 22.0), build isolation doesn't install it correctly,
-# so we pre-install build deps and use --no-build-isolation.
-RUN pip install --no-cache-dir 'scikit-build-core>=0.8' 'packaging>=22.0' && \
-    pip install --no-cache-dir --no-build-isolation llama-cpp-python
+# Install llama-cpp-python from its own index. --only-binary takes the newest
+# wheel there.
+RUN pip install --no-cache-dir --only-binary=llama-cpp-python \
+    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu llama-cpp-python
 
 # Install kompass-core with GPU support (also works on non-GPU machines)
 ADD https://raw.githubusercontent.com/automatika-robotics/kompass-core/main/build_dependencies/install_gpu.sh /tmp/install_gpu.sh
 RUN chmod +x /tmp/install_gpu.sh && /tmp/install_gpu.sh && rm /tmp/install_gpu.sh
-
-# --- Build localization packages from source ---
-WORKDIR ${ROS_WS}/src
-# geographic_info: has 'jazzy' branch, all others use 'ros2'
-# robot_localization: has per-distro '{distro}-devel' branches
-# angles: 'ros2' branch works for all distros
-RUN GEO_BRANCH=$(if [ "${ROS_DISTRO}" = "jazzy" ]; then echo jazzy; else echo ros2; fi) \
-    && git clone --depth 1 -b ${GEO_BRANCH} https://github.com/ros-geographic-info/geographic_info.git \
-    && git clone --depth 1 -b ${ROS_DISTRO}-devel https://github.com/cra-ros-pkg/robot_localization.git \
-    && git clone --depth 1 -b ros2 https://github.com/ros/angles.git \
-    && rm -rf geographic_info/geographic_info geographic_info/geodesy
-
-WORKDIR ${ROS_WS}
-# Install rosdep dependencies for localization packages
-RUN apt-get update \
-    && rosdep install -y --from-paths src --ignore-src --rosdistro ${ROS_DISTRO} \
-    && rm -rf /var/lib/apt/lists/*
-RUN /bin/bash -c "source ${ROS_ROOT}/setup.bash && \
-    colcon build --merge-install --install-base ${ROS_ROOT} \
-    --cmake-args -DCMAKE_BUILD_TYPE=Release" \
-    && rm -rf ${ROS_WS}/src ${ROS_WS}/build ${ROS_WS}/log
 
 # --- Build EMOS packages ---
 WORKDIR ${ROS_WS}/src
 COPY stack/sugarcoat sugarcoat
 COPY stack/kompass kompass
 COPY stack/embodied-agents embodied-agents
+COPY stack/emos_mapping emos_mapping
 
 WORKDIR ${ROS_WS}
 RUN /bin/bash -c "source ${ROS_ROOT}/setup.bash && \
@@ -109,16 +86,15 @@ ARG ROS_DISTRO
 ENV ROS_DISTRO=${ROS_DISTRO}
 ENV ROS_ROOT=/opt/ros/${ROS_DISTRO}
 ENV DEBIAN_FRONTEND=noninteractive
-ENV RMW_IMPLEMENTATION=rmw_zenoh_cpp
 
 # Runtime-only system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     portaudio19-dev \
     jq \
     ros-${ROS_DISTRO}-rmw-zenoh-cpp \
+    ros-${ROS_DISTRO}-moveit-msgs \
+    ros-${ROS_DISTRO}-control-msgs \
     libomp-dev \
-    && (apt-get install -y --no-install-recommends libgeographiclib-dev \
-        || apt-get install -y --no-install-recommends libgeographic-dev) \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy built ROS install space from builder

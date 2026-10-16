@@ -1,9 +1,12 @@
 [submodule "stack/embodied-agents"]
 	path = stack/embodied-agents
 	url = https://github.com/automatika-robotics/embodied-agents.git
+	branch = feature/moveit_integration
 [submodule "stack/kompass"]
 	path = stack/kompass
 	url = https://github.com/automatika-robotics/kompass.git
+	branch = feature/mission_manager
 [submodule "stack/sugarcoat"]
 	path = stack/sugarcoat
 	url = https://github.com/automatika-robotics/sugarcoat.git
+	branch = feature/behavior_primitives

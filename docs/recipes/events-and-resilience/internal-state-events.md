@@ -93,7 +93,7 @@ def touch_on_speech(text: str) -> Optional[str]:
 speech_to_text.add_publisher_preprocessor(query_topic, touch_on_speech)
 ```
 
-The pre-processor runs in-process before publication. It updates `idle._last_seen` and passes the message through untouched. Any topic update mechanism would work — a callback, a periodic component, a subscriber elsewhere. The point is that the *state* lives in `idle`, not in any topic.
+The pre-processor is called before each publication and runs in the recipe's own process, the one the Monitor polls `idle` from, so both see the same object even when the components run in processes of their own. It updates `idle._last_seen` and passes the message through untouched. Any topic update mechanism would work — a callback, a periodic component, a subscriber elsewhere. The point is that the *state* lives in `idle`, not in any topic.
 
 ### Step 3: Build the Event and an Action
 

@@ -5,64 +5,31 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/automatika-robotics/emos-cli/internal/config"
 	"github.com/automatika-robotics/emos-cli/internal/ui"
 )
 
 var boldLabel = lipgloss.NewStyle().Bold(true).Foreground(ui.ThemeBlue)
 
-// SensorInfo describes a sensor type identified by its ROS message type short name.
-type SensorInfo struct {
-	DisplayName    string
-	ROSType        string
-	CommonPackages []string // apt package names with {distro} placeholder
+// sensorTypes are the message types EMOS treats as sensor feeds.
+var sensorTypes = map[string]bool{
+	"Image":           true,
+	"CompressedImage": true,
+	"LaserScan":       true,
+	"Audio":           true,
+	"Odometry":        true,
+	"RGBD":            true,
+	"Imu":             true,
+	"PointCloud2":     true,
 }
 
-// sensorKnowledge maps msg_type short names to sensor metadata.
-var sensorKnowledge = map[string]SensorInfo{
-	"Image": {
-		DisplayName:    "RGB Camera",
-		ROSType:        "sensor_msgs/msg/Image",
-		CommonPackages: []string{"ros-{distro}-usb-cam", "ros-{distro}-v4l2-camera", "ros-{distro}-realsense2-camera"},
-	},
-	"CompressedImage": {
-		DisplayName:    "Camera (compressed)",
-		ROSType:        "sensor_msgs/msg/CompressedImage",
-		CommonPackages: []string{"ros-{distro}-usb-cam", "ros-{distro}-image-transport-plugins"},
-	},
-	"LaserScan": {
-		DisplayName:    "2D Lidar",
-		ROSType:        "sensor_msgs/msg/LaserScan",
-		CommonPackages: []string{"ros-{distro}-rplidar-ros", "ros-{distro}-urg-node", "ros-{distro}-sllidar-ros"},
-	},
-	"Audio": {
-		DisplayName:    "Microphone",
-		ROSType:        "std_msgs/msg/ByteMultiArray",
-		CommonPackages: []string{},
-	},
-	"Odometry": {
-		DisplayName:    "Robot base / wheel encoders",
-		ROSType:        "nav_msgs/msg/Odometry",
-		CommonPackages: []string{},
-	},
-	"RGBD": {
-		DisplayName:    "Depth camera",
-		ROSType:        "realsense2_camera_msgs/msg/RGBD",
-		CommonPackages: []string{"ros-{distro}-realsense2-camera"},
-	},
-	"Imu": {
-		DisplayName:    "IMU",
-		ROSType:        "sensor_msgs/msg/Imu",
-		CommonPackages: []string{},
-	},
-	"PointCloud2": {
-		DisplayName:    "3D Lidar / Depth camera",
-		ROSType:        "sensor_msgs/msg/PointCloud2",
-		CommonPackages: []string{"ros-{distro}-realsense2-camera", "ros-{distro}-velodyne"},
-	},
+// IsSensorType reports whether a message type short name is one EMOS treats
+// as a sensor feed.
+func IsSensorType(msgType string) bool {
+	return sensorTypes[msgType]
 }
 
 // ExtractedTopic represents a Topic(...) call found in a recipe.py via AST parsing.
@@ -70,12 +37,34 @@ type ExtractedTopic struct {
 	Name     string `json:"name"`
 	MsgType  string `json:"msg_type"`
 	IsSensor bool   `json:"is_sensor"`
+	// UsePlugin is set when a plugin carries the topic rather than ROS.
+	UsePlugin bool   `json:"use_plugin,omitempty"`
+	PluginID  string `json:"plugin_id,omitempty"`
 }
 
+// Via names what carries the topic: a plugin, or ROS.
+func (t ExtractedTopic) Via() string {
+	switch {
+	case !t.UsePlugin:
+		return "ROS topic"
+	case t.PluginID == "":
+		return "robot plugin"
+	default:
+		return "plugin " + t.PluginID
+	}
+}
+
+// extractScript prints the Topic(...) calls in a recipe (Python3.8 compatible).
 const extractScript = `
 import ast, json, sys
 
-SENSOR_TYPES = {"Image", "CompressedImage", "LaserScan", "Audio", "Odometry", "RGBD", "Imu", "PointCloud2"}
+def source(node):
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        inner = source(node.value)
+        return inner + "." + node.attr if inner else ""
+    return ""
 
 def extract(path):
     tree = ast.parse(open(path).read())
@@ -89,8 +78,18 @@ def extract(path):
                 for kw in node.keywords:
                     if kw.arg in ("name", "msg_type") and isinstance(kw.value, ast.Constant):
                         t[kw.arg] = kw.value.value
+                    elif kw.arg == "use_plugin":
+                        value = kw.value
+                        if isinstance(value, ast.Constant):
+                            if value.value is True:
+                                t["use_plugin"] = True
+                            elif isinstance(value.value, str) and value.value:
+                                t["use_plugin"] = True
+                                t["plugin_id"] = value.value
+                        else:
+                            t["use_plugin"] = True
+                            t["plugin_id"] = source(value)
                 if "name" in t and "msg_type" in t:
-                    t["is_sensor"] = t["msg_type"] in SENSOR_TYPES
                     topics.append(t)
     json.dump(topics, sys.stdout)
 
@@ -108,6 +107,9 @@ func ExtractTopics(recipePath string) ([]ExtractedTopic, error) {
 	var topics []ExtractedTopic
 	if err := json.Unmarshal(out, &topics); err != nil {
 		return nil, fmt.Errorf("failed to parse extracted topics: %w", err)
+	}
+	for i := range topics {
+		topics[i].IsSensor = IsSensorType(topics[i].MsgType)
 	}
 	return topics, nil
 }
@@ -134,131 +136,78 @@ func OtherTopics(topics []ExtractedTopic) []ExtractedTopic {
 	return other
 }
 
-// capitalize returns the string with its first letter uppercased.
-func capitalize(s string) string {
-	if s == "" {
-		return s
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
-}
-
-// DisplayTopicInfo prints the topic info table to the terminal.
-func DisplayTopicInfo(recipeName string, topics []ExtractedTopic, distro string) {
-	sensors := SensorTopics(topics)
-	other := OtherTopics(topics)
-
+// DisplayTopicInfo prints the topic info table to the terminal, then what the
+// topics need to carry data, given the plugins installed in cfg (may be nil).
+func DisplayTopicInfo(recipeName string, topics []ExtractedTopic, cfg *config.EMOSConfig) {
 	fmt.Println()
 	ui.Header("Recipe: " + recipeName)
 
+	sensors := SensorTopics(topics)
 	if len(sensors) == 0 {
 		fmt.Println()
 		ui.Info("No sensor topics required.")
 	} else {
-		fmt.Println()
-		fmt.Println(boldLabel.Render("  Required Sensors:"))
-
-		var rows [][]string
-		for _, t := range sensors {
-			hw := t.MsgType
-			if info, ok := sensorKnowledge[t.MsgType]; ok {
-				hw = info.DisplayName
-			}
-			rows = append(rows, []string{topicName(t.Name), t.MsgType, hw})
-		}
-		ui.PrintTable([]string{"Topic", "Type", "Hardware"}, rows)
-
-		// Package suggestions
-		seen := map[string]bool{}
-		type suggestion struct {
-			hardware string
-			packages []string
-		}
-		var suggestions []suggestion
-
-		for _, t := range sensors {
-			info, ok := sensorKnowledge[t.MsgType]
-			if !ok || len(info.CommonPackages) == 0 || seen[t.MsgType] {
-				continue
-			}
-			seen[t.MsgType] = true
-			var pkgs []string
-			for _, p := range info.CommonPackages {
-				pkgs = append(pkgs, strings.ReplaceAll(p, "{distro}", distro))
-			}
-			suggestions = append(suggestions, suggestion{hardware: info.DisplayName, packages: pkgs})
-		}
-
-		if len(suggestions) > 0 {
-			fmt.Println()
-			fmt.Printf("  Suggested packages (for ROS 2 %s):\n", capitalize(distro))
-			for _, s := range suggestions {
-				fmt.Printf("    %-22s %s\n", s.hardware+":", strings.Join(s.packages, ", "))
-			}
-		}
+		printTopics("Sensors:", sensors)
 	}
-
-	if len(other) > 0 {
-		fmt.Println()
-		fmt.Println(boldLabel.Render("  Other Topics:"))
-		var rows [][]string
-		for _, t := range other {
-			rows = append(rows, []string{topicName(t.Name), t.MsgType})
-		}
-		ui.PrintTable([]string{"Topic", "Type"}, rows)
+	if other := OtherTopics(topics); len(other) > 0 {
+		printTopics("Other Topics:", other)
 	}
-
+	printTopicNeeds(topics, cfg)
 	fmt.Println()
 }
 
-// topicName ensures the topic name has a leading slash for display.
-func topicName(name string) string {
-	if !strings.HasPrefix(name, "/") {
-		return "/" + name
+func printTopicNeeds(topics []ExtractedTopic, cfg *config.EMOSConfig) {
+	var robot, named, drivers bool
+	for _, t := range topics {
+		switch {
+		case t.UsePlugin && t.PluginID == "":
+			robot = true
+		case t.UsePlugin:
+			named = true
+		case t.IsSensor:
+			drivers = true
+		}
 	}
-	return name
+	if !robot && !named && !drivers {
+		return
+	}
+	fmt.Println()
+	if robot {
+		if cfg != nil && cfg.Plugin != nil {
+			ui.Info("Robot plugin topics come from the installed robot plugin, " + cfg.Plugin.Slug + ".")
+		} else {
+			ui.Warn("Robot plugin topics need a robot plugin, and none is installed. " +
+				"Install one with 'emos plugin install <plugin>'.")
+		}
+	}
+	if named {
+		if cfg != nil && len(cfg.SensorPlugins) > 0 {
+			ui.Info("Topics via a named plugin come from the sensor plugin the recipe attaches with that id.")
+		} else {
+			ui.Warn("Topics via a named plugin need a sensor plugin, and none is installed. " +
+				"Install one with 'emos plugin install <plugin>'.")
+		}
+	}
+	if drivers {
+		ui.Info("ROS sensor topics have to be published by a ROS driver for the sensor, or by a node the recipe starts.")
+	}
 }
 
-// verifySensorTopicsAST checks that extracted sensor topics are published.
-func verifySensorTopicsAST(sensors []ExtractedTopic, check topicChecker, distro string) error {
-	if len(sensors) == 0 {
-		ui.Info("No sensor verification required.")
-		return nil
+func printTopics(label string, topics []ExtractedTopic) {
+	fmt.Println()
+	fmt.Println(boldLabel.Render("  " + label))
+	var rows [][]string
+	for _, t := range topics {
+		rows = append(rows, []string{topicName(t), t.MsgType, t.Via()})
 	}
+	ui.PrintTable([]string{"Topic", "Type", "Via"}, rows)
+}
 
-	ui.Info("Verifying sensor topics are available...")
-	var missing []ExtractedTopic
-
-	for _, t := range sensors {
-		topic := topicName(t.Name)
-		found := false
-		for i := 0; i < 10; i++ {
-			out, err := check()
-			if err == nil && strings.Contains(out, topic) {
-				found = true
-				break
-			}
-			time.Sleep(time.Second)
-		}
-		if found {
-			ui.Success(fmt.Sprintf("Topic '%s' (%s) found.", topic, t.MsgType))
-		} else {
-			ui.Error(fmt.Sprintf("Topic '%s' (%s) not found within 10s.", topic, t.MsgType))
-			missing = append(missing, t)
-		}
+// topicName is how a topic is shown. ROS topics with leading slash, and
+// plugin feeds by the name the plugin knows it by.
+func topicName(t ExtractedTopic) string {
+	if t.UsePlugin || strings.HasPrefix(t.Name, "/") {
+		return t.Name
 	}
-
-	if len(missing) > 0 {
-		fmt.Println()
-		ui.Warn("Missing sensor topics. Ensure the following hardware is connected and publishing:")
-		for _, t := range missing {
-			hw := t.MsgType
-			if info, ok := sensorKnowledge[t.MsgType]; ok {
-				hw = info.DisplayName
-			}
-			fmt.Printf("    %s  <-  %s\n", topicName(t.Name), hw)
-		}
-		fmt.Println()
-		return fmt.Errorf("required sensor topics are missing")
-	}
-	return nil
+	return "/" + t.Name
 }

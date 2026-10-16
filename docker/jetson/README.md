@@ -22,7 +22,7 @@ All base images include ONNX Runtime with GPU support for running local inferenc
 
 ## Building
 
-From the repository root, specify `JETSON_BASE` and `ROS_DISTRO`:
+From the repository root, specify `JETSON_BASE` and `ROS_DISTRO`. For a Xavier also pass `CUDA_ARCH=72`. The default of `87` is for Jetson Orin.
 
 ```bash
 # Orin + Jazzy (default)
@@ -42,12 +42,14 @@ docker build -f docker/jetson/Dockerfile.jetson \
 # Xavier + Jazzy
 docker build -f docker/jetson/Dockerfile.jetson \
   --build-arg JETSON_BASE=dustynv/onnxruntime:r35.4.1 \
+  --build-arg CUDA_ARCH=72 \
   --build-arg ROS_DISTRO=jazzy \
   -t emos:jetson-xavier-jazzy .
 
 # Xavier + Humble
 docker build -f docker/jetson/Dockerfile.jetson \
   --build-arg JETSON_BASE=dustynv/onnxruntime:r35.4.1 \
+  --build-arg CUDA_ARCH=72 \
   --build-arg ROS_DISTRO=humble \
   -t emos:jetson-xavier-humble .
 ```
@@ -57,6 +59,7 @@ docker build -f docker/jetson/Dockerfile.jetson \
 - Based on `dustynv/onnxruntime` (L4T) instead of official ROS images
 - Builds ROS 2 from source (official images don't support L4T)
 - Installs `kompass-core` with GPU acceleration via CUDA/TensorRT
+- Builds `sherpa-onnx` and `llama-cpp-python` from source with CUDA, so local speech and LLM models run on the GPU
 - Builds `rmw_zenoh` from source (no apt packages for L4T)
 - Single-stage build (no multi-stage, since the base image is already large)
 - arm64 only (Jetson is always aarch64)

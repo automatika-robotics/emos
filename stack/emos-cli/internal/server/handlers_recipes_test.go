@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/automatika-robotics/emos-cli/internal/api"
 	"github.com/automatika-robotics/emos-cli/internal/config"
 )
 
@@ -192,5 +194,79 @@ func must(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatalf("setup: %v", err)
+	}
+}
+
+func lite3Robot() *config.PluginInfo {
+	return &config.PluginInfo{Slug: "emos-plugin-lite3", EntryPoint: "lite3_plugin:Lite3Plugin", Role: config.RoleRobot,
+		Describe: json.RawMessage(`{"metadata": {"name": "Lite3"}}`)}
+}
+
+func TestHandleRecipesLocalShowsTheInstalledVersion(t *testing.T) {
+	s := newTestServer(t, true)
+	savePlugins(t, lite3Robot())
+	for name, manifest := range map[string]string{
+		"hello":  `{"name":"Hello","variant":{"id":"generic","robot":null,"sensors":[]}}`,
+		"patrol": `{"name":"Patrol","variant":{"id":"emos-plugin-lite3","robot":"emos-plugin-lite3","sensors":[]}}`,
+		"old":    `{"name":"Pulled before variants existed"}`,
+	} {
+		must(t, os.MkdirAll(filepath.Join(config.RecipesDir, name), 0o755))
+		must(t, os.WriteFile(filepath.Join(config.RecipesDir, name, "manifest.json"), []byte(manifest), 0o644))
+	}
+
+	rec := httpServe(t, s, httptest.NewRequest(http.MethodGet, "/api/v1/recipes/local", nil))
+	var out []LocalRecipe
+	jsonBody(t, rec, &out)
+	versions := map[string]string{}
+	for _, r := range out {
+		versions[r.Name] = r.Version
+	}
+	if versions["hello"] != "generic" || versions["patrol"] != "Lite3" || versions["old"] != "" {
+		t.Errorf("versions = %v", versions)
+	}
+}
+
+func TestCatalogForShowsWhatThisRobotGets(t *testing.T) {
+	generic := api.RecipeVariant{ID: api.GenericVariant}
+	lite3 := api.RecipeVariant{ID: "emos-plugin-lite3", Robot: "emos-plugin-lite3"}
+	m20 := api.RecipeVariant{ID: "emos-plugin-m20", Robot: "emos-plugin-m20"}
+	catalog := []api.Recipe{
+		{Filename: "hello", Name: "Hello", Description: "d", Variants: []api.RecipeVariant{generic}},
+		{Filename: "follow", Name: "Follow", Variants: []api.RecipeVariant{generic, lite3}},
+		{Filename: "dock", Name: "Dock", Variants: []api.RecipeVariant{m20}},
+	}
+	cfg := &config.EMOSConfig{Plugin: lite3Robot()}
+
+	// A free Lite3: generic versions, with the Lite3 one it is missing named
+	out := catalogFor(catalog, cfg, nil)
+	if len(out) != 2 || out[0].Version != "generic" || out[0].Unlicensed != "" || out[0].Description != "d" ||
+		out[1].Version != "generic" || out[1].Unlicensed != "Lite3" {
+		t.Errorf("free Lite3 = %+v", out)
+	}
+	// A licensed Lite3 gets its version, and nothing is marked
+	out = catalogFor(catalog, cfg, &config.License{Key: "K", PluginSlug: "emos-plugin-lite3"})
+	if len(out) != 2 || out[1].Version != "Lite3" || out[1].Unlicensed != "" {
+		t.Errorf("licensed Lite3 = %+v", out)
+	}
+}
+
+func TestChoosePullSendsTheLicenseForARobotVersionOnly(t *testing.T) {
+	generic := api.RecipeVariant{ID: api.GenericVariant}
+	lite3 := api.RecipeVariant{ID: "emos-plugin-lite3", Robot: "emos-plugin-lite3"}
+	recipe := api.Recipe{Filename: "follow", Variants: []api.RecipeVariant{generic, lite3}}
+	cfg := &config.EMOSConfig{Plugin: lite3Robot()}
+	lic := &config.License{Key: "ABCDE-FGHJK", PluginSlug: "emos-plugin-lite3"}
+
+	pull, err := choosePull(recipe, cfg, lic)
+	if err != nil || pull.variant != "emos-plugin-lite3" || pull.version != "Lite3" || pull.key != lic.Key {
+		t.Errorf("licensed = %+v, %v", pull, err)
+	}
+	pull, err = choosePull(recipe, cfg, nil)
+	if err != nil || pull.variant != api.GenericVariant || pull.version != "generic" || pull.key != "" {
+		t.Errorf("free = %+v, %v", pull, err)
+	}
+	// Nothing this robot can use is an error the job reports
+	if _, err := choosePull(api.Recipe{Variants: []api.RecipeVariant{lite3}}, cfg, nil); err == nil {
+		t.Error("a robot-only recipe without a license must fail")
 	}
 }

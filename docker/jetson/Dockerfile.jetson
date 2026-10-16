@@ -4,6 +4,7 @@
 # Build args:
 #   JETSON_BASE  - base image for the target Jetson platform (see README.md)
 #   ROS_DISTRO   - ROS 2 distribution (humble, jazzy, kilted)
+#   CUDA_ARCH    - GPU architecture of the target Jetson: 87 for Orin, 72 for Xavier
 #
 # Example (Orin + Jazzy):
 #   docker build -f docker/jetson/Dockerfile.jetson \
@@ -15,6 +16,7 @@ ARG JETSON_BASE=dustynv/onnxruntime:1.22-r36.4.0-cu128-24.04
 FROM ${JETSON_BASE}
 
 ARG ROS_DISTRO=jazzy
+ARG CUDA_ARCH=87
 
 ENV ROS_DISTRO=${ROS_DISTRO}
 ENV ROS_ROOT=/opt/ros/${ROS_DISTRO}
@@ -71,6 +73,8 @@ RUN rosinstall_generator --deps --rosdistro ${ROS_DISTRO} \
     launch_testing \
     launch_testing_ament_cmake \
     demo_nodes_cpp \
+    moveit_msgs \
+    control_msgs \
     > ros2.rosinstall && \
     mkdir src && \
     vcs import src < ros2.rosinstall && \
@@ -130,28 +134,6 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /root/.cargo /root/.rustup \
     && sed -i '/cargo\/env/d' /root/.bashrc
 
-# --- Install Localization Packages ---
-WORKDIR ${ROS_WS}/src
-# geographic_info: has 'jazzy' branch, all others use 'ros2'
-RUN apt-get update \
-    && (apt-get install -y libgeographiclib-dev \
-        || apt-get install -y libgeographic-dev) \
-    && rm -rf /var/lib/apt/lists/* \
-    && GEO_BRANCH=$(if [ "${ROS_DISTRO}" = "jazzy" ]; then echo jazzy; else echo ros2; fi) \
-    && git clone --depth 1 -b ${GEO_BRANCH} https://github.com/ros-geographic-info/geographic_info.git \
-    && git clone --depth 1 -b ${ROS_DISTRO}-devel https://github.com/cra-ros-pkg/robot_localization.git \
-    && git clone --depth 1 -b ros2 https://github.com/ros/angles.git \
-    && rm -rf geographic_info/geographic_info geographic_info/geodesy
-
-WORKDIR ${ROS_WS}
-RUN apt-get update \
-    && rosdep install -y --from-paths src --ignore-src --rosdistro ${ROS_DISTRO} \
-    && rm -rf /var/lib/apt/lists/*
-RUN /bin/bash -c "source ${ROS_ROOT}/setup.bash && \
-    colcon build --merge-install --install-base ${ROS_ROOT} \
-    --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_DEFAULT_CMP0148=OLD" && \
-    rm -rf ${ROS_WS}/src ${ROS_WS}/build ${ROS_WS}/log
-
 # --- Install kompass-core with GPU acceleration ---
 WORKDIR /
 RUN ldconfig && \
@@ -164,28 +146,40 @@ WORKDIR ${ROS_WS}/src
 RUN apt-get update && apt-get install -y portaudio19-dev jq && \
     pip install --no-cache-dir numpy opencv-python-headless 'attrs>=23.2.0' jinja2 httpx msgpack msgpack-numpy \
     setproctitle platformdirs tqdm pyyaml toml websockets \
-    huggingface-hub sherpa-onnx grpcio protobuf && \
+    huggingface-hub grpcio protobuf && \
     pip install --no-cache-dir ollama redis[hiredis] pyaudio soundfile && \
     PY_MINOR=$(python3 -c "import sys; print(sys.version_info.minor)") && \
     if [ "$PY_MINOR" -ge 10 ]; then \
-        pip install --no-cache-dir python-fasthtml monsterui; \
+        pip install --no-cache-dir 'python-fasthtml>=0.12,<0.15' 'monsterui>=1.0,<1.1'; \
     else \
         echo "Skipping fasthtml/monsterui (requires Python >= 3.10, found 3.${PY_MINOR})"; \
     fi && \
     rm -rf /root/.cache/pip && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install llama-cpp-python with CUDA support for Jetson Orin (SM 87).
+# Build sherpa-onnx with CUDA.
+RUN CUDA_MAJOR=$(/usr/local/cuda/bin/nvcc --version | sed -n 's/.*release \([0-9]*\)\..*/\1/p') && \
+    case "$CUDA_MAJOR" in \
+        11) ORT_VERSION=1.16.0 ;; \
+        12) ORT_VERSION=1.18.1 ;; \
+        *) echo "sherpa-onnx has no onnxruntime for CUDA $CUDA_MAJOR on aarch64" && exit 1 ;; \
+    esac && \
+    SHERPA_ONNX_CMAKE_ARGS="-DSHERPA_ONNX_ENABLE_GPU=ON -DSHERPA_ONNX_LINUX_ARM64_GPU_ONNXRUNTIME_VERSION=$ORT_VERSION" \
+    SHERPA_ONNX_MAKE_ARGS="-j$(nproc)" \
+    pip install --no-cache-dir --no-binary sherpa-onnx sherpa-onnx
+
+# Install llama-cpp-python with CUDA support.
 # Pre-install build deps with --no-build-isolation to avoid packaging version
-# conflicts on older pip (Ubuntu 20.04/22.04).
+# conflicts on older pip.
 RUN pip install --no-cache-dir 'scikit-build-core>=0.8' 'packaging>=22.0' && \
-    CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=87" \
+    CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH}" \
     FORCE_CMAKE=1 \
     pip install --no-cache-dir --no-build-isolation llama-cpp-python
 
 COPY stack/sugarcoat sugarcoat
 COPY stack/kompass kompass
 COPY stack/embodied-agents embodied-agents
+COPY stack/emos_mapping emos_mapping
 
 # --- Build EMOS Packages ---
 WORKDIR ${ROS_WS}
@@ -197,7 +191,6 @@ RUN /bin/bash -c "source ${ROS_ROOT}/setup.bash && \
 # --- Final Configuration ---
 WORKDIR /
 ENV ROS_WS=
-ENV RMW_IMPLEMENTATION=rmw_zenoh_cpp
 COPY docker/jetson/entrypoint.sh /ros_entrypoint.sh
 RUN chmod +x /ros_entrypoint.sh
 

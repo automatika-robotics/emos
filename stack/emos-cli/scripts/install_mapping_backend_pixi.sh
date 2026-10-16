@@ -13,7 +13,8 @@ set -eo pipefail
 GTSAM_REPO="https://github.com/borglab/gtsam"
 GTSAM_REF="4.3a1"
 GTSAM_POINTS_REPO="https://github.com/koide3/gtsam_points"
-GTSAM_POINTS_REF="v1.2.2"
+# gtsam_points on master, at the commit the pinned GLIM builds against.
+GTSAM_POINTS_REF="8e94654558dfbe7ddb0341de300daaf17e25ee02"
 # GLIM and its ROS wrapper on master, at the commits EMOS was tested with.
 GLIM_REPO="https://github.com/koide3/glim"
 GLIM_REF="1a197c999e4865f5cab7c9cd25474128413ebbca"

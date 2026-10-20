@@ -9,4 +9,4 @@
 [submodule "stack/sugarcoat"]
 	path = stack/sugarcoat
 	url = https://github.com/automatika-robotics/sugarcoat.git
-	branch = feature/behavior_primitives
+	branch = main

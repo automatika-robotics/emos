@@ -5,7 +5,7 @@
 [submodule "stack/kompass"]
 	path = stack/kompass
 	url = https://github.com/automatika-robotics/kompass.git
-	branch = feature/mission_manager
+	branch = main
 [submodule "stack/sugarcoat"]
 	path = stack/sugarcoat
 	url = https://github.com/automatika-robotics/sugarcoat.git

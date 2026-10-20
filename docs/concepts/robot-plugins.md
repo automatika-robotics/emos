@@ -95,7 +95,7 @@ The same mechanism is how a plugin provides localization. A robot without its ow
 
 ### Mapping
 
-A robot plugin declares how the robot is mapped, and `emos map` reads that declaration. `VendorMapping` describes a robot with its own mapping software, as the commands that start and stop a session, apply a map and export or import one, plus where that software keeps its maps. `NativeMapping` describes a robot that EMOS maps itself: which feed carries the LiDAR cloud, which one the IMU, and the height band and resolution of the occupancy grid. Either kind exposes `active_grid_path()`, which is how a recipe finds the map in use. [Mapping](../getting-started/mapping.md) covers the workflow.
+A robot plugin declares how the robot is mapped, and `emos map` reads that declaration. `VendorMapping` describes a robot with its own mapping software, as the commands that start and stop a session, apply a map and export or import one, plus where that software keeps its maps. `NativeMapping` describes a robot that EMOS maps itself: which feed carries the LiDAR cloud, which one the IMU if the robot has one, and the height band and resolution of the occupancy grid. Without an IMU the map is built from the LiDAR alone. `custom_settings` passes settings of the mapping backend that a sensor needs, and they win over the indoor and outdoor defaults. Either kind exposes `active_grid_path()`, which is how a recipe finds the map in use. [Mapping](../getting-started/mapping.md) covers the workflow.
 
 ---
 

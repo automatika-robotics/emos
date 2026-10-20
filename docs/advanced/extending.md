@@ -328,7 +328,7 @@ With `keep_alive: false` the component is stopped, configured from the file and 
 
 ### Executing a Component Method
 
-The `ExecuteMethod` service enables runtime invocation of any class method in the component. This is useful for triggering specific behaviors, tools, or diagnostics during runtime without writing additional interfaces.
+The `ExecuteMethod` service calls a method of a running component by name. It is what runs an `Action` bound to a component method, and how a Cortex plan reaches a component. Component actions, fallbacks and the public methods of the component's own class can be called this way. Inherited and private methods cannot, and the browser interface does not expose the service.
 
 - **Service Name:** `/{component_name}/execute_method`
 - **Service Type:** `automatika_ros_sugar/srv/ExecuteMethod`

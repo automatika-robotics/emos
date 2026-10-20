@@ -24,6 +24,8 @@ When defining a [Topic](../concepts/topics.md), you pass the message type as a s
 | **PointStamped** | geometry_msgs | Timestamped 3D point |
 | **Pose** | geometry_msgs | Position + orientation |
 | **PoseStamped** | geometry_msgs | Timestamped pose |
+| **PoseWithCovariance** | geometry_msgs | Pose with its uncertainty |
+| **PoseWithCovarianceStamped** | geometry_msgs | Timestamped pose with its uncertainty |
 | **Twist** | geometry_msgs | Linear + angular velocity |
 | **TwistStamped** | geometry_msgs | Timestamped velocity |
 

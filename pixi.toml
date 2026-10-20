@@ -94,7 +94,7 @@ huggingface_hub = "*"
 [pypi-dependencies]
 monsterui = ">=1.0,<1.1"
 sherpa-onnx = "*"
-ollama = "*"
+ollama = ">=0.6.3"
 soundfile = "*"
 # Install llama-cpp-python from its own index (pypi only has src for aarch64)
 llama-cpp-python = { version = "*", index = "https://abetlen.github.io/llama-cpp-python/whl/cpu" }

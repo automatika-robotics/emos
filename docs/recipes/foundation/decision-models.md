@@ -20,7 +20,22 @@ Each answer also comes with a `confidence`, which is 0 when all the options are 
 
 ## Serving a decision model
 
-The open decision models are served with llama.cpp's `llama-server`, which implements the `/v1/systemone` API they use. The text-only models are small, between 144M and 4B parameters, and run fine on a CPU. The two that can read images, OpenJev and Clef, are 27B models and require a GPU. The full list is in [Models](../../intelligence/models.md#decision-models). The examples in this tutorial use `lev` for text and OpenJev for images; start whichever one the recipe you are running needs:
+A decision model answers through the `/v1/systemone` API. Two servers implement it: [Ollama](https://ollama.com), from version 0.35.0, and llama.cpp's `llama-server`. The text-only models are small, between 144M and 4B parameters, and run fine on a CPU. The models that read images are larger and want a GPU. The full list, with where each model is available, is in [Models](../../intelligence/models.md#decision-models).
+
+On Ollama a decision model is a tag like any other. Pull it, or let the recipe pull it the first time it starts, and reach it with the Ollama client:
+
+```bash
+ollama pull kev
+```
+
+```python
+from agents.clients import OllamaClient
+from agents.models import OllamaModel
+
+decision_client = OllamaClient(OllamaModel(name="kev", checkpoint="kev"))
+```
+
+The examples in this tutorial use `lev` for text and OpenJev for images, two models served with `llama-server`; start whichever one the recipe you are running needs:
 
 ```bash
 llama-server -m lev-Q8_0.gguf --alias lev --port 8090
@@ -31,7 +46,7 @@ llama-server -m OpenJev-Q4_K_M.gguf --mmproj mmproj-OpenJev-Q8_0.gguf --alias op
 `llama-server` comes with [llama.cpp](https://github.com/ggml-org/llama.cpp). You can download a [release](https://github.com/ggml-org/llama.cpp/releases) or [build it](https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md) yourself; build with a GPU backend if you intend to serve one of the image models. The model files are in the `ggml-org` repositories on Hugging Face, and llama.cpp can download one for you if you pass the repository name with `-hf ggml-org/lev-GGUF` instead of a file with `-m`.
 ```
 
-In the recipe, the server is reached through the generic HTTP client with a `GenericDecisionModel`. The model's checkpoint is the alias you gave the server:
+In the recipe, `llama-server` is reached through the generic HTTP client with a `GenericDecisionModel`. The model's checkpoint is the alias you gave the server:
 
 ```python
 from agents.clients import GenericHTTPClient

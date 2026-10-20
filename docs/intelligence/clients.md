@@ -33,7 +33,7 @@ Some clients need an extra package, listed in the table. When it is missing, the
 
 * - **Ollama**
   - OllamaClient
-  - HTTP client for models served on [Ollama](https://ollama.com): language and multimodal models and embeddings, with tool calling. Needs `pip install ollama`.
+  - HTTP client for models served on [Ollama](https://ollama.com): language and multimodal models, embeddings and decision models, with tool calling for the chat models. A tag that is not on the server yet is pulled when the recipe starts, with the progress in the log. Needs `pip install ollama`, version 0.6.3 or newer for decision models.
 
 * - **LeRobot**
   - LeRobotClient

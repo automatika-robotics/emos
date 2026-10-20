@@ -107,16 +107,29 @@ Two config fields tune them. `local_model_options` passes backend options throug
 
 ## Decision Models
 
-A decision model gives up generating text. Given a state and typed questions, it scores the options in one forward pass and returns a probability for each, which is what makes it fast and its answers easy to threshold. The open models below are served with llama.cpp's `llama-server` from the GGUF repositories of [ggml-org](https://huggingface.co/blog/ggml-org/decision-models-in-llamacpp), and a recipe reaches them with `GenericDecisionModel` on the `GenericHTTPClient`. The small ones run on a CPU; the ones that read images are 27B models and want a GPU. `llama-server` comes with llama.cpp and is not part of an EMOS install.
+A decision model gives up generating text. Given a state and typed questions, it scores the options in one forward pass and returns a probability for each, which is what makes it fast and its answers easy to threshold.
 
-| Model   | Size | Reads images | Languages              | License                      |
-|:--------|:-----|:-------------|:-----------------------|:-----------------------------|
-| Julia-1 | 144M | no           | 50+                    | Apache 2.0                   |
-| Laya    | 421M | no           | English                | Apache 2.0                   |
-| Kev-4B  | 4B   | no           | English                | Apache 2.0                   |
-| lev     | 4B   | no           | English                | Apache 2.0                   |
-| OpenJev | 27B  | yes          | en, de, fr, hi, zh, ja | CC BY-NC 4.0, non-commercial |
-| Clef    | 27B  | yes          | English                | Apache 2.0                   |
+Other than cloud APIs, two local servers serve decision models through the `/v1/systemone` API. [Ollama](https://ollama.com), from version 0.35.0, carries them as ordinary tags under its [decision capability](https://ollama.com/search?c=decision), and a recipe reaches one with `OllamaModel` on the `OllamaClient`. llama.cpp's `llama-server` serves the GGUF files of [ggml-org](https://huggingface.co/blog/ggml-org/decision-models-in-llamacpp), reached with `GenericDecisionModel` on the `GenericHTTPClient`; it comes with llama.cpp and is not part of an EMOS install. The table lists the open models and where each is available. Ollama has more under that filter, among them Clef Flash, a smaller Clef that reads images. The small models run on a CPU, the ones that read images want a GPU.
+
+| Model   | Size | Reads images | Languages              | License                      | Ollama tag | llama-server |
+|:--------|:-----|:-------------|:-----------------------|:-----------------------------|:-----------|:-------------|
+| Julia-1 | 144M | no           | 50+                    | Apache 2.0                   |            | GGUF         |
+| Laya    | 421M | no           | English                | Apache 2.0                   | `laya`     | GGUF         |
+| Kev-4B  | 4B   | no           | English                | Apache 2.0                   | `kev`      | GGUF         |
+| lev     | 4B   | no           | English                | Apache 2.0                   |            | GGUF         |
+| OpenJev | 27B  | yes          | en, de, fr, hi, zh, ja | CC BY-NC 4.0, non-commercial |            | GGUF         |
+| Clef    | 27B  | yes          | English                | Apache 2.0                   | `clef`     | GGUF         |
+
+```bash
+ollama pull kev
+```
+
+```python
+from agents.clients import OllamaClient
+from agents.models import OllamaModel
+
+decision_client = OllamaClient(OllamaModel(name="kev", checkpoint="kev"))
+```
 
 ```bash
 llama-server -m lev-Q8_0.gguf --alias lev --port 8090

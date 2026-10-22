@@ -212,7 +212,7 @@ launcher.bringup()
 
 When the recipe starts, it prints the address of the UI, `https://<ROBOT_IP>:5001`. The page is served over HTTPS with the robot's own certificate, so your browser shows a warning the first time; continue past it and you are on the page. Type a question into the input field and the reply from Qwen2.5vl appears next to the camera image.
 
-![Demo screencast](https://automatikarobotics.com/docs/ui_agents_vlm.gif)
+![Demo screencast](../_static/agents_ui.gif)
 
 ```{note}
 Every EMOS install already includes what the web UI needs. If you built the stack from source yourself, install the two UI packages with `pip install python-fasthtml monsterui`.

@@ -33,7 +33,7 @@ There are three ways to install EMOS, and the right one depends mostly on what i
 
 :::{tab-item} pixi
 
-Pixi mode gives you a complete ROS 2 Jazzy environment under your home directory, with nothing installed system-wide. You need [pixi](https://pixi.prefix.dev/) itself before you begin, and a new shell after installing it so that it is on your path:
+Pixi mode gives you a complete ROS 2 Jazzy environment under your home directory, so no system ROS 2 is needed. You need [pixi](https://pixi.prefix.dev/) itself before you begin, and a new shell after installing it so that it is on your path:
 
 ```bash
 curl -fsSL https://pixi.sh/install.sh | bash

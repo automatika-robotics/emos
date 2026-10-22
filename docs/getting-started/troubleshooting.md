@@ -132,7 +132,7 @@ Building maps with EMOS itself needs a pixi or native install on the robot.
 
 ### "Mapping is not tracking the robot after 60 s"
 
-The backend needs the robot to stand still for the first seconds of a session, which is when it finds which way is down from the IMU, and it reports that it is tracking the robot once it has. If that never comes, either the robot was moving from the start or a sensor is not publishing; the session's log shows a warning when the LiDAR has published nothing. You can drive on, but the map is likely to come out tilted, so it is usually better to stop, check the sensors and start again.
+The backend needs the robot to stand still for the first seconds of a session, which is when it finds which way is down from the IMU if the robot has one, and it reports that it is tracking the robot once it has. If that never comes, either the robot was moving from the start or a sensor is not publishing; the session's log shows a warning when the LiDAR has published nothing. You can drive on, but the map is likely to come out tilted, so it is usually better to stop, check the sensors and start again.
 
 ### "Mapping warning: no floor was found in the map"
 

@@ -20,7 +20,7 @@ Each answer also comes with a `confidence`, which is 0 when all the options are 
 
 ## Serving a decision model
 
-A decision model answers through the `/v1/systemone` API. Two servers implement it: [Ollama](https://ollama.com), from version 0.35.0, and llama.cpp's `llama-server`. The text-only models are small, between 144M and 4B parameters, and run fine on a CPU. The models that read images are larger and want a GPU. The full list, with where each model is available, is in [Models](../../intelligence/models.md#decision-models).
+A decision model answers through the `/v1/systemone` API. Two servers implement it: [Ollama](https://ollama.com), from version 0.40.4, and llama.cpp's `llama-server`. The text-only models are small, between 144M and 4B parameters, and run fine on a CPU. The models that read images are larger and want a GPU. The full list, with where each model is available, is in [Models](../../intelligence/models.md#decision-models).
 
 On Ollama a decision model is a tag like any other. Pull it, or let the recipe pull it the first time it starts, and reach it with the Ollama client:
 

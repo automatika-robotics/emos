@@ -1,6 +1,6 @@
 # Mapping
 
-Navigation needs a map of the place the robot works in, and there are two ways to get one. If the site has already been surveyed, with a scanner or another robot, you can bring that map along and hand it to your recipes as it is. Otherwise you map the site with the robot itself, and that is where EMOS helps: `emos map` drives the whole session and keeps the result. How a particular robot maps is declared in its plugin. Some robots ship with mapping software of their own, and EMOS drives that software; robots that ship none but have a LiDAR are mapped by EMOS itself, with a mapping backend it builds on the robot. Either way the commands are the same, and either way you need a robot plugin installed first.
+Navigation needs a map of the place the robot works in, and there are two ways to get one. If the site has already been surveyed, with a scanner or another robot, you can bring that map along and hand it to your recipes as it is. Otherwise you map the site with the robot itself, and that is where EMOS helps: `emos map` drives the whole session and keeps the result. How a particular robot maps is declared in its plugin. Some robots ship with mapping software of their own, and EMOS drives that software; robots that ship none but have a LiDAR are mapped by EMOS itself, with a mapping backend it builds on the robot. A robot with an IMU is mapped from LiDAR and IMU together, one without from the LiDAR alone. Either way the commands are the same, and either way you need a robot plugin installed first.
 
 ```{note}
 A map is a picture of the site's permanent structure: walls, shelving, fixed equipment. Map when only those are present, ideally when the site is quiet. Anything that moves or changes, people, carts, a pallet left in an aisle, is handled at run time by the [Local Mapper](../navigation/mapping.md#local-mapper), and does not belong in the map.
@@ -24,7 +24,7 @@ The backend is built automatically for pixi installs only. On a native install t
 emos map new office
 ```
 
-Mapping is interactive, so run it from a terminal. When EMOS builds the map itself, the first thing it asks is whether the site is indoors or outdoors, because the backend is tuned differently for rooms and corridors than for open ground, and if you would rather not be asked, `--env indoor` or `--env outdoor` answers in advance. Once the session is up, keep the robot still until the CLI says that mapping is ready. The backend spends those first seconds working out which way is down, and a robot that moves before it has finished ends up with a tilted map. After that, take the robot around the area you want mapped with its own controller.
+Mapping is interactive, so run it from a terminal. When EMOS builds the map itself, the first thing it asks is whether the site is indoors or outdoors, because the backend is tuned differently for rooms and corridors than for open ground, and if you would rather not be asked, `--env indoor` or `--env outdoor` answers in advance. Once the session is up, keep the robot still until the CLI says that mapping is ready. With an IMU, the backend spends those first seconds working out which way is down, and a robot that moves before it has finished ends up with a tilted map. After that, take the robot around the area you want mapped with its own controller.
 
 ```{tip}
 Three things make a good map. Move slowly and turn gently, since fast turns blur the scans. Close loops: come back to places you have already scanned rather than driving one long line, or the map will not line up with itself. And finish in an area you have already covered.
@@ -50,7 +50,7 @@ Sometimes a map comes out wrong and nothing in the log explains why. The most us
 emos map new office --debug
 ```
 
-A debug session builds the map as usual and, alongside it, records the raw LiDAR and IMU data as it arrives. Such a recording grows quickly, which is why a debug session is best kept short, with the robot standing still until mapping is ready and then driven once, slowly, around a loop that brings it back to where it started. When the session ends, the recording and its log are kept together in a `debug` directory inside the map, and the whole map can be handed over in one piece:
+A debug session builds the map as usual and, alongside it, records the raw LiDAR data, and the IMU's where the robot has one, as it arrives. Such a recording grows quickly, which is why a debug session is best kept short, with the robot standing still until mapping is ready and then driven once, slowly, around a loop that brings it back to where it started. When the session ends, the recording and its log are kept together in a `debug` directory inside the map, and the whole map can be handed over in one piece:
 
 ```bash
 emos map export --debug office-20260925-101530

@@ -121,7 +121,7 @@ make build && sudo make install
 Then choose your install mode:
 
 ```bash
-# pixi mode: ROS 2 and the whole stack in your home directory, no root, no Docker
+# pixi mode (recommended): ROS 2 and the whole stack in your home directory, no Docker
 emos install --mode pixi
 
 # Native mode: builds on the ROS 2 you already have
@@ -134,7 +134,7 @@ emos install --mode container
 emos install
 ```
 
-**pixi mode** is the default. It installs ROS 2 Jazzy and every EMOS package into an isolated environment under your home directory, on any Linux distribution, and offers GPU builds where a CUDA toolkit is found.
+**pixi mode** is recommended. It installs ROS 2 Jazzy and every EMOS package into an isolated environment under your home directory, on any Linux distribution, and offers GPU builds where a CUDA toolkit is found.
 
 **Native mode** detects your ROS 2 installation (Humble, Jazzy or Kilted), fetches the EMOS source, installs the dependencies including GPU-accelerated kompass-core, and builds a workspace.
 

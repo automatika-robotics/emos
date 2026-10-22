@@ -44,6 +44,13 @@ docker run -it --rm --network host --ipc host \
 On an NVIDIA GPU add `--gpus all --env NVIDIA_DRIVER_CAPABILITIES=all` and drop the `--device` flag. Both sides have to share the same `ROS_DOMAIN_ID` and RMW implementation.
 ````
 
+```{figure} /_static/images/webots_turtlebot3.png
+:alt: Webots with the Turtlebot3 Burger in a furnished living room
+:align: center
+
+The Webots world: a Turtlebot3 Burger in a furnished apartment.
+```
+
 ### 2. The Navigation Recipe
 
 The power of EMOS lies in its Python API. Instead of complex XML/YAML launch files, you define your navigation logic in a clean script.
@@ -209,6 +216,13 @@ If you prefer the standard ROS tools:
 3. Click anywhere on the map grid.
 4. The robot will plan a path (Blue Line) and immediately start driving.
 
+```{figure} /_static/images/rviz_webots_turtlebot3.png
+:alt: RViz showing the occupancy map of the Webots apartment with the robot's frames
+:align: center
+
+RViz with the map of the Webots world, the robot's frames and the Publish Point tool in the toolbar.
+```
+
 ### What just happened?
 
 * **Components**: You configured your robot and the navigation components directly in your Python recipe.
@@ -259,6 +273,29 @@ Start the Turtlebot3 house simulation. This will bring up Gazebo, RViz, and the 
 ros2 launch kompass_sim gazebo_turtlebot3_house.launch.py
 
 ```
+
+::::{grid} 1 2 2 2
+:gutter: 2
+
+:::{grid-item}
+```{figure} /_static/images/gazebo_turtlebot3_sim.png
+:alt: Gazebo with the Turtlebot3 house world seen from above
+:align: center
+
+The Turtlebot3 house in Gazebo.
+```
+:::
+
+:::{grid-item}
+```{figure} /_static/images/gazebo_turtlebot3_rviz.png
+:alt: RViz showing the occupancy map of the Gazebo house with the robot's frames
+:align: center
+
+The same house as a map in RViz.
+```
+:::
+
+::::
 
 ### 3. The Navigation Recipe
 
@@ -420,7 +457,7 @@ The recipe includes `launcher.enable_ui(...)`, which automatically spins up a li
 
 If you prefer the standard ROS tools:
 
-1. Go to the **RViz** window launched in Step 1.
+1. Go to the **RViz** window launched in Step 2.
 2. Select the **Publish Point** tool (sometimes called `Clicked Point`) from the top toolbar.
 3. Click anywhere on the map grid.
 4. The robot will plan a path (Blue Line) and immediately start driving.

@@ -83,14 +83,14 @@ func chooseInstall() (func() error, error) {
 	fmt.Println("  How would you like to install EMOS?")
 
 	choice, err := ui.Select("Select installation mode:", []string{
-		"Container Install         (No ROS required - runs in Docker)",
-		"Native Install            (Requires existing ROS 2 installation)",
 		"Pixi Install              (Self-contained ROS via pixi - no system ROS needed)",
+		"Native Install            (Requires existing ROS 2 installation)",
+		"Container Install         (No ROS required - runs in Docker)",
 	})
 	if err != nil {
 		return nil, err
 	}
-	return []func() error{installOSSContainer, installNative, installPixi}[choice], nil
+	return []func() error{installPixi, installNative, installOSSContainer}[choice], nil
 }
 
 // installLicense settles which licence this install is for. Nil installs EMOS

@@ -151,7 +151,8 @@ Every error is a JSON object with a single `error` field:
 | `401`, `403` | No valid key, or a key without the needed scope.                                        |
 | `404`  | No such input, output, service, action or routine, or no data yet on an output.               |
 | `409`  | The command cannot be taken now: a goal is already running, or the routine is in the wrong state. |
-| `502`  | The action server rejected the goal.                                                          |
+| `500`  | Publishing, the service call, sending or cancelling a goal, or the routine command failed.    |
+| `502`  | The action server rejected the goal, or the service did not respond.                          |
 | `503`  | The recipe is not ready to serve that yet.                                                    |
 
 ---

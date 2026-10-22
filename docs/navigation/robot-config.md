@@ -21,7 +21,7 @@ my_robot = RobotConfig(
 )
 ```
 
-Every field is required on purpose. A robot without limits is not a robot EMOS will move, so `RobotConfig()` with nothing in it is an error rather than a default. The classes live in Sugarcoat and are re-exported by `kompass.robot` and `kompass.config`.
+Every field except `ctrl_vy_limits` is required on purpose. A robot without limits is not a robot EMOS will move, so `RobotConfig()` with nothing in it is an error rather than a default. The classes live in Sugarcoat and are re-exported by `kompass.robot` and `kompass.config`.
 
 ## Motion models
 

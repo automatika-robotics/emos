@@ -120,7 +120,7 @@ image = Topic(name="visible_image", msg_type="Image", use_plugin=camera.id)
 With no robot at all, mount the sensor on a fixed frame instead: `Mount(parent="world", xyz=(0.0, 0.0, 1.0))`.
 
 ```{tip}
-Give each sensor an id that says what it is for, `inspection_cam` rather than `cam1`. The id is how recipes, `emos info` and the dashboard refer to that sensor, and it becomes the name of the sensor's frame.
+Give each sensor an id that says what it is for, `inspection_cam` rather than `cam1`. The id is how recipes, `emos info` and the dashboard refer to that sensor, and the sensor's frame is named after it, `<id>_frame`.
 ```
 
 ## From the dashboard

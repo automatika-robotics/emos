@@ -230,7 +230,7 @@ cortex = Cortex(
 )
 ```
 
-That's the whole agent. **No `actions=[...]` is needed** -- the agent's tool palette is everything the other components contribute:
+That's the whole agent. **No `actions=[...]` is needed** -- the agent's tool palette is everything the other components contribute.
 
 If you want to add a private capability that isn't on a managed component -- a database call, a custom servo on a peripheral, an external API -- pass it as a custom `Action(method=..., description=...)` in `actions=[...]` and Cortex registers it alongside the rest.
 

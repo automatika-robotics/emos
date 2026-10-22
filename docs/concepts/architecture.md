@@ -56,8 +56,6 @@ A recipe is a Python script that declares a whole application: which components 
 
 ```python
 from ros_sugar import Launcher
-from ros_sugar.core import Event
-from ros_sugar.io import Topic
 from myrobot_plugin import MyRobotPlugin
 
 # Components from any layer: perception from EmbodiedAgents,

@@ -79,14 +79,15 @@ Cortex does not search the recipe itself. The launcher builds a registry of ever
 
 Lifecycle methods such as `start`, `stop` and `restart` are left out, since the Monitor manages those, and so are Cortex's own actions.
 
-Which phase a component action belongs to is set in its decorator. The default is execution; `phase=ActionPhase.PLANNING` makes it a research tool, and `ActionPhase.BOTH` offers it in both phases, which suits retrieval such as `describe` or `locate`:
+Which phase a component action belongs to is set in its decorator. The default is execution; `phase=ActionPhase.PLANNING` makes it a research tool, and `ActionPhase.BOTH` offers it in both phases, which suits a quick read the planner may want both while researching and as a step, such as the `body_status` action of `Memory`:
 
 ```python
+from agents.components import Component
 from agents.ros import ActionPhase, ActionReturnType, component_action
 
-class MyComponent(BaseComponent):
+class MyComponent(Component):
     @component_action(description={...}, phase=ActionPhase.BOTH)
-    def locate(self, name: str) -> ActionReturnType: ...
+    def body_status(self) -> ActionReturnType: ...
 ```
 
 The `ask` action of a `DecisionComponent` is one of these, offered in both phases as `<component>-ask`. It gives the planner a quick, typed check on what the robot sees or hears, or on a state the planner passes in, answered with a probability in a single forward pass rather than reasoned about in text.
@@ -225,7 +226,7 @@ When a [Memory](memory.md) component is in the recipe, Cortex's planning prompt 
 
 ## Observability
 
-Cortex publishes feedback on its action server as it works: each step with its tool name, whether it was executed, skipped, failed or aborted or is waiting, the status and latest feedback of goals in flight with stall warnings, the progress of routines it started, and the results of a compiled run. The recipe's [web interface](../concepts/web-ui.md) shows these lines in the main log next to the components' own, so an operator sees the agent's reasoning and the planner's path-tracking feedback side by side.
+Cortex publishes feedback on its action server as it works: each step with its tool name, whether it was executed, skipped, failed or aborted or is waiting, the status and latest feedback of goals in flight with stall warnings, the progress of routines it started, and the results of a compiled run. The recipe's [web interface](../concepts/web-ui.md) shows these lines in the main log next to the components' own, so an operator sees the agent's reasoning and the Kompass controller's path-tracking feedback side by side.
 
 ---
 

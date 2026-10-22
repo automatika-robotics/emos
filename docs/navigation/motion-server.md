@@ -19,10 +19,6 @@ It serves two primary purposes:
 
 - <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`flash_on;1.5em;sd-text-primary` Event-Triggered</span> — Start recording or launch a calibration sequence automatically based on external events (e.g., "Terrain Changed" or "Slip Detected").
 
-```{note}
-The available motion tests include Step tests and Circle test and can be configured by adjusting the MotionServerConfig.
-```
-
 ## Available Run Types
 
 ```{list-table}

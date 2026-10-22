@@ -172,7 +172,7 @@ memory = Memory(
     model_client=vlm_client,             # used for episode-consolidation summaries + entity extraction
     embedding_client=embedding_client,   # used for vector indexing
     config=MemoryConfig(db_path="/tmp/robot_memory.db"),
-    trigger=10.0,                        # flush layer data every 10s
+    trigger=10.0,                        # flush layer data at 10 Hz
     component_name="memory",
 )
 ```

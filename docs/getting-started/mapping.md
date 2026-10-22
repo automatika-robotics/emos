@@ -99,6 +99,9 @@ The occupancy grid of the active map is what Kompass's Map Server serves to the 
 
 ```python
 from kompass.components import MapServer, MapServerConfig
+from myrobot_plugin import MyRobotPlugin
+
+robot = MyRobotPlugin()
 
 map_server = MapServer(
     component_name="map_server",

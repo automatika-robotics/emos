@@ -53,12 +53,12 @@ Unlike standard ROS2 map servers, the EMOS Map Server supports **native 3D Point
   - Number
   - Default
 
-* - global_map
+* - map
   - [`nav_msgs.msg.OccupancyGrid`](http://docs.ros.org/en/noetic/api/nav_msgs/html/msg/OccupancyGrid.html)
   - 1
-  - `Topic(name="/map", msg_type="OccupancyGrid")`
+  - `Topic(name="/map", msg_type="OccupancyGrid", qos_profile=QoSConfig(durability=TRANSIENT_LOCAL))`
 
-* - spatial_sensor
+* - sensor_data
   - [`sensor_msgs.msg.PointCloud2`](http://docs.ros.org/en/noetic/api/sensor_msgs/html/msg/PointCloud2.html)
   - 1, optional
   - `Topic(name="/row_point_cloud", msg_type="PointCloud2")`

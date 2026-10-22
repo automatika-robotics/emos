@@ -18,7 +18,7 @@ The core promise of EMOS Recipes is hardware independence. A "Security Patrol" r
 
 The tutorials in this section follow a graduated structure, building from simple single-component examples to a full agentic system. They are organized into four subsections:
 
-- {material-regular}`psychology;1.2em;sd-text-primary` **[Cognition Recipes](foundation/index.md)** -- Build intelligent agents from the ground up using [EmbodiedAgents](https://github.com/automatika-robotics/embodied-agents): conversational agents, prompt engineering, graph-backed spatio-temporal memory, memory-aware navigation, tool calling, semantic routing, and a complete end-to-end agent.
+- {material-regular}`psychology;1.2em;sd-text-primary` **[Cognition Recipes](foundation/index.md)** -- Build intelligent agents from the ground up using [EmbodiedAgents](https://github.com/automatika-robotics/embodied-agents): conversational agents, prompt engineering, graph-backed spatio-temporal memory, memory-aware navigation, tool calling, semantic routing, decision models for fast structured answers, and a complete end-to-end agent.
 
 - {material-regular}`precision_manufacturing;1.2em;sd-text-primary` **[Multimodal Planning & Manipulation](planning-and-manipulation/index.md)** -- The [Cortex](../intelligence/cortex.md) agentic harness (drop one component into your recipe and it turns the rest into a self-directing agent), Cortex paired with Memory, Cortex driving the full stack on a mobile robot, VLM-based planning, VLA-based end-to-end manipulation in simulation, and classical manipulation with MoveIt, planning around what the camera sees in 3D.
 

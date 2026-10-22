@@ -92,7 +92,7 @@ Preempting a step stops what the step itself runs, not what it set in motion. A 
 ```python
 Routine(
     "go_to_kitchen",
-    steps=[Action(planner.go_to, kwargs={"goal": kitchen})],
+    steps=[Action(planner.trigger_main_action_server, kwargs={"goal_x": 4.0, "goal_y": 2.5})],
     on_pause=[Action(controller.stop_path_tracking), Action(driver.stop_robot)],
 )
 ```

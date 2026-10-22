@@ -55,13 +55,14 @@ We run the model locally through Ollama. The GPU is shared with Isaac Sim and th
 ```python
 from agents.clients import OllamaClient
 from agents.components import VLM
+from agents.config import VLMConfig
 from agents.models import OllamaModel
 from agents.ros import FixedInput
 
 judge_model = OllamaModel(
     name="success_judge_vlm",
     checkpoint="qwen2.5vl:3b",
-    options={"num_ctx": 4096, "num_predict": 5, "num_thread": 2},
+    options={"num_ctx": 4096, "num_thread": 2},
 )
 judge_client = OllamaClient(model=judge_model, inference_timeout=240)
 
@@ -81,6 +82,7 @@ referee = VLM(
     inputs=[judge_prompt, front_camera],
     outputs=[success_check],
     model_client=judge_client,
+    config=VLMConfig(max_new_tokens=5),
     trigger=120.0,
     component_name="success_judge",
 )
@@ -116,7 +118,7 @@ success_event = Event(task_success.msg.data.contains("YES"))
 That variant needs no referee at all, but it also only exists in a simulator with an oracle. The VLM referee works anywhere there is a camera.
 
 ```{seealso}
-Events reach much further than this. A speech-to-text component's output and an event that turns it into a goal would start the VLA by voice. The [Events & Actions](../events-and-resilience/event-driven-cognition.md) recipes show more of what they can do.
+Events reach much further than this. A speech-to-text component's output and an event that turns it into a goal would start the VLA by voice. The [Adaptivity & Resilience](../events-and-resilience/index.md) recipes show more of what they can do.
 
 A decision model makes a faster referee, one that answers every second with a probability and reads the task from the VLA itself. [Decision Models](../foundation/decision-models.md#example-4-an-arm-that-knows-when-it-is-done) builds that version of this recipe.
 ```
@@ -137,10 +139,10 @@ launcher.bringup()
 Open `https://localhost:5001`, accept the certificate once, and enter the same task as before, `Grab orange and place into plate`. The goal can also be sent from a terminal exactly as in the previous recipe.
 
 ```{figure} /_static/images/vla_sim_isaac_grasp.jpg
-:alt: Isaac Sim mid-episode, one orange on the plate and the gripper on the next
+:alt: Isaac Sim mid-episode, one orange in the bowl and the gripper on the next
 :align: center
 
-Mid-episode in Isaac Sim: one orange is on the plate and the gripper closes on the next, while the referee watches the front camera.
+Mid-episode in Isaac Sim: one orange is in the bowl and the gripper closes on the next, while the referee watches the front camera.
 ```
 
 <!-- TODO screenshot: the recipe's web UI with the front camera and the referee's verdicts, one of them YES -->
@@ -153,7 +155,7 @@ Mid-episode in Isaac Sim: one orange is on the plate and the gripper closes on t
 
 from agents.clients import LeRobotClient, OllamaClient
 from agents.components import VLA, VLM
-from agents.config import VLAConfig
+from agents.config import VLAConfig, VLMConfig
 from agents.models import LeRobotPolicy, OllamaModel
 from agents.ros import Event, FixedInput, Launcher, Topic
 
@@ -198,7 +200,7 @@ player = VLA(
 judge_model = OllamaModel(
     name="success_judge_vlm",
     checkpoint="qwen2.5vl:3b",
-    options={"num_ctx": 4096, "num_predict": 5, "num_thread": 2},
+    options={"num_ctx": 4096, "num_thread": 2},
 )
 judge_client = OllamaClient(model=judge_model, inference_timeout=240)
 
@@ -217,6 +219,7 @@ referee = VLM(
     inputs=[judge_prompt, front_camera],
     outputs=[success_check],
     model_client=judge_client,
+    config=VLMConfig(max_new_tokens=5),
     trigger=120.0,
     component_name="success_judge",
 )

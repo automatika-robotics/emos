@@ -15,7 +15,7 @@ While metric navigation has matured, deploying robots extensively in dynamic env
 
 **Kompass was built to fill this gap.** Unlike existing solutions that rely on rigid behavior trees, Kompass is an event-driven, GPU-native stack designed for maximum adaptability and hardware efficiency.
 
-- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`bolt;1.2em;sd-text-primary` Adaptive Event-Driven Core</span> -- The stack reconfigures itself on the fly based on environmental context. Use *Pure Pursuit* on open roads, switch to *DWA* indoors, fall back to a docking controller near the station -- all triggered by events, not brittle Behavior Trees. Adapt to external world events ("Crowd Detected", "Entering Warehouse"), not just internal robot states.
+- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`bolt;1.2em;sd-text-primary` Adaptive Event-Driven Core</span> -- The stack reconfigures itself on the fly based on environmental context. Use *Pure Pursuit* on open roads, switch to *DWA* indoors -- all triggered by events, not brittle Behavior Trees. Adapt to external world events ("Crowd Detected", "Entering Warehouse"), not just internal robot states.
 
 - <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`speed;1.2em;sd-text-primary` GPU-Accelerated, Vendor-Agnostic</span> -- Core algorithms in C++ with SYCL-based GPU support. Runs natively on **Nvidia, AMD, Intel, Arm Mali and other** GPUs without vendor lock-in -- the first navigation framework to support cross-GPU acceleration. Up to **3,106x speedups** over CPU-based approaches.
 

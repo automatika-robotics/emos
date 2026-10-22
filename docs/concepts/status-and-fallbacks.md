@@ -110,7 +110,7 @@ planner.on_algorithm_fail(
 )
 ```
 
-An action that returns `(True, message)` ends the recovery and resets the status to healthy. One that reports failure leaves the status as it is, so the ladder moves on. When the whole list is exhausted the component gives up and runs `on_giveup`, which is where you park the robot safely or alert a human. `max_retries=None`, the default, retries without limit.
+An action that returns `(True, message)` ends the recovery and resets the status to healthy. One that reports failure leaves the status as it is, so the ladder moves on. When the whole list is exhausted the component gives up and runs `on_giveup`, which is where you park the robot safely or alert a human. `max_retries=None`, the default, retries a single action without limit; for a list it is treated as 1, so each action runs once.
 
 Fallbacks run inside the component, not in the Monitor. A timer at the component's `fallback_rate`, a hundred times a second unless configured otherwise, looks at its status and walks the table above, which is why a component whose process is still alive can recover even when nothing else in the recipe is.
 

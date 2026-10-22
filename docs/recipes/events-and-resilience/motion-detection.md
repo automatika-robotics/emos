@@ -56,38 +56,34 @@ motion_started = Event(motion_state.msg.data == True, on_change=True)  # noqa: E
 
 ## The reactions
 
-Two components react, and neither runs until the event fires. The event is their trigger, which is how a component in EMOS is woken by something rather than by a timer or a topic.
+Two components react, and neither does any work until the event fires.
 
-The first speaks an alert, with a fixed text, on the robot's speakers:
+The first speaks an alert, with a fixed text, on the robot's speakers. A text-to-speech component is triggered by a text topic, so here the event does not trigger it. Instead the event calls its `say` action, which is wired in when the recipe is launched (below):
 
 ```python
 from agents.clients import RoboMLWSClient
 from agents.components import TextToSpeech
 from agents.config import TextToSpeechConfig
 from agents.models import TransformersTTS
-from agents.ros import FixedInput
 
-alert_text = FixedInput(
-    name="alert",
-    msg_type="String",
-    fixed="Attention: motion detected in the monitored area.",
-)
+alert_text = Topic(name="alert", msg_type="String")
 
 alert_speaker = TextToSpeech(
     inputs=[alert_text],
-    trigger=motion_started,
+    trigger=alert_text,
     model_client=RoboMLWSClient(TransformersTTS(name="tts")),
     config=TextToSpeechConfig(play_on_device=True),
     component_name="alert_speaker",
 )
 ```
 
-The second is the model that would have been too expensive to run all the time. Woken by the same event, it looks at the current frame and says what is moving:
+The second is the model that would have been too expensive to run all the time. Here the event is its trigger, which is how a component in EMOS is woken by something rather than by a timer or a topic. Woken by the event, it looks at the current frame and says what is moving:
 
 ```python
 from agents.clients import OllamaClient
 from agents.components import VLM
 from agents.models import OllamaModel
+from agents.ros import FixedInput
 
 question = FixedInput(
     name="question",
@@ -116,6 +112,7 @@ cloud = Topic(name="/points", msg_type="PointCloud2")
 odom = Topic(name="/odom", msg_type="Odometry")
 motion_centers = Topic(name="/motion_centers", msg_type="PoseArray")
 
+# used instead of the image-based detector above, so it reuses its name and /motion output
 cloud_motion_detector = MotionDetector(
     inputs=[cloud],
     outputs=[motion_state, motion_centers],
@@ -130,15 +127,18 @@ cloud_motion_detector = MotionDetector(
 
 ## Launching
 
-The components run as separate processes here, so the detector's frame rate is not held up by a model's inference. The web interface shows the motion state and each episode's video.
+The components run as separate processes here, so the detector's frame rate is not held up by a model's inference. The event is wired to the speaker's `say` action, and the web interface shows the motion state and each episode's video.
 
 ```python
-from agents.ros import Launcher
+from agents.ros import Action, Launcher
 
 launcher = Launcher()
 launcher.enable_ui(outputs=[motion_state, motion_video, description])
 launcher.add_pkg(
     components=[motion_detector, alert_speaker, describer],
+    events_actions={
+        motion_started: Action(alert_speaker.say, kwargs={"text": "Attention: motion detected in the monitored area."}),
+    },
     multiprocessing=True,
     package_name="automatika_embodied_agents",
 )
@@ -157,13 +157,14 @@ from agents.clients import OllamaClient, RoboMLWSClient
 from agents.components import MotionDetector, TextToSpeech, VLM
 from agents.config import MotionDetectorConfig, TextToSpeechConfig
 from agents.models import OllamaModel, TransformersTTS
-from agents.ros import Event, FixedInput, Launcher, Topic
+from agents.ros import Action, Event, FixedInput, Launcher, Topic
 
 # --- Topics ---
 camera_image = Topic(name="/image_raw", msg_type="Image")
 motion_state = Topic(name="/motion", msg_type="Bool")
 motion_video = Topic(name="/motion_video", msg_type="Video")
 description = Topic(name="/motion_description", msg_type="String")
+alert_text = Topic(name="alert", msg_type="String")
 
 # --- The watcher ---
 motion_detector = MotionDetector(
@@ -178,10 +179,9 @@ motion_detector = MotionDetector(
 motion_started = Event(motion_state.msg.data == True, on_change=True)  # noqa: E712
 
 # --- The alarm ---
-alert_text = FixedInput(name="alert", msg_type="String", fixed="Attention: motion detected in the monitored area.")
 alert_speaker = TextToSpeech(
     inputs=[alert_text],
-    trigger=motion_started,
+    trigger=alert_text,
     model_client=RoboMLWSClient(TransformersTTS(name="tts")),
     config=TextToSpeechConfig(play_on_device=True),
     component_name="alert_speaker",
@@ -206,6 +206,9 @@ launcher = Launcher()
 launcher.enable_ui(outputs=[motion_state, motion_video, description])
 launcher.add_pkg(
     components=[motion_detector, alert_speaker, describer],
+    events_actions={
+        motion_started: Action(alert_speaker.say, kwargs={"text": "Attention: motion detected in the monitored area."}),
+    },
     multiprocessing=True,
     package_name="automatika_embodied_agents",
 )

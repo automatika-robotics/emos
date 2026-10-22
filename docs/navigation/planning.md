@@ -96,7 +96,7 @@ Whatever the run type, the planner also serves three services for saved paths: `
 
 ## Built-in Actions
 
-`trigger_main_action_server(goal_x, goal_y, goal_orientation, tolerance_dist, tolerance_ori, algorithm_name)` is a component action that sends a goal to the planner's own action server. It is how an event forwards a clicked point to the planner, how Cortex plans a route, and how a [mission](mission-manager.md) drives each waypoint. A distance tolerance under 0.1 m is replaced by the planner's own `distance_tolerance`, and an orientation tolerance of 0.1 rad or less by 0.1 rad, with a warning, since tighter ones make the robot oscillate around the goal. When a goal ends early, canceled or aborted, the planner publishes an empty plan, which is what stops the controller.
+`trigger_main_action_server(goal_x, goal_y, goal_orientation, tolerance_dist, tolerance_ori, algorithm_name)` is a component action that sends a goal to the planner's own action server. It is how an event forwards a clicked point to the planner and how Cortex plans a route. A [mission](mission-manager.md) does not go through it: it sends each waypoint straight to the planner's `navigate_to_goal` action. `algorithm_name` is currently ignored, and the configured planning algorithm is always used. A distance tolerance under 0.1 m is replaced by the planner's own `distance_tolerance`, and an orientation tolerance of 0.1 rad or less by 0.1 rad, with a warning, since tighter ones make the robot oscillate around the goal. When a goal ends early, canceled or aborted, the planner publishes an empty plan, which is what stops the controller.
 
 ## OMPL Algorithms
 

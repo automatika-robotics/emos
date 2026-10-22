@@ -55,7 +55,8 @@ class AwesomeConfig(BaseComponentConfig):
 Initialize your component by inheriting from `BaseComponent`. Code the desired functionality in your component:
 
 ```python
-from ros_sugar.core import ComponentFallbacks, BaseComponent
+from typing import Optional, Sequence
+from ros_sugar.core import BaseComponent
 from ros_sugar.io import Topic
 
 class AwesomeComponent(BaseComponent):
@@ -144,7 +145,7 @@ Use the EMOS Launcher to bring up your package:
 :caption: Using the EMOS Launcher with your package
 :linenos:
 
-from my_awesome_pkg.awesome_component import AwesomeComponent, AwesomeConfig
+from my_awesome_pkg.awesome_component import AwesomeComponent
 from ros_sugar import Launcher
 from ros_sugar.actions import log, restart
 from ros_sugar.core import Event
@@ -228,7 +229,7 @@ usage: create_service [-h] [--service-description SERVICE_DESCRIPTION]
 **Optional Arguments:**
 
 - `-h, --help`: Show the help message and exit.
-- `--service-description SERVICE_DESCRIPTION`: Human-readable description of the service. Defaults to `"EMOS Service"`.
+- `--service-description SERVICE_DESCRIPTION`: Human-readable description of the service. Defaults to `"Sugarcoat Service"`.
 - `--install-path INSTALL_PATH`: Directory to install the systemd service file. Defaults to `/etc/systemd/system`.
 - `--source-workspace-path SOURCE_WORKSPACE_PATH`: Path to the ROS workspace `setup` script. If omitted, it auto-detects the active ROS distribution.
 - `--no-enable`: Skip enabling the service after installation.

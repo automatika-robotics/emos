@@ -41,10 +41,10 @@ make status        # confirms the topics are flowing
 The first Isaac Sim launch compiles shaders and can take ten to twenty minutes with an unresponsive window. Later launches take a minute or two. `make reset`, or `R` in the Isaac window, resets the episode between attempts.
 
 ```{figure} /_static/images/vla_sim_isaac_scene.jpg
-:alt: Isaac Sim with the kitchen scene, the SO101 arm, three oranges and a plate
+:alt: Isaac Sim with the kitchen scene, the SO101 arm, three oranges and a bowl
 :align: center
 
-The kitchen scene at reset: the arm at rest, three oranges on the counter and the plate.
+The kitchen scene at reset: the arm at rest, three oranges on the counter and the bowl.
 ```
 
 The bridge publishes and consumes these topics:
@@ -196,10 +196,10 @@ The task string matters. VLA policies are sensitive to the instruction they were
 While the goal runs, the card shows its state, the time it has taken and the feedback of every step, and the camera shows the arm at work:
 
 ```{figure} /_static/images/vla_sim_ui_running.png
-:alt: The recipe's web interface mid-episode, the task running and the arm holding an orange over the plate
+:alt: The recipe's web interface mid-episode, the task running and the arm holding an orange over the bowl
 :align: center
 
-Mid-episode: the task is running and the arm carries an orange to the plate.
+Mid-episode: the task is running and the arm carries an orange to the bowl.
 ```
 
 When the goal ends, the card reports the outcome and the log carries the result:
@@ -209,7 +209,7 @@ When the goal ends, the card reports the outcome and the log carries the result:
 :align: center
 ```
 
-The simulation scores the task on its own. When all three oranges are on the plate and the arm is back at rest, it resets the scene at once and publishes `YES` on `/so101/task_success`. The goal in this recipe does not listen to that and ends on its timestep budget, so after a success the arm starts over on the fresh scene until the budget runs out. [Event-Driven VLA](event-driven-vla.md) ends the goal on success instead.
+The simulation scores the task on its own. When all three oranges are in the bowl and the arm is back at rest, it resets the scene at once and publishes `YES` on `/so101/task_success`. The goal in this recipe does not listen to that and ends on its timestep budget, so after a success the arm starts over on the fresh scene until the budget runs out. [Event-Driven VLA](event-driven-vla.md) ends the goal on success instead.
 
 The same goal can be sent from a terminal, since the component is an action server named `<component_name>/manipulate_with_vla`:
 

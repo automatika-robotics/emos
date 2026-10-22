@@ -6,7 +6,7 @@ This recipe adds a mission to the point navigation stack in simulation.
 
 ## The stack
 
-Everything from Point Navigation stays as it was, with one requirement: the planner runs as an action server, because that is how the mission sends it each waypoint.
+Everything from Point Navigation stays as it was. The planner already runs as an action server there, and the mission relies on that: it is how the mission sends it each waypoint.
 
 ```python
 from kompass.components import Controller, DriveManager, DriveManagerConfig, LocalMapper, LocalMapperConfig, MapServer, MapServerConfig, Planner, PlannerConfig
@@ -93,7 +93,7 @@ Start the simulation as in [Simulation Quick Starts](simulation-quickstarts.md),
 The same mission can be sent from a terminal, with a five second dwell at every stop:
 
 ```bash
-ros2 action send_goal /mission/run_mission kompass_interfaces/action/MultiGoalPlanPath \
+ros2 action send_goal /run_mission kompass_interfaces/action/MultiGoalPlanPath \
   "{goals: [{position: {x: 1.0, y: 0.0}, orientation: {w: 1.0}},
             {position: {x: 2.0, y: 1.0}, orientation: {w: 1.0}}],
     end_tolerance: {orientation_error: 0.2, lateral_distance_error: 0.15},

@@ -24,7 +24,7 @@ Each algorithm is fully parameterized. Developers can tune behaviors such as loo
 | [Pure Pursuit](#pure-pursuit) | Geometric tracker | Lookahead-based path tracking with collision avoidance | LaserScan, PointCloud, OccupancyGrid (optional) |
 | [Stanley Steering](#stanley-steering) | Geometric tracker | Front-axle feedback for Ackermann platforms | None (pure path follower) |
 | [DVZ](#deformable-virtual-zone-dvz) | Reactive controller | Deformable safety bubble for fast avoidance | LaserScan |
-| [Vision Follower (RGB)](#vision-follower-rgb) | Visual servoing | 2D target centering with monocular camera | Detections / Trackings, RGB Image |
+| [Vision Follower (RGB)](#vision-follower-rgb) | Visual servoing | 2D target centering with monocular camera | Detections / Trackings |
 | [Vision Follower (RGB-D)](#vision-follower-rgb-d) | Visual servoing + planner | Depth-aware following | Detections, Depth Image |
 | [Trajectory Cost Evaluation](#trajectory-cost-evaluation) | Cost functions | Weighted scoring for sampling-based controllers | -- |
 
@@ -74,14 +74,14 @@ DWA requires spatial data to perform collision checking during the rollout phase
   - Time interval between control actions (sec). Must be between `1e-4` and `1e6`.
 
 * - prediction_horizon
-  - `float`
-  - `1.0`
-  - Duration over which predictions are made (sec). Must be between `1e-4` and `1e6`.
+  - `int`
+  - `10`
+  - Number of control time steps over which predictions are made. Must be between `1` and `1e3`.
 
 * - control_horizon
-  - `float`
-  - `0.2`
-  - Duration over which control actions are planned (sec). Must be between `1e-4` and `1e6`.
+  - `int`
+  - `2`
+  - Number of control time steps over which control actions are applied. Must be between `1` and `1e3`.
 
 * - max_linear_samples
   - `int`
@@ -141,6 +141,7 @@ DWA can be activated by setting the `algorithm` property in the Controller confi
 ```{code-block} python
 :caption: dwa.py
 
+import numpy as np
 from kompass.components import Controller, ControllerConfig
 from kompass.robot import (
     AngularCtrlLimits,
@@ -162,7 +163,7 @@ my_robot = RobotConfig(
 )
 
 # Set DWA algorithm using the config class
-controller_config = ControllerConfig(algorithm="DWA")
+controller_config = ControllerConfig(algorithm="DWA", robot=my_robot)
 
 # Set YAML config file
 config_file = "my_config.yaml"
@@ -183,12 +184,12 @@ my_controller:
   # Component config parameters
   loop_rate: 10.0
   control_time_step: 0.1
-  prediction_horizon: 4.0
   ctrl_publish_type: 'Array'
 
   # Algorithm parameters under the algorithm name
   DWA:
-    control_horizon: 0.6
+    prediction_horizon: 40
+    control_horizon: 6
     octree_resolution: 0.1
     max_linear_samples: 20
     max_angular_samples: 20
@@ -321,6 +322,7 @@ To enable the collision avoidance layer, spatial data is required.
 ```{code-block} python
 :caption: pure_pursuit.py
 
+import numpy as np
 from kompass.components import Controller, ControllerConfig
 from kompass.robot import (
     AngularCtrlLimits,
@@ -342,7 +344,8 @@ my_robot = RobotConfig(
 )
 
 # Initialize the controller
-controller = Controller(component_name="my_controller")
+controller = Controller(component_name="my_controller",
+                        config=ControllerConfig(robot=my_robot))
 
 # Set the algorithm configuration
 pure_pursuit_config = PurePursuitConfig(
@@ -499,6 +502,7 @@ $$
 ```{code-block} python
 :caption: stanley.py
 
+import numpy as np
 from kompass.components import Controller, ControllerConfig
 from kompass.robot import (
     AngularCtrlLimits,
@@ -520,7 +524,7 @@ my_robot = RobotConfig(
 )
 
 # Set Stanley algorithm using the config class
-controller_config = ControllerConfig(algorithm="Stanley")  # or ControllersID.STANLEY
+controller_config = ControllerConfig(algorithm="Stanley", robot=my_robot)  # or ControllersID.STANLEY
 
 # Set YAML config file
 config_file = "my_config.yaml"
@@ -628,12 +632,12 @@ DVZ balances two competing forces: **Path Following** (Geometric) vs. **Obstacle
 
 * - heading_gain
   - `float`
-  - `0.7`
+  - `1.0`
   - Heading gain of the internal pure follower control law. Must be between `0.0` and `1e2`.
 
 * - cross_track_gain
   - `float`
-  - `1.5`
+  - `2.0`
   - Gain for cross-track error of the internal pure follower control law. Must be between `0.0` and `1e2`.
 
 ```
@@ -643,6 +647,7 @@ DVZ balances two competing forces: **Path Following** (Geometric) vs. **Obstacle
 ```{code-block} python
 :caption: dvz.py
 
+import numpy as np
 from kompass.components import Controller, ControllerConfig
 from kompass.robot import (
     AngularCtrlLimits,
@@ -651,7 +656,7 @@ from kompass.robot import (
     RobotType,
     RobotConfig
 )
-from kompass.control import LocalPlannersID
+from kompass.control import ControllersID
 
 # Setup your robot configuration
 my_robot = RobotConfig(
@@ -664,7 +669,7 @@ my_robot = RobotConfig(
 )
 
 # Set DVZ algorithm using the config class
-controller_config = ControllerConfig(algorithm="DVZ")  # or LocalPlannersID.DVZ
+controller_config = ControllerConfig(algorithm="DVZ", robot=my_robot)  # or ControllersID.DVZ
 
 # Set YAML config file
 config_file = "my_config.yaml"
@@ -798,7 +803,7 @@ This controller requires synchronized vision and spatial data.
 
 ### Configuration Parameters
 
-The RGB-D follower inherits all parameters from DWA and adds vision-specific settings.
+The RGB-D follower inherits the base path follower parameters and adds vision-specific settings.
 
 ```{list-table}
 :widths: 20 15 15 50
@@ -933,7 +938,7 @@ Setting a weight to `0.0` completely disables that specific cost calculation ker
 
 EMOS integrates the **[Open Motion Planning Library (OMPL)](https://ompl.kavrakilab.org/)** for global path planning. OMPL is a generic C++ library for state-of-the-art sampling-based motion planning algorithms.
 
-EMOS provides Python bindings (via Pybind11) for OMPL through its navigation core package. The bindings enable setting and solving a planning problem using:
+EMOS provides Python bindings (via nanobind) for OMPL through its navigation core package. The bindings enable setting and solving a planning problem using:
 
 - **SE2StateSpace** -- Convenient for 2D motion planning, providing an SE2 state consisting of position and rotation in the plane: `SE(2): (x, y, yaw)`
 - **Geometric planners** -- All planners listed below

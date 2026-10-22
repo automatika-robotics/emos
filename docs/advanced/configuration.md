@@ -37,7 +37,7 @@ import math
 my_robot = RobotConfig(
     model_type=RobotType.DIFFERENTIAL_DRIVE,            # Type of robot motion model
     geometry_type=RobotGeometryType.CYLINDER,          # Shape of the robot
-    geometry_params=np.array([0.1, 0.3]),                # Diameter and height of the cylinder
+    geometry_params=np.array([0.1, 0.3]),                # Radius and length of the cylinder
     ctrl_vx_limits=LinearCtrlLimits(                     # Linear velocity constraints
         max_vel=0.4,
         max_acc=1.5,
@@ -61,6 +61,7 @@ my_frames = RobotFrames(
 # Create the planner config using your robot setup
 config = PlannerConfig(
     robot=my_robot,
+    frames=my_frames,
     loop_rate=1.0
 )
 

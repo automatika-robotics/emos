@@ -158,7 +158,7 @@ Run this as your own user rather than with `sudo`; the command escalates on its 
 
 What goes depends on the install mode: a pixi install's whole workspace under `~/.local/share/emos`, a native install's build workspace together with kompass-core, or the container, whose image stays unless you pass `--remove-image`. The dashboard service is stopped and removed in every mode. It also removes the plugin workspace at `~/emos/workspace`, your recipes and logs under `~/emos` unless you pass `--keep-data`, and `~/.config/emos` unless you pass `--keep-config`.
 
-A few things are deliberately left alone: the maps in `~/emos/maps`, exported maps in `~/emos/map-archives`, and the robot's certificate and API keys in `~/emos/.ui-security`. The CLI binary is never removed either, the command prints the one-liner for that.
+A few things are deliberately left alone: the maps in `~/emos/maps`, exported maps in `~/emos/map-archives`, and the robot's certificate and API keys in `~/emos/.ui-security`. The CLI binary is never removed either, the command prints the one-liner for that. On a native install, the files colcon merged into `/opt/ros/<distro>` stay as well, since they cannot be told apart from ROS's own cleanly; the command prints the `rm` commands to remove them by hand.
 
 ```{tip}
 Uninstall before switching modes, for example from native to pixi. It clears the state that would otherwise carry over and confuse the new install.

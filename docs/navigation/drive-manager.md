@@ -163,7 +163,7 @@ my_config = DriveManagerConfig(
     closed_loop=True,
     critical_zone_distance=0.1,    # Stop if obstacle < 10cm
     slowdown_zone_distance=0.3,    # Slow down if obstacle < 30cm
-    critical_zone_angle=90.0       # Check 90 degrees cone in front
+    critical_zone_angle=90.0       # Check 90 degrees cone in front and behind
 )
 
 # Instantiate

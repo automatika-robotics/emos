@@ -20,7 +20,7 @@ A simulated arm to follow this tutorial with, in the same way the [VLA tutorial]
 
 ## Bringing up the arm
 
-The configuration names the planning groups from the robot's SRDF: the arm, and the gripper if there is one. The recipe includes the MoveIt launch file so that `move_group` comes up with the component, and the launcher restarts it if it dies.
+The configuration names the planning groups from the robot's SRDF: the arm, and the gripper if there is one. The recipe includes the MoveIt launch file so that `move_group` comes up with the component.
 
 ```python
 from agents.components import MoveIt
@@ -155,6 +155,8 @@ Nothing more is needed for Cortex to use the arm. The action server becomes the 
 ```python
 from agents.components import Cortex, MoveIt
 
+# vision and detections_3d as in "Seeing the objects" above;
+# planner_client and cortex_output as in Cortex: The Agentic Harness
 manipulator = MoveIt(config=config, inputs=[detections_3d], component_name="manipulator")
 cortex = Cortex(model_client=planner_client, output=cortex_output, component_name="cortex")
 
@@ -173,7 +175,7 @@ from agents.components import MoveIt, Vision
 from agents.config import MoveItConfig, VisionConfig
 from agents.ros import Launcher, Topic
 
-# --- The camera's objects, as metric boxes (see the 3D Perception recipe) ---
+# --- The camera's objects, as metric boxes (see "Seeing the objects" above) ---
 rgbd = Topic(name="/camera/rgbd", msg_type="RGBD")
 detections_3d = Topic(name="/detections_3d", msg_type="Detections3D")
 

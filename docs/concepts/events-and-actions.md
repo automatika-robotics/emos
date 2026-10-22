@@ -61,14 +61,14 @@ Feeds that never touch a ROS topic still work, since the plugin host feeds each 
 Sometimes the trigger is not on a topic at all: a hardware monitor, a derived value that needs real calculation, a state you would rather keep inside the recipe. An event takes any function that returns `bool`, and polls it at `check_rate`:
 
 ```python
-def is_overheating() -> bool:           # the annotation is required
+def is_overheating() -> bool:           # optional, but if present must be bool
     return read_temperature() > 75.0
 
 overheat = Event(is_overheating, check_rate=2.0)
 launcher.on(overheat, log(msg="Overheating, backing off"))
 ```
 
-Two rules apply. The function's return annotation has to be `bool`, and it cannot be a component action, which has a different contract. The polling runs on the Monitor, and `check_rate` in hertz defaults to the Monitor's own loop rate. [Internal-State Events](../recipes/events-and-resilience/internal-state-events.md) is a worked recipe.
+Two rules apply. The function's return annotation is optional, but if present it has to be `bool`, and the function cannot be a component action, which has a different contract. The polling runs on the Monitor, and `check_rate` in hertz defaults to the Monitor's own loop rate. [Internal-State Events](../recipes/events-and-resilience/internal-state-events.md) is a worked recipe.
 
 ### When an event fires
 
@@ -119,11 +119,11 @@ An action wraps something callable together with its arguments, ready to run whe
 from ros_sugar.core import Action
 
 stop = Action(navigator.stop)
-set_rate = Action(navigator.update_parameter, kwargs={"param_name": "fallback_rate", "new_value": 1000})
+set_rate = Action(navigator.set_param, kwargs={"param_name": "fallback_rate", "new_value": 1000})
 notify = Action(send_slack_message, args=("Battery low",))
 ```
 
-`Action(method, args=None, kwargs=None)` is the whole of it for a fire-and-forget action. The further parameters, `success`, `timeout`, `on_timeout`, `max_retries`, `retry_delay` and `cancel_method`, make the action monitored, described [below](#monitored-actions). `name` and `description` label it for routines and for tools, and `on_fail` and `fallback` are read only when the action is a step of a routine.
+`Action(method, args=None, kwargs=None)` is the whole of it for a fire-and-forget action. The further parameters, `success`, `timeout`, `on_timeout`, `max_retries`, `retry_delay` and `cancel_method`, configure a monitored action, described [below](#monitored-actions). `name` and `description` label it for routines and for tools, and `on_fail` and `fallback` are read only when the action is a step of a routine.
 
 ### The return contract
 
@@ -187,7 +187,7 @@ The topics an action reads from do not have to be the ones its event watches. An
 
 ### Monitored actions
 
-By default an action is fire-and-forget: it dispatches the method and nothing afterwards knows whether the method achieved anything. Giving an action any of `success`, `timeout`, `max_retries`, `retry_delay` or `cancel_method` turns monitoring on. The action then dispatches, waits for a verdict, and dispatches again while the verdict is negative and the retry budget allows:
+By default an action is fire-and-forget: it dispatches the method and nothing afterwards knows whether the method achieved anything. Giving an action any of `success`, `timeout`, a `max_retries` above zero or `cancel_method` turns monitoring on; `retry_delay` on its own does not. The action then dispatches, waits for a verdict, and dispatches again while the verdict is negative and the retry budget allows:
 
 ```python
 grasp = Action(

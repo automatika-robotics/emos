@@ -37,7 +37,7 @@ class MyLite3(Lite3Plugin):
 The stack needs to know where the robot is, in the map frame. The Lite3 has no localizer of its own, so the plugin provides one: it fuses the leg odometry with the body IMU in a `robot_localization` filter and publishes the transforms from `map` through `odom` to `body`. The recipe binds that feed as the location of every component, and the plugin starts the filter because something asked for it:
 
 ```python
-from ros_sugar.io import Topic
+from kompass.ros import Topic
 
 launcher.inputs(location=Topic(name="odometry_filtered", msg_type="Odometry", use_plugin=True))
 ```
@@ -264,9 +264,18 @@ launcher.on(robot.events.low_battery(15.0), robot.actions.sit_stand())
 launcher.on(robot.events.fallen(), [stop(component=controller), Action(method=planner.cancel_main_goal)])
 
 # --- Localization from the plugin, for every component ---
-launcher.inputs(location=Topic(name="odometry_filtered", msg_type="Odometry", use_plugin=True))
+odom = Topic(name="odometry_filtered", msg_type="Odometry", use_plugin=True)
+launcher.inputs(location=odom)
 
-launcher.enable_ui(inputs=[planner.ui_main_action_input], outputs=[goal])
+# --- The web interface: goals in; map, plan and odometry out ---
+launcher.enable_ui(
+    inputs=[planner.ui_main_action_input],
+    outputs=[
+        map_server.get_out_topic(TopicsKeys.GLOBAL_MAP),
+        odom,
+        planner.get_out_topic(TopicsKeys.GLOBAL_PLAN),
+    ],
+)
 launcher.bringup()
 ```
 

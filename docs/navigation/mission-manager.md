@@ -2,7 +2,7 @@
 
 **Multi-waypoint missions as one action.**
 
-A patrol, a delivery round, an inspection route: most real jobs are not one goal but a sequence of them, with something to do at each stop and a decision to make when a stop fails or takes too long. The Mission Manager runs such a sequence as a single ROS 2 action. It sends each waypoint to the [Planner](planning.md), stops the robot when a waypoint is reached and something has to happen there, dwells or waits for a signal, and reports where the mission has got to, all through one goal you can follow, pause, resume or cancel.
+A patrol, a delivery round, an inspection route: most real jobs are not one goal but a sequence of them, with something to do at each stop and a decision to make when a stop fails or takes too long. The Mission Manager runs such a sequence as a single ROS 2 action. It sends each waypoint to the [Planner](planning.md), stops the robot at each waypoint it reaches, dwells or waits for a signal, and reports where the mission has got to, all through one goal you can follow, pause, resume or cancel.
 
 Underneath, a mission is a Sugarcoat [routine](../concepts/routines.md). The component translates the goal into a routine, hands it to the Monitor, and reports the routine's progress back as feedback. Retries, timeouts and preemption are the routine engine's; the component owns the translation, the frames, the stopping and the arrival tolerance.
 
@@ -41,8 +41,8 @@ Only the components' names are kept, so the mission survives being launched in i
 | Field                   | Meaning                                                                                                              |
 | :---------------------- | :------------------------------------------------------------------------------------------------------------------- |
 | `goals`                 | The waypoints, as poses, visited in order.                                                                            |
-| `frame_id`              | The frame the waypoints are in. Empty means the world frame. Another frame is transformed before the mission starts. |
-| `algorithm_name`        | A planning algorithm, or empty for the planner's default.                                                           |
+| `frame_id`              | Currently not used: give the waypoints in the world (map) frame.                                                     |
+| `algorithm_name`        | Currently ignored by the planner, which always uses its configured algorithm.                                       |
 | `end_tolerance`         | Arrival tolerance, applied at every waypoint.                                                                        |
 | `pause_duration`        | Seconds to dwell at a reached waypoint: empty for none, one value for all, or one per waypoint.                     |
 | `pause_condition_topic` | A `Bool` topic to wait on at each reached waypoint before going on.                                                  |
@@ -52,18 +52,18 @@ Only the components' names are kept, so the mission survives being launched in i
 From a terminal:
 
 ```bash
-ros2 action send_goal /mission/run_mission kompass_interfaces/action/MultiGoalPlanPath \
+ros2 action send_goal /run_mission kompass_interfaces/action/MultiGoalPlanPath \
   "{goals: [{position: {x: 1.0, y: 0.0}, orientation: {w: 1.0}},
             {position: {x: 2.0, y: 1.0}, orientation: {w: 1.0}}],
     end_tolerance: {orientation_error: 0.2, lateral_distance_error: 0.15},
     pause_duration: [5.0]}" --feedback
 ```
 
-A goal that describes no mission is refused before anything starts: no waypoints, a `pause_duration` list of the wrong length, an unknown timeout policy, or a return-to-start policy while the robot's start pose is unknown.
+A goal that describes no mission is refused before anything starts: no waypoints, a `pause_duration` list of the wrong length, an unknown timeout policy, or a return-to-start policy with a `pause_condition_topic` and more than one waypoint while the robot's start pose is unknown.
 
 ### What the mission does at each waypoint
 
-The robot drives to the waypoint through the planner. If there is nothing to do there, it goes straight on to the next one, which simply replaces the plan being driven. If there is a dwell or a signal to wait for, the mission first stops path tracking and stops the robot, then waits. A wait at the last waypoint is skipped when it is a signal, since there is nothing to continue to; a dwell there still runs. Under the continue policy a wait that runs out is fine and the mission goes on; under the other two it ends the mission.
+The robot drives to the waypoint through the planner. Once it is reached, the mission stops path tracking and stops the robot, at every waypoint, so the robot never drives on past one. If there is a dwell or a signal to wait for, it then waits; otherwise it goes on to the next waypoint. A wait at the last waypoint is skipped when it is a signal, since there is nothing to continue to; a dwell there still runs. Under the continue policy a wait that runs out is fine and the mission goes on; under the other two it ends the mission.
 
 With `ON_TIMEOUT_RETURN_TO_START`, a wait that runs out ends the mission and drives the robot back to the pose it had when the mission started. The feedback and the status show the mission returning to its start, cancelling the goal stops it on the way, and the outcome is timed out either way, with how the drive back went in the status message. Only this timeout triggers the drive back: a waypoint that fails, a cancel or a deactivation ends the mission where the robot stands.
 

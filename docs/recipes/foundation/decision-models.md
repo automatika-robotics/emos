@@ -393,6 +393,8 @@ With Cortex nothing needs to be wired. Add a decision component to the recipe an
 ```python
 from agents.components import Cortex, DecisionComponent
 
+# detections and decision_client as in Example 2;
+# planner_client and cortex_output as in Cortex: The Agentic Harness
 checker = DecisionComponent(
     inputs=[detections],  # what `ask` is about when the caller gives no state
     model_client=decision_client,
@@ -426,7 +428,7 @@ See [Tool Calling](tool-calling.md) for what `send_tool_response_to_model` does 
 
 ## Example 4: An arm that knows when it is done
 
-In [Event-Driven VLA](../planning-and-manipulation/event-driven-vla.md) a VLM acts as the referee. It looks at the camera every two minutes and answers in words, and the recipe searchs the answer for a YES. A decision model makes a better referee. It answers every second with a probability, and it does not even need to be told what the task is, because `action_states` lets it ask the VLA for the task of the goal that is currently running and add that to the state the question is asked about. The player and the simulation are the same as in that recipe; only the referee changes.
+In [Event-Driven VLA](../planning-and-manipulation/event-driven-vla.md) a VLM acts as the referee. It looks at the camera every two minutes and answers in words, and the recipe searches the answer for a YES. A decision model makes a better referee. It answers every second with a probability, and it does not even need to be told what the task is, because `action_states` lets it ask the VLA for the task of the goal that is currently running and add that to the state the question is asked about. The player and the simulation are the same as in that recipe; only the referee changes.
 
 ```python
 from agents.clients import GenericHTTPClient

@@ -15,9 +15,9 @@ While metric navigation has matured, deploying robots extensively in dynamic env
 
 **Kompass was built to fill this gap.** Unlike existing solutions that rely on rigid behavior trees, Kompass is an event-driven, GPU-native stack designed for maximum adaptability and hardware efficiency.
 
-- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`bolt;1.2em;sd-text-primary` Adaptive Event-Driven Core</span> -- The stack reconfigures itself on the fly based on environmental context. Use *Pure Pursuit* on open roads, switch to *DWA* indoors, fall back to a docking controller near the station -- all triggered by events, not brittle Behavior Trees. Adapt to external world events ("Crowd Detected", "Entering Warehouse"), not just internal robot states.
+- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`bolt;1.2em;sd-text-primary` Adaptive Event-Driven Core</span> -- The stack reconfigures itself on the fly based on environmental context. Use *Pure Pursuit* on open roads, switch to *DWA* indoors -- all triggered by events, not brittle Behavior Trees. Adapt to external world events ("Crowd Detected", "Entering Warehouse"), not just internal robot states.
 
-- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`speed;1.2em;sd-text-primary` GPU-Accelerated, Vendor-Agnostic</span> -- Core algorithms in C++ with SYCL-based GPU support. Runs natively on **Nvidia, AMD, Intel, and other** GPUs without vendor lock-in -- the first navigation framework to support cross-GPU acceleration. Up to **3,106x speedups** over CPU-based approaches.
+- <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`speed;1.2em;sd-text-primary` GPU-Accelerated, Vendor-Agnostic</span> -- Core algorithms in C++ with SYCL-based GPU support. Runs natively on **Nvidia, AMD, Intel, Arm Mali and other** GPUs without vendor lock-in -- the first navigation framework to support cross-GPU acceleration. Up to **3,106x speedups** over CPU-based approaches.
 
 - <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`psychology;1.2em;sd-text-primary` ML Models as First-Class Citizens</span> -- Event-driven design means ML model outputs can directly reconfigure the navigation stack. Use object detection to switch controllers, VLMs to answer abstract perception queries, or [EmbodiedAgents](https://github.com/automatika-robotics/embodied-agents) vision components for target tracking -- all seamlessly integrated through EMOS's unified architecture.
 
@@ -77,14 +77,14 @@ Global path planning using OMPL algorithms (RRT*, PRM, etc.).
 :link: control
 :link-type: doc
 
-Real-time local control with DWA, Stanley, DVZ, and Vision Follower plugins.
+Real-time local control with Pure Pursuit, DWA, Stanley, DVZ and the vision followers.
 :::
 
 :::{grid-item-card} {material-regular}`security;1.2em;sd-text-primary` Drive Manager
 :link: drive-manager
 :link-type: doc
 
-Safety enforcement, emergency stops, and command smoothing.
+Safety enforcement over every LiDAR, point cloud and range sensor, emergency stops, and command smoothing.
 :::
 
 :::{grid-item-card} {material-regular}`grid_on;1.2em;sd-text-primary` Local Mapper
@@ -99,6 +99,13 @@ Real-time ego-centric occupancy grid from sensor data.
 :link-type: doc
 
 Static global map management with 3D PCD support.
+:::
+
+:::{grid-item-card} {material-regular}`flag;1.2em;sd-text-primary` Mission Manager
+:link: mission-manager
+:link-type: doc
+
+Multi-waypoint missions as one action: drive, dwell, wait for a signal, pause and resume.
 :::
 
 :::{grid-item-card} {material-regular}`settings;1.2em;sd-text-primary` Robot Config
@@ -118,7 +125,7 @@ Kompass is designed to be flexible in terms of sensor configurations. However, a
 
 - {material-regular}`speed;1.2em;sd-text-primary` **Odometry Source** (e.g., wheel encoders, IMU or visual odometry)
 - {material-regular}`radar;1.2em;sd-text-primary` **Obstacle Detection Sensor** (e.g., 2D LiDAR **or** Depth Camera)
-- {material-regular}`my_location;1.2em;sd-text-primary` **Robot Pose Source** (e.g., localization system such as AMCL or visual SLAM)
+- {material-regular}`my_location;1.2em;sd-text-primary` **Robot Pose Source**, a localization system such as AMCL or visual SLAM. On a supported robot the [plugin](../concepts/robot-plugins.md) provides it, and the map it localizes against is built with [`emos map`](../getting-started/mapping.md).
 
 These provide the minimal data necessary for localization, mapping, and safe path execution.
 
@@ -128,9 +135,8 @@ Additional sensors can enhance navigation capabilities and unlock advanced featu
 
 - {material-regular}`camera;1.2em;sd-text-secondary` **RGB Camera(s)** — Enables vision-based navigation, object tracking, and semantic navigation.
 - {material-regular}`view_in_ar;1.2em;sd-text-secondary` **Depth Camera** — Improves obstacle avoidance in 3D environments and enables more accurate object tracking.
-- {material-regular}`sensors;1.2em;sd-text-secondary` **3D LiDAR** — Enhances perception in complex environments with full 3D obstacle detection.
-- {material-regular}`satellite_alt;1.2em;sd-text-secondary` **GPS** — Enables outdoor navigation and geofenced planning.
-- {material-regular}`cell_tower;1.2em;sd-text-secondary` **UWB / BLE Beacons** — Improves localization in GPS-denied environments.
+- {material-regular}`sensors;1.2em;sd-text-secondary` **3D LiDAR(s)** — Enhances perception in complex environments with full 3D obstacle detection. Several, say a front and a rear unit, are fused into one local map and one safety check.
+- {material-regular}`sensors;1.2em;sd-text-secondary` **Ultrasound / Range sensors** — Single-beam proximity sensors that add to the Drive Manager's emergency stop in the direction they face.
 
 ---
 

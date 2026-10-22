@@ -3,11 +3,13 @@
   import { onMount } from 'svelte';
   import { api, ApiException } from '$lib/api';
   import { getToken } from '$lib/auth';
+  import type { Component } from 'svelte';
   import { navigate, path, useRoutes } from '$lib/router';
   import Sidebar from '$components/Sidebar.svelte';
   import Header from '$components/Header.svelte';
   import CommandPalette from '$components/CommandPalette.svelte';
   import ConfirmDialog from '$components/ConfirmDialog.svelte';
+  import PluginJobWatcher from '$components/PluginJobWatcher.svelte';
   import Dashboard from '$routes/Dashboard.svelte';
   import Recipes from '$routes/Recipes.svelte';
   import RecipeDetail from '$routes/RecipeDetail.svelte';
@@ -16,11 +18,13 @@
   import RunDetail from '$routes/RunDetail.svelte';
   import System from '$routes/System.svelte';
   import Pair from '$routes/Pair.svelte';
+  import CatalogRecipe from '$routes/CatalogRecipe.svelte';
 
-  const routes = {
+  const routes: Record<string, Component<any>> = {
     '/': Dashboard,
     '/recipes': Recipes,
     '/recipes/:name': RecipeDetail,
+    '/catalog/:name': CatalogRecipe,
     '/plugins': Plugins,
     '/runs': Runs,
     '/runs/:id': RunDetail,
@@ -96,6 +100,7 @@
           </div>
         </main>
         <CommandPalette />
+        <PluginJobWatcher />
       </div>
     {:else}
       {#key mountKey}

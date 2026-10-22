@@ -21,6 +21,20 @@ Launch a full navigation stack in simulation with pre-built configs.
 Step-by-step stack setup -- robot config, planner, controller, motion server.
 :::
 
+:::{grid-item-card} {material-regular}`smart_toy;1.2em;sd-text-primary` Navigating a Real Robot
+:link: real-robot-navigation
+:link-type: doc
+
+The same stack on a real quadruped: localization, LiDAR and velocity commands through the robot's plugin, with the robot's own events and actions.
+:::
+
+:::{grid-item-card} {material-regular}`flag;1.2em;sd-text-primary` Multi-Waypoint Missions
+:link: multi-waypoint-mission
+:link-type: doc
+
+A patrol as one action: waypoints picked on the map, a dwell or a signal at each, paused and resumed from the browser.
+:::
+
 :::{grid-item-card} {material-regular}`history;1.2em;sd-text-primary` Path Recording & Replay
 :link: path-recording
 :link-type: doc
@@ -47,6 +61,20 @@ Follow a moving target using an RGB camera and a vision model.
 :link-type: doc
 
 Extend RGB tracking with depth sensing for more robust following.
+:::
+
+:::{grid-item-card} {material-regular}`visibility;1.2em;sd-text-primary` Navigating to What the Robot Sees
+:link: ../planning-and-manipulation/planning-models
+:link-type: doc
+
+Send a VLM's detections straight to the Planner as a goal: "go to the red chair" with no intermediate pose.
+:::
+
+:::{grid-item-card} {material-regular}`psychology;1.2em;sd-text-primary` Cortex Driving the Stack
+:link: ../planning-and-manipulation/cortex-navigation
+:link-type: doc
+
+An agent that turns free-form goals into navigation goals, short safety-checked moves and recovery.
 :::
 
 ::::

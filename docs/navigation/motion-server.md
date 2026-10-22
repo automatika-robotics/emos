@@ -19,10 +19,6 @@ It serves two primary purposes:
 
 - <span class="sd-text-primary" style="font-weight: bold; font-size: 1.1em;">{material-regular}`flash_on;1.5em;sd-text-primary` Event-Triggered</span> — Start recording or launch a calibration sequence automatically based on external events (e.g., "Terrain Changed" or "Slip Detected").
 
-```{note}
-The available motion tests include Step tests and Circle test and can be configured by adjusting the MotionServerConfig.
-```
-
 ## Available Run Types
 
 ```{list-table}
@@ -59,12 +55,12 @@ The available motion tests include Step tests and Circle test and can be configu
   - `Topic(name="/run_tests", msg_type="Bool")`
 
 * - command
-  - [`geometry_msgs.msg.Twist`](http://docs.ros.org/en/noetic/api/geometry_msgs/html/msg/Twist.html)
+  - [`geometry_msgs.msg.Twist`](http://docs.ros.org/en/noetic/api/geometry_msgs/html/msg/Twist.html), [`geometry_msgs.msg.TwistStamped`](http://docs.ros.org/en/noetic/api/geometry_msgs/html/msg/TwistStamped.html)
   - 1
   - `Topic(name="/cmd_vel", msg_type="Twist")`
 
 * - location
-  - [`nav_msgs.msg.Odometry`](https://docs.ros.org/en/noetic/api/nav_msgs/html/msg/Odometry.html), [`geometry_msgs.msg.PoseStamped`](http://docs.ros.org/en/jade/api/geometry_msgs/html/msg/PoseStamped.html), [`geometry_msgs.msg.Pose`](http://docs.ros.org/en/jade/api/geometry_msgs/html/msg/Pose.html)
+  - [`nav_msgs.msg.Odometry`](https://docs.ros.org/en/noetic/api/nav_msgs/html/msg/Odometry.html)
   - 1
   - `Topic(name="/odom", msg_type="Odometry")`
 ```
@@ -81,9 +77,9 @@ The available motion tests include Step tests and Circle test and can be configu
   - Default
 
 * - robot_command
-  - [`geometry_msgs.msg.Twist`](http://docs.ros.org/en/noetic/api/geometry_msgs/html/msg/Twist.html)
+  - [`geometry_msgs.msg.Twist`](http://docs.ros.org/en/noetic/api/geometry_msgs/html/msg/Twist.html), [`geometry_msgs.msg.TwistStamped`](http://docs.ros.org/en/noetic/api/geometry_msgs/html/msg/TwistStamped.html)
   - 1
-  - `Topic(name="/cmd_vel", msg_type="Twist")`
+  - `Topic(name="/control", msg_type="Twist")`
 ```
 
 ```{note}
@@ -101,8 +97,10 @@ from kompass.ros import Topic
 
 # 1. Configuration
 my_config = MotionServerConfig(
-    step_test_velocity=1.0,
-    step_test_duration=5.0
+    test_period=10.0,          # seconds per test
+    run_step_test=True,
+    run_circle_test=True,
+    tests_folder="/tmp/motion_tests",   # where the recorded CSV files go
 )
 
 # 2. Instantiate

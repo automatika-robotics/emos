@@ -2,7 +2,7 @@
 
 EMOS core navigation algorithms are implemented in modern C++ for maximum performance and efficiency. Designed with real-time robotics in mind, the system makes full use of **multi-threaded CPU execution** and **GPU acceleration** to parallelize compute-heavy tasks like planning, control, and map updates.
 
-The GPU support in EMOS is built using SYCL. Unlike other solutions that rely on vendor-specific GPU APIs (e.g., CUDA for Nvidia), EMOS is the first navigation framework to support cross-GPU acceleration. This means it can target any SYCL-compliant GPU, including those from Nvidia, AMD, Intel, and others -- without requiring device-specific modifications.
+The GPU support in EMOS is built using SYCL. Unlike other solutions that rely on vendor-specific GPU APIs (e.g., CUDA for Nvidia), EMOS is the first navigation framework to support cross-GPU acceleration. This means it can target any SYCL-compliant GPU, including those from Nvidia, AMD, Intel and, through OpenCL, Arm Mali. When a CUDA or ROCm toolkit is present the OpenCL backend is left out.
 
 The following benchmarks compare the execution time and power efficiency of key navigation components -- **Motion Planning**, **Mapping**, and **Safety Checks** -- running on standard CPUs versus accelerated backends (NVIDIA CUDA and AMD ROCm).
 

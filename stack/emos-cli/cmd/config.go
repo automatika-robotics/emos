@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -46,8 +47,8 @@ var configShowCmd = &cobra.Command{
 		fmt.Fprintf(w, "  Identity:\t%s\n", display(cfg.Name))
 		fmt.Fprintf(w, "  Mode:\t%s\n", display(string(cfg.Mode)))
 		fmt.Fprintf(w, "  ROS distro:\t%s\n", display(cfg.ROSDistro))
-		if cfg.LicenseKey != "" {
-			fmt.Fprintf(w, "  License:\t%s\n", redact(cfg.LicenseKey))
+		if lic := config.LoadLicense(); lic != nil {
+			fmt.Fprintf(w, "  License:\t%s\n", redact(lic.Key))
 		}
 		port := cfg.Port
 		if port == 0 {
@@ -264,21 +265,31 @@ var configRotatePairingCmd = &cobra.Command{
 // reload endpoint.
 func notifyDaemonReloadAuth() bool {
 	port := config.DashboardPort()
-	url := fmt.Sprintf("http://127.0.0.1:%d/api/v1/admin/reload-auth", port)
-	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Post(url, "application/json", nil)
-	if err != nil {
-		return false
+	client := &http.Client{
+		Timeout:   2 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
+		// A redirect would turn the POST into something else
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
-	defer resp.Body.Close()
-	return resp.StatusCode >= 200 && resp.StatusCode < 300
+	for _, scheme := range []string{"https", "http"} {
+		url := fmt.Sprintf("%s://127.0.0.1:%d/api/v1/admin/reload-auth", scheme, port)
+		resp, err := client.Post(url, "application/json", nil)
+		if err != nil {
+			continue
+		}
+		resp.Body.Close()
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return true
+		}
+	}
+	return false
 }
 
 // --- TLS ----------------------------------------------------------------
 
 var configTLSFingerprintCmd = &cobra.Command{
 	Use:   "tls-fingerprint",
-	Short: "Print the dashboard's TLS certificate SHA-256 fingerprint",
+	Short: "Print the robot's TLS certificate SHA-256 fingerprint",
 	Long: `Prints the active TLS certificate's SHA-256 fingerprint, in the same format
 browsers display under the "Not Secure" warning's "view certificate" dialog.
 On first connect, compare the two values to verify there's no MITM before
@@ -287,7 +298,7 @@ clicking through the warning.`,
 		info, err := tlsca.Load()
 		if err != nil {
 			ui.Warn("No TLS certificate on disk yet.")
-			ui.Faint("It is created the first time `emos serve` runs.")
+			ui.Faint("It is created the first time `emos serve` or `emos run` runs.")
 			return
 		}
 		ui.Header("TLS CERTIFICATE")
@@ -302,7 +313,7 @@ clicking through the warning.`,
 
 var configTLSRegenerateCmd = &cobra.Command{
 	Use:   "tls-regenerate",
-	Short: "Mint a fresh self-signed TLS certificate for the dashboard",
+	Short: "Mint a fresh self-signed TLS certificate for the dashboard and recipe UIs",
 	Long: `Generates a new self-signed certificate covering the device's current
 hostname and LAN IP addresses. Run this after the device moves to a new
 network so the certificate's SANs match the addresses callers actually
@@ -321,7 +332,7 @@ they re-trust the cert.`,
 		ui.Success("Fresh TLS certificate minted.")
 		ui.Info("New fingerprint:")
 		ui.Faint("  " + info.Fingerprint)
-		ui.Faint("Restart `emos serve` (or the systemd service) to use it.")
+		ui.Faint("Restart `emos serve` (or the systemd service) and any running recipe to use it.")
 	},
 }
 

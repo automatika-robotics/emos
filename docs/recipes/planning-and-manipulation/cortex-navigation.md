@@ -25,7 +25,7 @@ Five subsystems, all running in one launcher:
 | **Perception** | `Vision`, `VLM` | Detection feeds Memory; VLM answers visual questions on demand. |
 | **Spatial memory** | `Memory` | Stores detections + scene captions tagged with position. Exposes `locate`, `recall`, `semantic_search`, `body_status`, ten retrieval tools in total. |
 | **Voice** | `TextToSpeech` | The robot's mouthpiece. Cortex routes its replies straight through. |
-| **Navigation** | `Planner`, `Controller`, `LocalMapper`, `DriveManager` | The Kompass quartet. Cortex sends action goals to `Planner`'s main action server. |
+| **Navigation** | `Planner`, `Controller`, `LocalMapper`, `DriveManager` | The Kompass quartet. Cortex sends goals to `Planner`'s main action server through its `send_goal_to_planner_navigate_to_goal` tool, waiting for each by default or letting it run with `wait_to_finish=false`. The `DriveManager`'s safety-checked moves and the `Controller`'s algorithm switch and stop come along as tools too. |
 | **The agent** | `Cortex` | Discovers all of the above, exposes them as LLM tools, plans and executes against natural-language goals. |
 
 The wiring is conventional EMOS. The Cortex section at the end is what turns the whole stack into a single self-directing agent.
@@ -43,17 +43,17 @@ from kompass.robot import (
     LinearCtrlLimits,
     RobotConfig,
     RobotFrames,
-    RobotGeometry,
+    RobotGeometryType,
     RobotType,
 )
 
 my_robot = RobotConfig(
     model_type=RobotType.DIFFERENTIAL_DRIVE,
-    geometry_type=RobotGeometry.Type.CYLINDER,
+    geometry_type=RobotGeometryType.CYLINDER,
     geometry_params=np.array([0.1, 0.3]),
     ctrl_vx_limits=LinearCtrlLimits(max_vel=0.4, max_acc=1.5, max_decel=2.5),
     ctrl_omega_limits=AngularCtrlLimits(
-        max_vel=0.4, max_acc=2.0, max_decel=2.0, max_steer=np.pi / 3
+        max_omega=0.4, max_acc=2.0, max_decel=2.0, max_ang=np.pi / 3
     ),
 )
 ```
@@ -141,6 +141,19 @@ captioner = VLM(
 
 The VLM's `describe` and Vision's `track` / `take_picture` are `@component_action`s already declared upstream. **Cortex will discover them all.** We don't wire any of them by hand.
 
+The same goes for the navigation stack from Step 2. Kompass declares its components' actions with tool descriptions, and Cortex registers each one as `<component>-<action>`:
+
+| Tool | What it does |
+|---|---|
+| `drive_manager-move_forward`, `drive_manager-move_backward` | Moves a given distance, stopping early if an obstacle comes into the critical zone. |
+| `drive_manager-rotate_in_place` | Turns by an angle, once the space around the robot is clear. |
+| `drive_manager-move_to_unblock` | Recovery: tries forward, backward, then a rotation until one frees the robot. |
+| `drive_manager-stop_robot` | Drops queued commands and sends zero velocity until the robot is at rest. |
+| `controller-set_algorithm` | Switches between DWA, Pure Pursuit, Stanley, DVZ and the vision followers. |
+| `controller-stop_path_tracking` | Stops following the current path and stops the robot. |
+
+The movement tools check the Drive Manager's safety sensors before and while they move, so a motion Cortex asks for is held to the same safety zones as one from the Controller. Each returns `(success, message)`, and the message is what Cortex reads back, for example `Moved backward 0.32m of 0.50m` when something got in the way.
+
 ---
 
 ## Step 4: Memory
@@ -217,7 +230,7 @@ cortex = Cortex(
 )
 ```
 
-That's the whole agent. **No `actions=[...]` is needed** -- the agent's tool palette is everything the other components contribute:
+That's the whole agent. **No `actions=[...]` is needed** -- the agent's tool palette is everything the other components contribute.
 
 If you want to add a private capability that isn't on a managed component -- a database call, a custom servo on a peripheral, an external API -- pass it as a custom `Action(method=..., description=...)` in `actions=[...]` and Cortex registers it alongside the rest.
 
@@ -249,7 +262,7 @@ launcher.inputs(location=position)
 
 # Robot config + frames
 launcher.robot = my_robot
-launcher.frames = RobotFrames(world="map", odom="odom", scan="base_scan")
+launcher.frames = RobotFrames(world="map", robot_base="base_link")
 
 launcher.enable_ui(
     inputs=[cortex.ui_main_action_input],
@@ -264,7 +277,7 @@ launcher.bringup()
 
 ## Driving the agent
 
-Run the recipe and let the robot wander around for a few minutes. Memory accumulates detections and scene captions tagged with positions. Then open `http://localhost:5001` and start typing.
+Run the recipe and let the robot wander around for a few minutes. Memory accumulates detections and scene captions tagged with positions. Then open `https://localhost:5001`, accept the self-signed certificate once, and start typing.
 
 ### Single-step goals
 
@@ -288,6 +301,22 @@ The robot navigates to the kitchen using its memory of where that is, looks at t
 
 A long-horizon mission. The robot dispatches successive navigation goals around the room and watches its detections. The moment a person appears, it cancels the current goal and reports their location.
 
+### Short moves and recovery
+
+Not every instruction is a destination. Some are a nudge, and these go to the Drive Manager and the Controller instead of the Planner:
+
+> *"Back up half a metre and turn to face the door."*
+
+The robot moves backward 0.5 m and rotates in place, finding the door's bearing from memory. Both moves stop short if the safety sensors see something in the way, and the robot says how far it got.
+
+> *"You look stuck. Get yourself free, then carry on to the kitchen."*
+
+The robot runs its unblocking recovery and then sends the navigation goal again.
+
+> *"Use Pure Pursuit for the corridor."*
+
+The controller switches algorithm for the next stretch; *"go back to DWA"* switches it back.
+
 None of these required you to write orchestration code, prompts, or a state machine. The behaviour emerges from Cortex's read of the auto-discovered tool surface and the memory-aware planning it installs when it sees a Memory component in the recipe.
 
 ---
@@ -303,6 +332,7 @@ Send a goal, and the action goal Cortex dispatches into the Planner appears live
 - An event triggering "go to X" when the user types it.
 - An LLM prompt parsing "go to X" into a destination.
 - A goal-builder for the Planner action.
+- A mapping from "back up a bit" to velocity commands, and the obstacle check around them.
 - An action client construction with feedback callbacks and cancellation logic.
 - A retry policy for the navigation goal.
 - A wait-loop that blocks until SUCCEEDED before invoking the VLM.
@@ -323,6 +353,6 @@ That entire stack of orchestration is replaced by the auto-discovery, the two-ph
 ---
 
 ```{tip}
-**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+**Promote this recipe to production.** While you are shaping it, run the script directly with `python recipe.py`. Once it is solid, drop it at `~/emos/recipes/<name>/recipe.py` and start it with `emos run <name>`, or from the dashboard. Either way every run is logged under `~/emos/logs`, and an operator gets a card to launch it from a browser. [Running Recipes](../../getting-started/running-recipes.md) covers the two ways of running a recipe and what differs per install mode.
 ```
 

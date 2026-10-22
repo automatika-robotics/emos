@@ -9,6 +9,7 @@ import (
 )
 
 // RunStatus is the lifecycle state of a recipe run.
+//
 //	preparing -> running -> finished | failed | canceled
 //	preparing -> failed | canceled (pre-flight error / abort)
 type RunStatus string
@@ -41,9 +42,9 @@ type Run struct {
 	RMW        string    `json:"rmw"`
 	Error      string    `json:"error,omitempty"`
 
-	handle          *runner.RunHandle `json:"-"`
-	cancelCh        chan struct{}     `json:"-"` // closed by CancelPreflight
-	handleAttached  chan struct{}     `json:"-"` // closed by AttachHandle
+	handle         *runner.RunHandle `json:"-"`
+	cancelCh       chan struct{}     `json:"-"` // closed by CancelPreflight
+	handleAttached chan struct{}     `json:"-"` // closed by AttachHandle
 }
 
 // CancelCh returns a channel that closes if the run is cancelled before its
@@ -148,13 +149,13 @@ func (rt *Runtime) TryLock(r *Run) error {
 // AttachHandle moves a preparing run to running, attaches the live process
 // handle, and starts the exit watcher. After this returns, r.handle is
 // safely readable by anyone who waits on r.HandleAttached().
-func (rt *Runtime) AttachHandle(r *Run, h *runner.RunHandle) {
+func (rt *Runtime) AttachHandle(r *Run, h *runner.RunHandle) bool {
 	rt.mu.Lock()
 	if r.isTerminal() {
-		// Cancelled or failed during preparing; don't attach.
 		rt.mu.Unlock()
+		closeOnce(r.handleAttached)
 		_ = h.Cancel(2 * time.Second)
-		return
+		return false
 	}
 	r.handle = h
 	r.Status = RunStatusRunning
@@ -162,6 +163,7 @@ func (rt *Runtime) AttachHandle(r *Run, h *runner.RunHandle) {
 	rt.mu.Unlock()
 	closeOnce(r.handleAttached)
 	go rt.watch(r)
+	return true
 }
 
 // FailPreflight transitions a preparing run to failed and rotates it into
@@ -193,8 +195,13 @@ func (rt *Runtime) CancelPreflight(r *Run) {
 	rt.rotateLocked(r)
 }
 
-// Cancel terminates the active run if its id matches. Routes to either the
-// preparing-phase abort or the running-phase signal-kill.
+// runStopGrace is how long a stopped recipe has to shut down before it is
+// killed. ROS launch alone takes up to 10 s to stop its processes, and the
+// recipe tears its plugins down after that.
+var runStopGrace = 15 * time.Second
+
+// Cancel stops the active run if its id matches. A preparing run is aborted; a
+// running one is interrupted in the background and killed after runStopGrace.
 func (rt *Runtime) Cancel(id string) error {
 	rt.mu.Lock()
 	cur := rt.current
@@ -217,11 +224,12 @@ func (rt *Runtime) Cancel(id string) error {
 		rt.mu.Unlock()
 		return nil
 	}
-	// Running case: mark canceled first so the watcher classifies the
-	// SIGTERM-induced exit correctly, then release the lock and signal.
+	// Running case: mark canceled first so the watcher classifies the exit it
+	// causes correctly. The run stays current until the process exits.
 	cur.Status = RunStatusCanceled
 	rt.mu.Unlock()
-	return handle.Cancel(5 * time.Second)
+	go handle.Cancel(runStopGrace)
+	return nil
 }
 
 // closeOnce closes ch if not already closed. Goroutine-safe via the
@@ -261,18 +269,13 @@ func (rt *Runtime) watch(r *Run) {
 	r.FinishedAt = time.Now()
 	r.ExitCode = code
 	switch {
-	case err != nil && code == -1:
+	case r.Status == RunStatusCanceled:
+		// Stopped by Cancel
+	case err != nil:
 		r.Status = RunStatusFailed
 		r.Error = err.Error()
-	case err != nil:
-		// exec.ExitError after a SIGTERM-from-Cancel = canceled; otherwise failed
-		if r.Status != RunStatusCanceled {
-			r.Status = RunStatusFailed
-			r.Error = err.Error()
-		}
 	default:
 		r.Status = RunStatusFinished
 	}
 	rt.rotateLocked(r)
 }
-

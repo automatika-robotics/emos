@@ -1,9 +1,12 @@
 [submodule "stack/embodied-agents"]
 	path = stack/embodied-agents
 	url = https://github.com/automatika-robotics/embodied-agents.git
+	branch = main
 [submodule "stack/kompass"]
 	path = stack/kompass
 	url = https://github.com/automatika-robotics/kompass.git
+	branch = main
 [submodule "stack/sugarcoat"]
 	path = stack/sugarcoat
 	url = https://github.com/automatika-robotics/sugarcoat.git
+	branch = main

@@ -16,7 +16,7 @@ To get your RealSense camera running:
 sudo apt install ros-<ros2-distro>-realsense2-camera
 
 # Launch the camera node to start streaming both color and depth images
-ros2 launch realsense2_camera rs_camera.launch.py
+ros2 launch realsense2_camera rs_launch.py
 ```
 
 ### Start vision detection using an ML model
@@ -61,7 +61,7 @@ You can set up your robot in the same way we did in the [RGB tutorial](vision-tr
 from kompass.robot import (
     AngularCtrlLimits,
     LinearCtrlLimits,
-    RobotGeometry,
+    RobotGeometryType,
     RobotType,
     RobotConfig,
 )
@@ -70,11 +70,11 @@ import numpy as np
 # Setup your robot configuration
 my_robot = RobotConfig(
     model_type=RobotType.ACKERMANN,
-    geometry_type=RobotGeometry.Type.CYLINDER,
+    geometry_type=RobotGeometryType.CYLINDER,
     geometry_params=np.array([0.1, 0.3]),
     ctrl_vx_limits=LinearCtrlLimits(max_vel=1.0, max_acc=3.0, max_decel=2.5),
     ctrl_omega_limits=AngularCtrlLimits(
-        max_vel=4.0, max_acc=6.0, max_decel=10.0, max_steer=np.pi / 3
+        max_omega=4.0, max_acc=6.0, max_decel=10.0, max_ang=np.pi / 3
     ),
 )
 ```
@@ -90,6 +90,8 @@ Compared to the [RGB version](vision-tracking-rgb.md), the RGBD path needs two a
 - The **detections topic** from the vision component
 - The **depth camera info topic** for depth-to-3D projection
 
+The depth itself rides inside the detections when they come from an RGBD input, as here. A camera that publishes depth separately, or a 3D LiDAR, is given as a third input instead, `vision_depth`, an aligned depth image or a point cloud that the controller pairs with each detection by time stamp, within `ControllerConfig.vision_depth_max_age`.
+
 ```python
 from kompass.components import Controller, ControllerConfig
 from kompass.control import ControllersID
@@ -98,9 +100,11 @@ depth_cam_info_topic = Topic(name="/camera/aligned_depth_to_color/camera_info", 
 
 config = ControllerConfig(ctrl_publish_type="Parallel")
 controller = Controller(component_name="controller", config=config)
-controller.algorithm = ControllersID.VISION_DEPTH
 controller.inputs(vision_detections=detections_topic, depth_camera_info=depth_cam_info_topic)
+controller.algorithm = ControllersID.VISION_DEPTH
 ```
+
+The follower tracks the target in the robot's own frame, so it needs no localization. On a localized robot, `VisionRGBDFollowerConfig(use_local_coordinates=False)` tracks in the world frame instead, which adds the target's estimated velocity to the commands and so wants an accurate pose and a steady detection rate.
 
 ---
 
@@ -134,7 +138,7 @@ from kompass.control import ControllersID
 from kompass.robot import (
     AngularCtrlLimits,
     LinearCtrlLimits,
-    RobotGeometry,
+    RobotGeometryType,
     RobotType,
     RobotConfig,
 )
@@ -157,11 +161,11 @@ vision = Vision(
 # Setup your robot configuration
 my_robot = RobotConfig(
     model_type=RobotType.ACKERMANN,
-    geometry_type=RobotGeometry.Type.CYLINDER,
+    geometry_type=RobotGeometryType.CYLINDER,
     geometry_params=np.array([0.1, 0.3]),
     ctrl_vx_limits=LinearCtrlLimits(max_vel=1.0, max_acc=3.0, max_decel=2.5),
     ctrl_omega_limits=AngularCtrlLimits(
-        max_vel=4.0, max_acc=6.0, max_decel=10.0, max_steer=np.pi / 3
+        max_omega=4.0, max_acc=6.0, max_decel=10.0, max_ang=np.pi / 3
     ),
 )
 
@@ -170,8 +174,8 @@ depth_cam_info_topic = Topic(name="/camera/aligned_depth_to_color/camera_info", 
 # Setup the controller
 config = ControllerConfig(ctrl_publish_type="Parallel")
 controller = Controller(component_name="controller", config=config)
-controller.algorithm = ControllersID.VISION_DEPTH
 controller.inputs(vision_detections=detections_topic, depth_camera_info=depth_cam_info_topic)
+controller.algorithm = ControllersID.VISION_DEPTH
 controller.direct_sensor = False
 
 # Add additional helper components
@@ -203,6 +207,6 @@ You can take your design to the next step and make your system more robust by ad
 ---
 
 ```{tip}
-**Promote this recipe to production.** While you're shaping it, the script runs straight with `python recipe.py`. Once it's solid, drop it at `~/emos/recipes/<your_name>/recipe.py` and run `emos run <your_name>` -- you'll get sensor pre-flight checks, persistent logs, and a card on the dashboard so an operator can launch it from a browser. See [Running Recipes](../../getting-started/running-recipes.md) for the full development-vs-production comparison and install-mode pitfalls (especially in Container mode).
+**Promote this recipe to production.** While you are shaping it, run the script directly with `python recipe.py`. Once it is solid, drop it at `~/emos/recipes/<name>/recipe.py` and start it with `emos run <name>`, or from the dashboard. Either way every run is logged under `~/emos/logs`, and an operator gets a card to launch it from a browser. [Running Recipes](../../getting-started/running-recipes.md) covers the two ways of running a recipe and what differs per install mode.
 ```
 

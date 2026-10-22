@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+"""Runs a MapBuilder in its own process, for launchers using multiprocessing."""
+
+from ros_sugar import executable_main
+
+from emos_mapping.builder import MapBuilder, MapBuilderConfig
+
+
+def main():
+    executable_main(list_of_components=[MapBuilder], list_of_configs=[MapBuilderConfig])
+
+
+if __name__ == "__main__":
+    main()

@@ -56,6 +56,7 @@ func (s *Server) buildRouter() http.Handler {
 			r.Post("/auth/sse-ticket", s.handleAuthSSETicket)
 
 			r.Get("/robot", s.handleRobot)
+			r.Get("/license", s.handleLicense)
 
 			r.Get("/recipes/local", s.handleRecipesLocal)
 			r.Get("/recipes/remote", s.handleRecipesRemote)
@@ -64,9 +65,9 @@ func (s *Server) buildRouter() http.Handler {
 			r.Post("/recipes/{name}/pull", s.handleRecipePull)
 
 			r.Get("/plugins/remote", s.handlePluginsRemote)
-			r.Get("/plugins/active", s.handlePluginActive)
+			r.Get("/plugins/installed", s.handlePluginsInstalled)
 			r.Post("/plugins/{slug}/install", s.handlePluginInstall)
-			r.Delete("/plugins/active", s.handlePluginRemove)
+			r.Delete("/plugins/{slug}", s.handlePluginRemoveSlug)
 
 			r.Get("/runs", s.handleRunsList)
 			r.Post("/runs", s.handleRunsStart)
@@ -138,6 +139,7 @@ func spaHandler(uiFS fs.FS) http.Handler {
 }
 
 // requestLogger writes one line per HTTP request
+//
 //	5xx                              -> ERROR
 //	4xx                              -> WARN
 //	Mutating verbs (POST/PUT/...)    -> INFO

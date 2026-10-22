@@ -25,6 +25,12 @@ control = Topic(name="cmd/vel", msg_type="Twist")
 # Attribute-style call
 audio = sys.module.Topic(name="/mic/audio", msg_type="Audio")
 
+# Provided by plugins: the robot plugin, one named by id, one named by expression
+cloud = Topic(name="lidar_front", msg_type="PointCloud2", use_plugin=True)
+thermal = Topic(name="thermal", msg_type="Image", use_plugin="insp_cam")
+visible = Topic(name="visible", msg_type="Image", use_plugin=camera.id)
+plain = Topic(name="/odom", msg_type="Odometry", use_plugin=False)
+
 # Should be skipped — positional args
 ignored1 = Topic("/positional/skip", "Image")
 
@@ -46,8 +52,8 @@ func TestExtractTopicsAndClassify(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExtractTopics: %v", err)
 	}
-	if len(topics) != 3 {
-		t.Fatalf("got %d topics, want 3: %+v", len(topics), topics)
+	if len(topics) != 7 {
+		t.Fatalf("got %d topics, want 7: %+v", len(topics), topics)
 	}
 
 	// Sort for stable assertions; AST walk order is an implementation detail.
@@ -56,11 +62,34 @@ func TestExtractTopicsAndClassify(t *testing.T) {
 	want := []ExtractedTopic{
 		{Name: "/camera/image", MsgType: "Image", IsSensor: true},
 		{Name: "/mic/audio", MsgType: "Audio", IsSensor: true},
+		{Name: "/odom", MsgType: "Odometry", IsSensor: true},
 		{Name: "cmd/vel", MsgType: "Twist", IsSensor: false},
+		{Name: "lidar_front", MsgType: "PointCloud2", IsSensor: true, UsePlugin: true},
+		{Name: "thermal", MsgType: "Image", IsSensor: true, UsePlugin: true, PluginID: "insp_cam"},
+		{Name: "visible", MsgType: "Image", IsSensor: true, UsePlugin: true, PluginID: "camera.id"},
 	}
 	for i, w := range want {
 		if topics[i] != w {
 			t.Errorf("topic[%d] = %+v, want %+v", i, topics[i], w)
+		}
+	}
+}
+
+func TestTopicViaAndName(t *testing.T) {
+	cases := []struct {
+		topic     ExtractedTopic
+		name, via string
+	}{
+		{ExtractedTopic{Name: "cmd/vel"}, "/cmd/vel", "ROS topic"},
+		{ExtractedTopic{Name: "lidar_front", UsePlugin: true}, "lidar_front", "robot plugin"},
+		{ExtractedTopic{Name: "thermal", UsePlugin: true, PluginID: "insp_cam"}, "thermal", "plugin insp_cam"},
+	}
+	for _, c := range cases {
+		if got := topicName(c.topic); got != c.name {
+			t.Errorf("topicName(%+v) = %q, want %q", c.topic, got, c.name)
+		}
+		if got := c.topic.Via(); got != c.via {
+			t.Errorf("Via(%+v) = %q, want %q", c.topic, got, c.via)
 		}
 	}
 }

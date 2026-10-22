@@ -33,11 +33,11 @@ install_binary() {
 
     info "Detected architecture: $arch"
 
-    # Stable installs take the latest release. EMOS_CHANNEL=dev takes the
+    # Stable installs take the latest release. The dev channel takes the
     # newest nightly, which is published as a pre-release.
     local api="https://api.github.com/repos/$GITHUB_ORG/$REPO/releases"
     local release_url="$api/latest"
-    if [ "${EMOS_CHANNEL:-}" = "dev" ]; then
+    if [ "$CHANNEL" = "dev" ]; then
         local tag
         tag=$(curl -sSL "$api" | grep -o '"tag_name": *"v[^"]*-dev\.[^"]*"' | head -1 | cut -d '"' -f 4)
         [ -n "$tag" ] || error "No dev build has been published yet."
@@ -63,7 +63,11 @@ install_binary() {
 }
 
 # --- Main ---
+# The channel comes as --dev (`curl ... | sudo bash -s -- --dev`) or as
+# EMOS_CHANNEL=dev; sudo drops the environment, so the flag is the safe form.
 main() {
+    CHANNEL="${EMOS_CHANNEL:-stable}"
+    [ "${1:-}" = "--dev" ] && CHANNEL=dev
     check_root
     install_binary
     info "Run 'emos --help' to get started."

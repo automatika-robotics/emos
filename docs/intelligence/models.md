@@ -22,8 +22,11 @@ Clients in EmbodiedAgents take as input a **model** or **vector database (DB)** 
 * - **GenericSTT**
   - A generic wrapper for Speech-to-Text models served via OpenAI-compatible `/v1/audio/transcriptions` APIs. Supports language hints (`language`) and temperature settings. This wrapper must be used with the **GenericHTTPClient**.
 
+* - **GenericDecisionModel**
+  - A generic wrapper for decision models served via the `/v1/systemone` API. A decision model answers typed questions about a state, a yes/no, a choice or a score, in one forward pass with a probability for every option, and generates no text. The checkpoint is the model id the server lists. This wrapper must be used with the **GenericHTTPClient**. See [Decision Models](#decision-models) below.
+
 * - **OllamaModel**
-  - A LLM/VLM model loaded from an Ollama checkpoint. Supports configurable generation and deployment options available in Ollama API. Complete list of Ollama models [here](https://ollama.com/library). This wrapper must be used with the **OllamaClient**.
+  - A LLM/VLM model loaded from an Ollama checkpoint. Supports configurable generation and deployment options available in Ollama API. For a thinking model, `think=False` makes it answer at once instead of spending its token budget on thinking first, which suits a planner or a tool-calling component. Note that Ollama runs a model with a smaller context window than the model supports, unless it is told otherwise, and it cuts a prompt that does not fit without saying so. The client logs both sizes when it starts. To get a bigger window, set `num_ctx` in the model's `options`. A bigger window takes more memory on the server. Complete list of Ollama models [here](https://ollama.com/library). This wrapper must be used with the **OllamaClient**.
 
 * - **TransformersLLM**
   - LLM models from HuggingFace/ModelScope based checkpoints. Supports quantization ("4bit", "8bit") specification. This model wrapper can be used with the **GenericHTTPClient** or any of the RoboML clients.
@@ -32,10 +35,10 @@ Clients in EmbodiedAgents take as input a **model** or **vector database (DB)** 
   - Multimodal LLM models from HuggingFace/ModelScope checkpoints for image-text inputs. Supports quantization. This model wrapper can be used with the **GenericHTTPClient** or any of the RoboML clients.
 
 * - **LeRobotPolicy**
-  - Provides an interface for loading and running LeRobot policies -- vision-language-action (VLA) models trained for robotic manipulation tasks. Supports automatic extraction of feature and action specifications directly from dataset metadata, as well as flexible configuration of policy behavior. The policy can be instantiated from any compatible LeRobot checkpoint hosted on HuggingFace, making it easy to load pretrained models such as `smolvla_base` or others. This wrapper must be used with the gRPC-based **LeRobotClient**.
+  - Provides an interface for loading and running LeRobot policies -- vision-language-action (VLA) models trained for robotic manipulation tasks. Supports automatic extraction of feature and action specifications directly from dataset metadata, as well as flexible configuration of policy behavior. The policy can be instantiated from any compatible LeRobot checkpoint hosted on HuggingFace, such as `smolvla_base`, and `policy_type` names its family: `smolvla`, `pi0`, `pi05`, `groot`, `act`, `diffusion`, `tdmpc` or `vqbet`. A `rename_map` maps the recipe's feature names onto the checkpoint's when they differ. Needs LeRobot 0.6.0 or later on the serving side. This wrapper must be used with the gRPC-based **LeRobotClient**.
 
 * - **RoboBrain2**
-  - [RoboBrain 2.0 by BAAI](https://github.com/FlagOpen/RoboBrain2.0) supports interactive reasoning with long-horizon planning and closed-loop feedback, spatial perception for precise point and bbox prediction from complex instructions, and temporal perception for future trajectory estimation. Checkpoint defaults to `"BAAI/RoboBrain2.0-3B"`; larger variants (7B, 32B) are at the same [collection](https://huggingface.co/collections/BAAI/robobrain20-6841eeb1df55c207a4ea0036). This wrapper can be used with any of the RoboML clients.
+  - [RoboBrain 2.0 by BAAI](https://github.com/FlagOpen/RoboBrain2.0) supports interactive reasoning with long-horizon planning and closed-loop feedback, spatial perception for precise point and bbox prediction from complex instructions, and temporal perception for future trajectory estimation. Checkpoint defaults to `"BAAI/RoboBrain2.0-3B"`; the larger 2.0 variants and the RoboBrain 2.5 checkpoints load the same way. This wrapper can be used with any of the RoboML clients.
 
 * - **Whisper**
   - OpenAI's automatic speech recognition (ASR) model served via [faster-whisper](https://github.com/SYSTRAN/faster-whisper). Default checkpoint `"small.en"`; configurable `compute_type` (`"int8"`, `"float16"`, `"float32"`). Available on the [RoboML](https://github.com/automatika-robotics/roboml) platform and can be used with any RoboML client. Recommended: **RoboMLWSClient**.
@@ -70,19 +73,19 @@ EmbodiedAgents includes lightweight models that run directly on the robot withou
 * - **LocalVLM**
   - VLM
   - llama-cpp-python
-  - ggml-org/moondream2-20250414-GGUF
+  - ggml-org/Qwen3-VL-2B-Instruct-GGUF
   - `pip install llama-cpp-python`
 
 * - **LocalSTT**
   - SpeechToText
   - sherpa-onnx
-  - csukuangfj/sherpa-onnx-whisper-tiny.en
+  - csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8
   - `pip install sherpa-onnx`
 
 * - **LocalTTS**
   - TextToSpeech
   - sherpa-onnx
-  - csukuangfj/kokoro-en-v0_19
+  - csukuangfj2/sherpa-onnx-pocket-tts-int8-2026-01-26
   - `pip install sherpa-onnx`
 
 * - **LocalVision**
@@ -92,11 +95,51 @@ EmbodiedAgents includes lightweight models that run directly on the robot withou
   - `pip install onnxruntime`
 ```
 
+A local model is turned on with `enable_local_model=True` in the component's config (`enable_local_classifier=True` for Vision), or at run time by the `fallback_to_local` action, which is what a recipe wires to a lost connection. The weights are downloaded on first use, from HuggingFace or, for the Vision detector and the voice-activity and wakeword models of SpeechToText, from a URL whose default is pinned to a checksum. `local_model_path` in the config (`local_classifier_model_path` for Vision) points at another checkpoint. The defaults are not the only families each backend runs: the LLM and VLM take any GGUF checkpoint llama.cpp loads, with the VLM family, Qwen-VL, Gemma, Moondream, MiniCPM or LLaVA, recognised from the name; speech recognition covers Parakeet and other transducers, Whisper, Moonshine, SenseVoice, Paraformer and more; and speech synthesis covers Pocket TTS, Kokoro, Matcha, VITS, Supertonic, ZipVoice and Kitten.
+
+Two config fields tune them. `local_model_options` passes backend options through, such as `filename` to pick one GGUF file out of a repository, `model_type` to name the family when it cannot be inferred, or a TTS family's speed and style knobs, and `speaker_id` picks a voice for models that have several.
+
 ```{note}
-- Local models can be activated via `enable_local_model=True` in the component config or `fallback_to_local()` action.
-- Model weights are auto-downloaded from HuggingFace on first use. To use a custom model, set `local_model_path` in the component config.
-- GPU-accelerated variants are available for `llama-cpp-python` (CUDA/Metal builds) and `onnxruntime` (`onnxruntime-gpu`).
-- Dependencies are pre-installed in EMOS Docker containers. For native installations, install them manually as shown above.
+- The container and pixi installs of EMOS include these dependencies, with CUDA builds of `llama-cpp-python` and `sherpa-onnx` where the board has a toolkit. On a native install add them as shown above.
+- The wakeword spotter of SpeechToText also needs `pip install sentencepiece`.
+- GPU builds exist for `llama-cpp-python` (CUDA and Metal) and for `onnxruntime` (`onnxruntime-gpu`).
+```
+
+## Decision Models
+
+A decision model gives up generating text. Given a state and typed questions, it scores the options in one forward pass and returns a probability for each, which is what makes it fast and its answers easy to threshold.
+
+Other than cloud APIs, two local servers serve decision models through the `/v1/systemone` API. [Ollama](https://ollama.com), from version 0.40.4, carries them as ordinary tags under its [decision capability](https://ollama.com/search?c=decision), and a recipe reaches one with `OllamaModel` on the `OllamaClient`. llama.cpp's `llama-server` serves the GGUF files of [ggml-org](https://huggingface.co/blog/ggml-org/decision-models-in-llamacpp), reached with `GenericDecisionModel` on the `GenericHTTPClient`; it comes with llama.cpp and is not part of an EMOS install. The table lists the open models and where each is available. Ollama has more under that filter, among them Clef Flash, a smaller Clef that reads images. The small models run on a CPU, the ones that read images want a GPU.
+
+| Model   | Size | Reads images | Languages              | License                      | Ollama tag | llama-server |
+|:--------|:-----|:-------------|:-----------------------|:-----------------------------|:-----------|:-------------|
+| Julia-1 | 144M | no           | 50+                    | Apache 2.0                   |            | GGUF         |
+| Laya    | 421M | no           | English                | Apache 2.0                   | `laya`     | GGUF         |
+| Kev-4B  | 4B   | no           | English                | Apache 2.0                   | `kev`      | GGUF         |
+| lev     | 4B   | no           | English                | Apache 2.0                   |            | GGUF         |
+| OpenJev | 27B  | yes          | en, de, fr, hi, zh, ja | CC BY-NC 4.0, non-commercial |            | GGUF         |
+| Clef    | 27B  | yes          | English                | Apache 2.0                   | `clef`     | GGUF         |
+
+```bash
+ollama pull kev
+```
+
+```python
+from agents.clients import OllamaClient
+from agents.models import OllamaModel
+
+decision_client = OllamaClient(OllamaModel(name="kev", checkpoint="kev"))
+```
+
+```bash
+llama-server -m lev-Q8_0.gguf --alias lev --port 8090
+```
+
+```python
+from agents.clients import GenericHTTPClient
+from agents.models import GenericDecisionModel
+
+decision_client = GenericHTTPClient(GenericDecisionModel(name="lev", checkpoint="lev"), port=8090)
 ```
 
 ## Available Vector Databases

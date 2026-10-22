@@ -63,4 +63,18 @@ Follow a moving target using an RGB camera and a vision model.
 Extend RGB tracking with depth sensing for more robust following.
 :::
 
+:::{grid-item-card} {material-regular}`visibility;1.2em;sd-text-primary` Navigating to What the Robot Sees
+:link: ../planning-and-manipulation/planning-models
+:link-type: doc
+
+Send a VLM's detections straight to the Planner as a goal: "go to the red chair" with no intermediate pose.
+:::
+
+:::{grid-item-card} {material-regular}`psychology;1.2em;sd-text-primary` Cortex Driving the Stack
+:link: ../planning-and-manipulation/cortex-navigation
+:link-type: doc
+
+An agent that turns free-form goals into navigation goals, short safety-checked moves and recovery.
+:::
+
 ::::

@@ -25,7 +25,7 @@ Five subsystems, all running in one launcher:
 | **Perception** | `Vision`, `VLM` | Detection feeds Memory; VLM answers visual questions on demand. |
 | **Spatial memory** | `Memory` | Stores detections + scene captions tagged with position. Exposes `locate`, `recall`, `semantic_search`, `body_status`, ten retrieval tools in total. |
 | **Voice** | `TextToSpeech` | The robot's mouthpiece. Cortex routes its replies straight through. |
-| **Navigation** | `Planner`, `Controller`, `LocalMapper`, `DriveManager` | The Kompass quartet. Cortex sends goals to `Planner`'s main action server through its `send_goal_to_planner_...` tool, waiting for each by default or letting it run with `wait_to_finish=false`. |
+| **Navigation** | `Planner`, `Controller`, `LocalMapper`, `DriveManager` | The Kompass quartet. Cortex sends goals to `Planner`'s main action server through its `send_goal_to_planner_navigate_to_goal` tool, waiting for each by default or letting it run with `wait_to_finish=false`. The `DriveManager`'s safety-checked moves and the `Controller`'s algorithm switch and stop come along as tools too. |
 | **The agent** | `Cortex` | Discovers all of the above, exposes them as LLM tools, plans and executes against natural-language goals. |
 
 The wiring is conventional EMOS. The Cortex section at the end is what turns the whole stack into a single self-directing agent.
@@ -140,6 +140,19 @@ captioner = VLM(
 ```
 
 The VLM's `describe` and Vision's `track` / `take_picture` are `@component_action`s already declared upstream. **Cortex will discover them all.** We don't wire any of them by hand.
+
+The same goes for the navigation stack from Step 2. Kompass declares its components' actions with tool descriptions, and Cortex registers each one as `<component>-<action>`:
+
+| Tool | What it does |
+|---|---|
+| `drive_manager-move_forward`, `drive_manager-move_backward` | Moves a given distance, stopping early if an obstacle comes into the critical zone. |
+| `drive_manager-rotate_in_place` | Turns by an angle, once the space around the robot is clear. |
+| `drive_manager-move_to_unblock` | Recovery: tries forward, backward, then a rotation until one frees the robot. |
+| `drive_manager-stop_robot` | Drops queued commands and sends zero velocity until the robot is at rest. |
+| `controller-set_algorithm` | Switches between DWA, Pure Pursuit, Stanley, DVZ and the vision followers. |
+| `controller-stop_path_tracking` | Stops following the current path and stops the robot. |
+
+The movement tools check the Drive Manager's safety sensors before and while they move, so a motion Cortex asks for is held to the same safety zones as one from the Controller. Each returns `(success, message)`, and the message is what Cortex reads back, for example `Moved backward 0.32m of 0.50m` when something got in the way.
 
 ---
 
@@ -288,6 +301,22 @@ The robot navigates to the kitchen using its memory of where that is, looks at t
 
 A long-horizon mission. The robot dispatches successive navigation goals around the room and watches its detections. The moment a person appears, it cancels the current goal and reports their location.
 
+### Short moves and recovery
+
+Not every instruction is a destination. Some are a nudge, and these go to the Drive Manager and the Controller instead of the Planner:
+
+> *"Back up half a metre and turn to face the door."*
+
+The robot moves backward 0.5 m and rotates in place, finding the door's bearing from memory. Both moves stop short if the safety sensors see something in the way, and the robot says how far it got.
+
+> *"You look stuck. Get yourself free, then carry on to the kitchen."*
+
+The robot runs its unblocking recovery and then sends the navigation goal again.
+
+> *"Use Pure Pursuit for the corridor."*
+
+The controller switches algorithm for the next stretch; *"go back to DWA"* switches it back.
+
 None of these required you to write orchestration code, prompts, or a state machine. The behaviour emerges from Cortex's read of the auto-discovered tool surface and the memory-aware planning it installs when it sees a Memory component in the recipe.
 
 ---
@@ -303,6 +332,7 @@ Send a goal, and the action goal Cortex dispatches into the Planner appears live
 - An event triggering "go to X" when the user types it.
 - An LLM prompt parsing "go to X" into a destination.
 - A goal-builder for the Planner action.
+- A mapping from "back up a bit" to velocity commands, and the obstacle check around them.
 - An action client construction with feedback callbacks and cancellation logic.
 - A retry policy for the navigation goal.
 - A wait-loop that blocks until SUCCEEDED before invoking the VLM.

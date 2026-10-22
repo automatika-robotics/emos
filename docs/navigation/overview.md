@@ -84,7 +84,7 @@ Real-time local control with Pure Pursuit, DWA, Stanley, DVZ and the vision foll
 :link: drive-manager
 :link-type: doc
 
-Safety enforcement, emergency stops, and command smoothing.
+Safety enforcement over every LiDAR, point cloud and range sensor, emergency stops, and command smoothing.
 :::
 
 :::{grid-item-card} {material-regular}`grid_on;1.2em;sd-text-primary` Local Mapper
@@ -135,9 +135,8 @@ Additional sensors can enhance navigation capabilities and unlock advanced featu
 
 - {material-regular}`camera;1.2em;sd-text-secondary` **RGB Camera(s)** — Enables vision-based navigation, object tracking, and semantic navigation.
 - {material-regular}`view_in_ar;1.2em;sd-text-secondary` **Depth Camera** — Improves obstacle avoidance in 3D environments and enables more accurate object tracking.
-- {material-regular}`sensors;1.2em;sd-text-secondary` **3D LiDAR** — Enhances perception in complex environments with full 3D obstacle detection.
-- {material-regular}`satellite_alt;1.2em;sd-text-secondary` **GPS** — Enables outdoor navigation and geofenced planning.
-- {material-regular}`cell_tower;1.2em;sd-text-secondary` **UWB / BLE Beacons** — Improves localization in GPS-denied environments.
+- {material-regular}`sensors;1.2em;sd-text-secondary` **3D LiDAR(s)** — Enhances perception in complex environments with full 3D obstacle detection. Several, say a front and a rear unit, are fused into one local map and one safety check.
+- {material-regular}`sensors;1.2em;sd-text-secondary` **Ultrasound / Range sensors** — Single-beam proximity sensors that add to the Drive Manager's emergency stop in the direction they face.
 
 ---
 

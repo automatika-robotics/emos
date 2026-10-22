@@ -70,13 +70,23 @@ from kompass.components import DriveManager, DriveManagerConfig
 
 driver = DriveManager(
     component_name="drive_manager",
-    config=DriveManagerConfig(critical_zone_distance=0.05, critical_zone_angle=90.0, slowdown_zone_distance=0.3),
+    config=DriveManagerConfig(critical_zone_distance=0.3, critical_zone_angle=90.0, slowdown_zone_distance=0.6),
 )
-driver.inputs(sensor_data=[Topic(name="lidar", msg_type="PointCloud2", use_plugin=True)])
+driver.inputs(
+    sensor_data=[
+        Topic(name="lidar", msg_type="PointCloud2", use_plugin=True),
+        Topic(name="ultrasound_front", msg_type="Range", use_plugin=True),
+        Topic(name="ultrasound_back", msg_type="Range", use_plugin=True),
+    ]
+)
 driver.outputs(robot_command=Topic(name="Twist", msg_type="Twist", use_plugin=True))
 ```
 
-The safety zones need a sensor to check, so the drive manager reads the same cloud as the mapper.
+The safety zones check every sensor they are given and act on the most cautious one. The LiDAR on the robot's back sees the whole scene; the two ultrasounds, at body height on the nose and the tail, are a second opinion right where the robot is heading. The plugin's mounts tell the drive manager which way each beam points, so the front one guards forward motion and the rear one reversing, and the movement actions, such as the `move_to_unblock` recovery below, consult all three before they move.
+
+A `Range` reading is the distance from the sensor itself, while the LiDAR's critical zone is measured from the robot's edge. The Lite3's ultrasounds read nothing closer than 0.28 m, and a reading outside a sensor's own limits counts as clear, so the critical distance has to reach at least that far for them to ever stop the robot. 0.3 m does, and the slowdown zone moves out to stay beyond it.
+
+Every safety sensor has to keep publishing. One whose last message is older than `sensor_data_timeout`, 0.2 s by default, stops the robot until it comes back. When losing one sensor should not stop the robot, `stale_sensor_policy="skip"` runs the check on the others. [Drive Manager](../../navigation/drive-manager.md) covers the safety check in full.
 
 While the recipe runs, the plugin keeps the robot under external control with a heartbeat, and when the recipe ends, however it ends, it hands the robot back to its handset.
 
@@ -212,12 +222,18 @@ local_mapper = LocalMapper(
 )
 local_mapper.inputs(sensor_data=Topic(name="lidar", msg_type="PointCloud2", use_plugin=True))
 
-# --- Commands out through the plugin ---
+# --- Commands out through the plugin, guarded by the LiDAR and both ultrasounds ---
 driver = DriveManager(
     component_name="drive_manager",
-    config=DriveManagerConfig(critical_zone_distance=0.05, critical_zone_angle=90.0, slowdown_zone_distance=0.3),
+    config=DriveManagerConfig(critical_zone_distance=0.3, critical_zone_angle=90.0, slowdown_zone_distance=0.6),
 )
-driver.inputs(sensor_data=[Topic(name="lidar", msg_type="PointCloud2", use_plugin=True)])
+driver.inputs(
+    sensor_data=[
+        Topic(name="lidar", msg_type="PointCloud2", use_plugin=True),
+        Topic(name="ultrasound_front", msg_type="Range", use_plugin=True),
+        Topic(name="ultrasound_back", msg_type="Range", use_plugin=True),
+    ]
+)
 driver.outputs(robot_command=Topic(name="Twist", msg_type="Twist", use_plugin=True))
 
 # --- The launcher, with the robot attached ---

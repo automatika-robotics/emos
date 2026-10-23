@@ -171,9 +171,20 @@ jobs:
           path: dist/
 
       # Fast-forward only: a branch that moved fails here and is retried tomorrow
-      - name: Push the pins and the tag
+      - name: Push the pins
+        env:
+          DEPLOY_KEY: ${{ secrets.NIGHTLY_DEPLOY_KEY }}
         run: |
-          git push origin "HEAD:refs/heads/$BRANCH"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/nightly
+          chmod 600 ~/.ssh/nightly
+          gh api meta --jq '.ssh_keys[] | "github.com \(.)"' >> ~/.ssh/known_hosts
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/nightly -o IdentitiesOnly=yes" \
+            git push "git@github.com:$GITHUB_REPOSITORY.git" "HEAD:refs/heads/$BRANCH"
+          rm -f ~/.ssh/nightly
+
+      - name: Push the tag
+        run: |
           git tag "v$VERSION"
           git push origin "v$VERSION"
           git push origin --delete nightly-candidate

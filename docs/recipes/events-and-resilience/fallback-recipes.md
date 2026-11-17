@@ -287,17 +287,22 @@ driver = DriveManager(component_name="drive_manager")
 driver.on_system_fail(Action(driver.restart))
 ```
 
-### Global Catch-All
+### The Same Policy for Every Component
 
-For any component that doesn't have specific fallback logic, the Launcher provides a blanket policy.
+To give every component the same fallback, set it on each one. The Launcher's `fallback_rate` then sets how often all of them retry.
 
 ```python
-launcher.on_fail(action_name="restart")
+for component in (planner, controller, driver):
+    component.on_fail(Action(component.restart))
+
+launcher.add_pkg(components=[planner, controller, driver])
 launcher.fallback_rate = 1 / 10  # 0.1 Hz (one retry every 10 seconds)
 ```
 
+Set `fallback_rate` after `add_pkg`, because it applies to the components the Launcher already has.
+
 ```{seealso}
-The [Multiprocessing & Fault Tolerance](multiprocessing.md) recipe shows how to combine `launcher.on_fail()` with process isolation for a complete production setup.
+The [Multiprocessing & Fault Tolerance](multiprocessing.md) recipe adds `launcher.on_process_fail()`, which restarts a component whose process crashes.
 ```
 
 ## The Same API, Both Layers

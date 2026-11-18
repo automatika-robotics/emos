@@ -199,7 +199,11 @@ log INFO "Building kompass-core..."
 cd /tmp
 rm -rf kompass-core
 
-KC_TAG=$(curl -s "https://api.github.com/repos/automatika-robotics/kompass-core/tags" | grep -o '"name": "[^"]*"' | sed -n 1p | cut -d'"' -f4)
+KC_TAG=$(git ls-remote --tags --refs https://github.com/automatika-robotics/kompass-core | sed 's|.*refs/tags/||' | sort -V | tail -n 1) || true
+if [[ -z "$KC_TAG" ]]; then
+    log ERROR "Could not find the latest kompass-core release on GitHub. Check the network connection and try again."
+    exit 1
+fi
 log INFO "Cloning kompass-core $KC_TAG..."
 git clone --depth 1 --branch "$KC_TAG" https://github.com/automatika-robotics/kompass-core
 cd kompass-core
